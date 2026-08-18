@@ -29,6 +29,7 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <string>
+#include <sstream>
 #include <memory>
 #include <thread>
 #include <atomic>
@@ -151,8 +152,9 @@ static Options parseArgs(int argc, char** argv) {
 // 位置/大小与 Outpost 原项目一致：
 //   1. 热键提醒  — 原 main info 位置 (10,60)，0.6 号粗 2 绿
 //   2. 帧数统计  — 原 drawFps 样式：右上角 "FPS: xx" 0.7 粗 2 黄 + "TS: .." 0.45 粗 1 黄
-//   3. 串口输入信息 — 原 drawCommInfo 样式：(8,80) 起 0.45 粗 1 绿，含 MCU/IMU/FUSED/
-//      STRICT/MPC 摘要与温度行（按温度区间变色）
+//   3. 串口输入信息 — 原 drawCommInfo 样式：(8,80) 起 0.45 粗 1 绿，按来源分块显示
+//      （--- MCU --- / --- IMU --- / --- FUSED --- / --- STRICT --- / --- MPC ---），
+//      MCU 块含温度行（按温度区间变色）
 static void drawOverlay(cv::Mat& img,
                         const std::string& pipeline_name,
                         const std::string& output_names,
@@ -193,50 +195,91 @@ static void drawOverlay(cv::Mat& img,
     }
     const RobotController::State st = rc->getState();
 
-    // 温度行（按温度区间变色：>=70 红 / >=50 黄 / 其余绿），加入输入信息显示
-    {
-        std::string tstr = "Yaw Motor Temp: ";
-        cv::Scalar color(0, 255, 0);
-        if (st.mcu.valid) {
-            tstr += std::to_string((int)st.mcu.yaw_temperature) + " C";
-            if (st.mcu.yaw_temperature >= 70)      color = cv::Scalar(0, 0, 255);
-            else if (st.mcu.yaw_temperature >= 50) color = cv::Scalar(0, 255, 255);
-        } else {
-            tstr += "N/A";
-        }
-        put(tstr, color);
+    // ── MCU ──
+    put("--- MCU ---");
+    if (st.mcu.valid) {
+        oss.str("");
+        oss << std::fixed << std::setprecision(3);
+        oss << "bullet: " << st.mcu.bullet_velocity
+            << "  pitch: " << st.mcu.pitch_angle
+            << "  yaw: " << st.mcu.yaw_angle;
+        put(oss.str());
+        oss.str(""); oss << "yaw_omega: " << st.mcu.yaw_omega
+                         << "  imu_yaw: " << st.mcu.chassis_imu_yaw
+                         << "  imu_omega: " << st.mcu.chassis_imu_omega;
+        put(oss.str());
+        oss.str(""); oss << "mark: " << (int)st.mcu.mark
+                         << "  color: " << (int)st.mcu.color
+                         << "  aim: " << (int)st.mcu.auto_aim_switch;
+        put(oss.str());
+        // 温度行（按温度区间变色：>=70 红 / >=50 黄 / 其余绿）
+        cv::Scalar temp_color(0, 255, 0);
+        if (st.mcu.yaw_temperature >= 70)      temp_color = cv::Scalar(0, 0, 255);
+        else if (st.mcu.yaw_temperature >= 50) temp_color = cv::Scalar(0, 255, 255);
+        oss.str(""); oss << "temp: " << (int)st.mcu.yaw_temperature;
+        put(oss.str(), temp_color);
+    } else {
+        put("(no data)");
     }
 
-    char buf[200];
-    if (st.mcu.valid) {
-        std::snprintf(buf, sizeof(buf), "MCU  : bullet=%.2f pitch=%.3f yaw=%.3f",
-                      st.mcu.bullet_velocity, st.mcu.pitch_angle, st.mcu.yaw_angle);
-    } else {
-        std::snprintf(buf, sizeof(buf), "MCU  : (no data)");
-    }
-    put(buf);
+    // ── IMU ──
+    put("--- IMU ---");
     if (st.imu.valid) {
-        std::snprintf(buf, sizeof(buf), "IMU  : euler=(%.3f, %.3f, %.3f)",
-                      st.imu.euler_yaw, st.imu.euler_pitch, st.imu.euler_roll);
+        oss.str(""); oss << std::fixed << std::setprecision(4);
+        oss << "gyro: " << st.imu.gx << " " << st.imu.gy << " " << st.imu.gz;
+        put(oss.str());
+        oss.str(""); oss << "acc: " << st.imu.ax << " " << st.imu.ay << " " << st.imu.az;
+        put(oss.str());
+        oss.str(""); oss << "euler: " << st.imu.euler_yaw
+                         << " " << st.imu.euler_pitch
+                         << " " << st.imu.euler_roll;
+        put(oss.str());
+        oss.str(""); oss << "dt: " << st.imu.dt_one_tenth_ms;
+        put(oss.str());
     } else {
-        std::snprintf(buf, sizeof(buf), "IMU  : (no data)");
+        put("(no data)");
     }
-    put(buf);
+
+    // ── FUSED ──
+    put("--- FUSED ---");
     if (st.fused.valid) {
-        std::snprintf(buf, sizeof(buf), "FUSED: yaw_pos=%.3f yaw_rate=%.3f",
-                      st.fused.yaw_pos, st.fused.yaw_rate);
+        oss.str(""); oss << std::fixed << std::setprecision(4);
+        oss << "yaw_pos: " << st.fused.yaw_pos
+            << "  yaw_rate: " << st.fused.yaw_rate;
+        put(oss.str());
+        oss.str(""); oss << "chassis_yaw: " << st.fused.chassis_yaw
+                         << "  pitch: " << st.fused.chassis_pitch
+                         << "  roll: " << st.fused.chassis_roll;
+        put(oss.str());
     } else {
-        std::snprintf(buf, sizeof(buf), "FUSED: (no data)");
+        put("(no data)");
     }
-    put(buf);
-    std::snprintf(buf, sizeof(buf), "STRICT: chs=(%.3f, %.3f, %.3f) yaw=%.3f pitch=%.3f",
-                  st.strict.chassis_yaw, st.strict.chassis_pitch, st.strict.chassis_roll,
-                  st.strict.yaw_pos, st.strict.pitch_angle);
-    put(buf);
-    std::snprintf(buf, sizeof(buf), "MPC  : torque=%.3f target=%.3f (ref/pred=%zu/%zu)",
-                  st.mpc.yaw_torque, st.mpc.yaw_target_angle,
-                  st.mpc.ref_sequence.size(), st.mpc.pred_sequence.size());
-    put(buf);
+
+    // ── STRICT ──
+    put("--- STRICT ---");
+    {
+        oss.str(""); oss << std::fixed << std::setprecision(4);
+        oss << "imu_euler: " << st.strict.imu_euler_yaw
+            << " " << st.strict.imu_euler_pitch
+            << " " << st.strict.imu_euler_roll;
+        put(oss.str());
+        oss.str(""); oss << "yaw_pos: " << st.strict.yaw_pos
+                         << "  pitch: " << st.strict.pitch_angle;
+        put(oss.str());
+        oss.str(""); oss << "chassis: " << st.strict.chassis_yaw
+                         << " " << st.strict.chassis_pitch
+                         << " " << st.strict.chassis_roll;
+        put(oss.str());
+    }
+
+    // ── MPC ──
+    put("--- MPC ---");
+    {
+        oss.str(""); oss << std::fixed << std::setprecision(4);
+        oss << "target_yaw: " << st.mpc.yaw_target_angle
+            << "  torque: " << st.mpc.yaw_torque;
+        put(oss.str());
+    }
 }
 
 // ==================== 主程序 ====================
