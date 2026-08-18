@@ -72,8 +72,8 @@ static void printUsage(const char* prog) {
               << "  -h, --help                      显示帮助\n"
               << "无参数运行默认显示本帮助。\n"
               << "热键 (窗口内，窗口常驻不消失):\n"
-              << "  '1'/'2' 切换流水线  'g' 开关云台输出  'n' 关闭全部输出  'q'/ESC 退出\n"
-              << "  (可视化无法通过热键关闭，避免窗口消失导致程序失去响应；关闭输出后窗口显示最近一帧)\n";
+              << "  '1'/'2' 切换流水线  'v' 开关可视化  'g' 开关云台输出  'n' 关闭全部输出  'q'/ESC 退出\n"
+              << "  (窗口常驻：关闭可视化后仍显示最近一帧，热键始终可用，'v' 可随时恢复)\n";
 }
 
 static PipelineMode parsePipeline(const std::string& s) {
@@ -377,10 +377,12 @@ int main(int argc, char** argv) {
                     // 全部关闭（窗口保留，显示最近一帧）
                     output_modes.clear();
                     std::cout << "[main] Output modes: None" << std::endl;
+                } else if (key == 'v') {
+                    // 开关可视化：关闭后窗口仍显示最近一帧（常驻），热键始终可用，可随时恢复
+                    toggleOutput(OutputMode::VISUALIZE);
                 } else if (key == 'g') {
                     toggleOutput(OutputMode::GIMBAL);
                 }
-                // 注意：不提供关闭可视化的热键（'v' 已取消），避免窗口消失导致程序失去响应
             } else {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
