@@ -374,11 +374,14 @@ void PowerRunePipeline::addFrame(cv::Mat frame,
     data->initial.frame_timestamp = frame_timestamp;
     data->initial.extra_info = extra_info;
 
-    std::unique_lock<std::mutex> lock(input_mtx_);
-    input_cv_.wait(lock, [this]() {
-        return (int)input_queue_.size() < queue_max_sizes_[0];
-    });
-    input_queue_.push_back(std::move(data));
+    // 输入缓冲满时直接丢弃新帧（不阻塞），避免输入线程被流水线处理速度拖住
+    {
+        std::lock_guard<std::mutex> lock(input_mtx_);
+        if ((int)input_queue_.size() >= queue_max_sizes_[0]) {
+            return;
+        }
+        input_queue_.push_back(std::move(data));
+    }
 
     wakeScheduler();
 }
