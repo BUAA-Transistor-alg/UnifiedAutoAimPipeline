@@ -1,0 +1,3 @@
+[submodule "sub_module/TorqueController"]
+	path = sub_module/TorqueController
+	url = https://github.com/huhu23333/TorqueController.git

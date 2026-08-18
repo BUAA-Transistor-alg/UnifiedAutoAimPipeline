@@ -1,0 +1,104 @@
+# =============================================================
+# 全局参数配置（项目根目录 config/config.yaml）
+# 相对路径（model_path 等）以项目根目录为基准，经 PathResolver 解析。
+# 修改后无需重新编译，重启程序即生效。
+# =============================================================
+
+# ── 变换树各节点相对其父节点的固定偏移（单位：米）──
+tf:
+  yaw_joint_z_offset: 0.32      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
+  pitch_joint_y_offset: 0.0     # pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）
+  imu_offset_x: 0.0             # imu 相对 head 的 x 偏移 // head 节点实际上为 picth轴 和 一个垂直于picth轴且经过yaw轴的面 的交点位置
+  imu_offset_y: -0.03           # imu 相对 head 的 y 偏移
+  imu_offset_z: 0.13            # imu 相对 head 的 z 偏移
+  camera_offset_x: 0.0          # camera 相对 head 的 x 偏移
+  camera_offset_y: 0.0          # camera 相对 head 的 y 偏移
+  camera_offset_z: 0.1          # camera 相对 head 的 z 偏移
+  muzzle_offset_x: 0.0          # muzzle 相对 head 的 x 偏移
+  muzzle_offset_y: 0.15         # muzzle 相对 head 的 y 偏移
+  muzzle_offset_z: 0.0          # muzzle 相对 head 的 z 偏移
+
+# ── 相机参数 ──
+camera:
+  device_ip: "192.168.10.10"    # 相机设备 IP
+  net_ip: "192.168.10.25"       # 本机网口 IP
+  exposure: 2000.0              # 曝光时间（微秒）
+  gain: 23.0                    # 增益
+  resolution:
+    width: 1440                 # 图像宽（像素）
+    height: 1080                # 图像高（像素）
+  # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
+  camera_matrix: [2145.79634, 0.0, 707.253641,
+                  0.0, 2144.40959, 561.739611,
+                  0.0, 0.0, 1.0]
+  # 畸变系数（k1, k2, p1, p2, k3）
+  dist_coeffs: [-0.39408536, 0.09804124, 0.00156227, 0.00072548, 0.52671345]
+
+# ── Outpost 推理参数 ──
+inference:
+  model_path: "Model/Outpost/0526.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
+  device: "GPU"                          # 推理设备（CPU / GPU / ...）
+
+# ── 云台解算参数 ──
+gimbal:
+  bullet_diameter: 0.017       # 弹丸直径（米）
+  bullet_mass: 0.0032          # 弹丸质量（kg）
+  bullet_velocity: 20.0        # 默认弹丸初速（m/s，可在运行时通过 setBulletVelocity 覆盖）
+  integration_step: 0.01       # 弹道积分步长（秒）
+  distance_threshold: 0.05     # 弹道最近点距离阈值（米），最短距离超过则解算失效
+  distance_iterate_threshold: 0.01  # 迭代触发阈值（米）：首轮最近距离大于该值则触发 yaw-pitch 迭代优化；最终距离小于 distance_threshold 才算成功
+  stop_z: -3.0                 # 弹道计算截止高度（world 系，米），弹丸低于该高度即停止积分
+  pitch_min: -0.5236 # -30°             # pitch 搜索下界（弧度）
+  pitch_max: 0.7854 # 45°               # pitch 搜索上界（弧度）
+  pitch_search_step: 0.01745 # 1°      # pitch 粗搜索步长（弧度）
+
+# ── 预测弹道解算参数 ──
+predicted_ballistic:
+  extra_predict_time: 0.10      # 额外预测时间（秒），叠加在弹道飞行时间之上
+  max_iterations: 5             # 飞行时间迭代上限
+  time_error_tolerance: 0.005    # 迭代提前停止的时间误差容差（秒）
+
+# ── RobotController（TorqueController 子模组）构造参数 ──
+robot_controller:
+  sequence_mode: true         # 序列输入模式（true=序列 set / false=单目标 set）
+  dt_control: 0.01            # 控制周期（秒，100Hz）
+  mpc_pred_n: 20              # MPC 预测步数
+  J: 0.016541                 # yaw 轴转动惯量
+  tau_c: 0.097297             # 库仑摩擦
+  b: 0.0321                   # 粘滞摩擦系数
+  tau_d: 0.0                  # 常数扰动
+  max_torque: 1.0             # 最大力矩（N·m）
+  max_torque_rate: 40.0       # 最大力矩变化率（N·m/s）
+  Q: 5.0                      # MPC 状态代价
+  R: 0.01                     # MPC 控制代价
+  Rd: 0.1                     # MPC 控制变化率代价
+  max_iter: 30                # MPC 迭代上限
+
+# ── 云台输入控制器参数（序列输入模式）──
+input_controller:
+  prediction_seq_len: 20          # n：预测序列长度（i=1..n 预测 extra+i*dt+飞行时间 的目标）
+  pitch_seq_lead: 15              # m：pitch 序列提前数（必须小于 n），pitch 序列截取第 m 个之后
+  fire_seq_lead: 5                # o：fire 序列提前数，fire 序列截取第 o 个之后
+  pitch_bias: 0.01745             # pitch 轴偏置（弧度），输出时叠加（约 1°）
+  fire_angle_lower_limit: 0.03491 # 2° # fire 判定角度阈值下限（弧度）
+  fire_angle_length: 0.05         # fire 判定弧长（米）：动态阈值 = length / 目标与 yaw 原点 xy 距离
+
+# ── 其他 ──
+observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 ESEKF（秒）
+
+# ── PowerRune（能量机关）推理与相机参数 ──
+power_rune:
+  model_path: "Model/PowerRune/SECDO-plussmall.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
+  device: "GPU"                                       # 推理设备（CPU / GPU / ...）
+  manual_nms: true            # true: 模型为无 NMS 的原始输出，需手动 NMS；false: NMS 已内嵌
+  conf_threshold: 0.5         # 置信度阈值
+  max_batch: 4                # 推理最大批量
+  resolution:
+    width: 1920               # 图像宽（像素）
+    height: 1080              # 图像高（像素）
+  # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
+  camera_matrix: [650.0, 0.0, 960.0,
+                  0.0, 650.0, 540.0,
+                  0.0, 0.0, 1.0]
+  # 畸变系数（k1, k2, p1, p2, k3）
+  dist_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
