@@ -1,6 +1,7 @@
 // GimbalOutput.cpp — 云台控制输出模式实现
 #include "Output/GimbalOutput.h"
 
+#include <functional>
 #include <vector>
 
 GimbalOutput::GimbalOutput(RobotController& rc)
@@ -28,11 +29,26 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*)
     }
 
     if (result.outpost.esekf_initialized && result.outpost.predictor) {
-        // 预测弹道解算 + 序列输入控制（内部完成飞行时间迭代、目标选取与预测序列生成）
+        // ── Outpost：预测弹道解算 + 序列输入控制（目标选择：默认 muzzle 距离最近）──
+        input_controller_->setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
         input_controller_->update(st, *result.outpost.predictor);
+    } else if (result.power_rune.target_predictor) {
+        // ── PowerRune：靶点预测函数包装为统一签名（float→double, Vec3f→Point3f），
+        //    目标选择策略用 z 最低（能量机关）──
+        input_controller_->setTargetSelection(PredictedBallisticSolver::TargetSelection::LOWEST_Z);
+        const auto& pr_pred = result.power_rune.target_predictor;   // const 引用，update 调用期间有效
+        std::function<std::vector<cv::Point3f>(double)> wrapped =
+            [&pr_pred](double dt) -> std::vector<cv::Point3f> {
+            const auto pts = (*pr_pred)(static_cast<float>(dt));
+            std::vector<cv::Point3f> out;
+            out.reserve(pts.size());
+            for (const auto& p : pts) out.emplace_back(p[0], p[1], p[2]);
+            return out;
+        };
+        input_controller_->update(st, wrapped);
     } else {
-        // ESEKF 未初始化（或当前为 PowerRune 流水线）：保持模式（自瞄关闭，
-        // 目标保持当前严格反解位置）。序列模式下用单元素序列调用序列 set。
+        // 预测器不可用：保持模式（自瞄关闭，目标保持当前严格反解位置）。
+        // 序列模式下用单元素序列调用序列 set。
         const double hold_yaw   = st.strict.yaw_pos;
         const double hold_pitch = st.strict.pitch_angle;
         rc_.set(/*auto_aim_enable=*/false, /*yaw_torque_only_mode=*/false,

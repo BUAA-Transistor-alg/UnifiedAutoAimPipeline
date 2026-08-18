@@ -25,7 +25,9 @@ PredictedBallisticSolver::Result PredictedBallisticSolver::solve(const Predictor
     const double v0 = gimbal_->bulletVelocity();
     if (v0 <= 0.0) return final_result;
 
-    double best_muzzle_dist = std::numeric_limits<double>::infinity();
+    // 目标选择判据：NEAREST 取最小 muzzle 距离（初始 +inf）；LOWEST_Z 取最小 world z
+    double best_criterion = std::numeric_limits<double>::infinity();
+    const bool lowest_z = (target_selection_ == TargetSelection::LOWEST_Z);
 
     for (size_t i = 0; i < centers_now.size(); ++i) {
         double flight_time = 0.0;
@@ -63,10 +65,15 @@ PredictedBallisticSolver::Result PredictedBallisticSolver::solve(const Predictor
             if (time_err <= time_error_tolerance_) break;  // 提前停止
         }
 
-        // 跨目标点：选取预测点距离当前 muzzle 系原点最近者作为实际使用目标
-        const double d = cv::norm(muzzle - candidate.predicted_point);
-        if (d < best_muzzle_dist) {
-            best_muzzle_dist = d;
+        // 跨目标点：按目标选择策略选取实际使用目标
+        double criterion;
+        if (lowest_z) {
+            criterion = candidate.predicted_point[2];   // world z，取最小
+        } else {
+            criterion = cv::norm(muzzle - candidate.predicted_point);   // muzzle 距离，取最小
+        }
+        if (criterion < best_criterion) {
+            best_criterion = criterion;
             final_result = candidate;
         }
     }

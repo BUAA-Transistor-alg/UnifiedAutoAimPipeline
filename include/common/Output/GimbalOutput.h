@@ -2,8 +2,12 @@
 //
 // 弹道解算 + 控制序列生成（GimbalSolver + PredictedBallisticSolver +
 // InputController）作为输出模式：每帧直接读取 RobotController::getState()
-// （串口/MPC 状态不经流水线），结合流水线输出的 ESEKF 预测器快照生成并
-// 发送 yaw/pitch/fire 序列。ESEKF 未初始化或非 Outpost 流水线时进入保持模式。
+// （串口/MPC 状态不经流水线），结合流水线输出的预测器快照生成并发送
+// yaw/pitch/fire 序列。
+//  - Outpost 流水线：使用 ESEKF 预测器，目标选择 NEAREST（muzzle 距离最近）；
+//  - PowerRune 流水线：使用靶点预测函数（target_predictor），目标选择 LOWEST_Z
+//    （world z 最低）；
+//  - 预测器不可用时进入保持模式（自瞄关闭）。
 #ifndef GIMBAL_OUTPUT_H
 #define GIMBAL_OUTPUT_H
 

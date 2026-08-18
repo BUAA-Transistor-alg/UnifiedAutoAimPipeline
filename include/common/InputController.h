@@ -42,6 +42,11 @@ public:
     //（ESEKF::capturePosePredictor 返回），内部生成并发送 robotController.set 序列。
     void update(const RobotController::State& st, const Predictor& predictor);
 
+    // 目标选择策略透传（Outpost 默认 NEAREST；PowerRune 用 LOWEST_Z）
+    void setTargetSelection(PredictedBallisticSolver::TargetSelection sel) {
+        pred_ballistic_.setTargetSelection(sel);
+    }
+
     // 本帧生成的 set 序列输入（供显示/调试/测试）
     struct LastOutput {
         bool   auto_aim_enable = false;
