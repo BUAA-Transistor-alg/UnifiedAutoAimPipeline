@@ -4,15 +4,41 @@
 #include "OutpostModel.h"
 #include "TargetPositionCalculator.h"
 
+#include <cstdio>
 #include <iostream>
 #include <cmath>
 
-VisualizeOutput::VisualizeOutput()
+namespace {
+
+// 预测瞄准点绘制（品红圆点 + 十字 + 预测时间文字），两种流水线模式统一
+void drawAimPointOverlay(cv::Mat& img, const cv::Vec3f& aim_world, double aim_t,
+                         const RobotTfTree& tree, const CameraProjection& proj) {
+    cv::Vec3f aim_cam = tree.transformPoint(RobotTfTree::WORLD, RobotTfTree::CAMERA, aim_world);
+    std::vector<cv::Point2f> pts;
+    proj.projectPoints_Cam({cv::Point3f(aim_cam[0], aim_cam[1], aim_cam[2])}, pts);
+    if (pts.empty()) return;
+
+    const cv::Point2f pt = pts[0];
+    const cv::Scalar color(255, 0, 255);   // 品红
+    cv::circle(img, pt, 6, color, -1);
+    cv::circle(img, pt, 10, color, 2);
+    cv::line(img, cv::Point(pt.x - 14, pt.y), cv::Point(pt.x + 14, pt.y), color, 1);
+    cv::line(img, cv::Point(pt.x, pt.y - 14), cv::Point(pt.x, pt.y + 14), color, 1);
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "Aim t=%.2fs", aim_t);
+    cv::putText(img, buf, cv::Point(pt.x + 12, pt.y - 10),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1);
+}
+
+} // namespace
+
+VisualizeOutput::VisualizeOutput(std::shared_ptr<AimPoint> aim)
     : camera_proj_(std::make_shared<CameraProjection>(
           RobotConfig::instance().camera.cameraMatrix,
           RobotConfig::instance().camera.distCoeffs,
           ImageResolution{RobotConfig::instance().camera.width,
-                          RobotConfig::instance().camera.height})) {}
+                          RobotConfig::instance().camera.height})),
+      aim_(std::move(aim)) {}
 
 void VisualizeOutput::setMode(PipelineMode mode)
 {
@@ -51,6 +77,15 @@ void VisualizeOutput::update(const PipelineResult& result, RobotController* rc)
         renderOutpost(result, rc);
     } else {
         renderPowerRune(result, rc);
+    }
+
+    // 预测瞄准点（GimbalOutput 共享槽写入，两种模式统一绘制；无有效瞄准点时不画）
+    if (aim_ && !display_.empty()) {
+        cv::Vec3f aim_world;
+        double aim_t = 0.0;
+        if (aim_->get(aim_world, aim_t)) {
+            drawAimPointOverlay(display_, aim_world, aim_t, tree_, *camera_proj_);
+        }
     }
 }
 

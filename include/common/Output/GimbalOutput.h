@@ -12,6 +12,7 @@
 #define GIMBAL_OUTPUT_H
 
 #include "Output/IOutputMode.h"
+#include "Output/AimPoint.h"
 #include "InputController.h"
 #include "Ballistic/GimbalSolver.h"
 
@@ -19,7 +20,8 @@
 
 class GimbalOutput : public IOutputMode {
 public:
-    explicit GimbalOutput(RobotController& rc);
+    /// @param aim 预测瞄准点共享槽（写入每帧算出的瞄准点，供可视化绘制；可为 nullptr）
+    explicit GimbalOutput(RobotController& rc, std::shared_ptr<AimPoint> aim = nullptr);
 
     /// @param rc 参数为 nullptr（本模式构造时已持有 RobotController 引用）
     void update(const PipelineResult& result, RobotController* rc) override;
@@ -34,6 +36,7 @@ private:
     RobotController& rc_;
     std::shared_ptr<GimbalSolver> gimbal_;
     std::unique_ptr<InputController> input_controller_;
+    std::shared_ptr<AimPoint> aim_;   // 可为 nullptr
 };
 
 #endif // GIMBAL_OUTPUT_H

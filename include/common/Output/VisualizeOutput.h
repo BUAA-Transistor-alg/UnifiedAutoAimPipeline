@@ -8,6 +8,7 @@
 #define VISUALIZE_OUTPUT_H
 
 #include "Output/IOutputMode.h"
+#include "Output/AimPoint.h"
 #include "OutpostVisualizer.h"
 #include "PowerRuneVisualizer.h"
 #include "TransformTree/RobotTfTree.h"
@@ -19,7 +20,8 @@
 
 class VisualizeOutput : public IOutputMode {
 public:
-    VisualizeOutput();
+    /// @param aim 预测瞄准点共享槽（读取 GimbalOutput 写入的最新瞄准点绘制；可为 nullptr）
+    explicit VisualizeOutput(std::shared_ptr<AimPoint> aim = nullptr);
 
     /// 切换当前渲染的流水线模式（同时重建对应相机投影）
     void setMode(PipelineMode mode);
@@ -44,6 +46,7 @@ private:
     PowerRuneVisualizer power_rune_vis_;
     FrameRateCounter fps_;
     cv::Mat display_;
+    std::shared_ptr<AimPoint> aim_;   // 可为 nullptr
 };
 
 #endif // VISUALIZE_OUTPUT_H

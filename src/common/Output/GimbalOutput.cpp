@@ -4,10 +4,11 @@
 #include <functional>
 #include <vector>
 
-GimbalOutput::GimbalOutput(RobotController& rc)
+GimbalOutput::GimbalOutput(RobotController& rc, std::shared_ptr<AimPoint> aim)
     : rc_(rc),
       gimbal_(std::make_shared<GimbalSolver>()),
-      input_controller_(std::make_unique<InputController>(rc_, gimbal_)) {}
+      input_controller_(std::make_unique<InputController>(rc_, gimbal_)),
+      aim_(std::move(aim)) {}
 
 void GimbalOutput::update(const PipelineResult& result, RobotController*)
 {
@@ -28,10 +29,12 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*)
         gimbal_->setBulletVelocity(st.mcu.bullet_velocity);
     }
 
+    bool solving = false;
     if (result.outpost.esekf_initialized && result.outpost.predictor) {
         // ── Outpost：预测弹道解算 + 序列输入控制（目标选择：默认 muzzle 距离最近）──
         input_controller_->setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
         input_controller_->update(st, *result.outpost.predictor);
+        solving = true;
     } else if (result.power_rune.target_predictor) {
         // ── PowerRune：靶点预测函数包装为统一签名（float→double, Vec3f→Point3f），
         //    目标选择策略用 z 最低（能量机关）──
@@ -46,9 +49,19 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*)
             return out;
         };
         input_controller_->update(st, wrapped);
+        solving = true;
+    }
+
+    if (solving) {
+        // 把本帧算出的预测瞄准点写入共享槽（供可视化绘制）
+        if (aim_) {
+            const auto& lo = input_controller_->lastOutput();
+            aim_->set(lo.predicted_point, lo.predict_time);
+        }
     } else {
         // 预测器不可用：保持模式（自瞄关闭，目标保持当前严格反解位置）。
         // 序列模式下用单元素序列调用序列 set。
+        if (aim_) aim_->invalidate();
         const double hold_yaw   = st.strict.yaw_pos;
         const double hold_pitch = st.strict.pitch_angle;
         rc_.set(/*auto_aim_enable=*/false, /*yaw_torque_only_mode=*/false,

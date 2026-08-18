@@ -21,6 +21,7 @@
 #include "OutpostPipeline.h"
 #include "PowerRunePipeline.h"
 #include "Output/IOutputMode.h"
+#include "Output/AimPoint.h"
 #include "Output/VisualizeOutput.h"
 #include "Output/GimbalOutput.h"
 #include "RobotConfig.h"
@@ -379,16 +380,18 @@ int main(int argc, char** argv) {
 
     // ── 输出模式组合（visualize 与 gimbal 独立开关，可同时启用；随时可切换）──
     std::vector<std::unique_ptr<IOutputMode>> output_modes;
+    // 预测瞄准点共享槽：GimbalOutput 写入，VisualizeOutput 读取绘制
+    auto aim_point = std::make_shared<AimPoint>();
     auto makeOutputs = [&](const OutputConfig& oc) {
         output_modes.clear();
         if (oc.visualize) {
-            auto vis = std::make_unique<VisualizeOutput>();
+            auto vis = std::make_unique<VisualizeOutput>(aim_point);
             vis->setMode(active_pipeline->mode());
             output_modes.push_back(std::move(vis));
         }
         if (oc.gimbal) {
             ensureRobotController();
-            output_modes.push_back(std::make_unique<GimbalOutput>(*robot_controller));
+            output_modes.push_back(std::make_unique<GimbalOutput>(*robot_controller, aim_point));
         }
         std::cout << "[main] Output modes:";
         if (output_modes.empty()) std::cout << " None";
@@ -441,12 +444,12 @@ int main(int argc, char** argv) {
         }
         if (add) {
             if (m == OutputMode::VISUALIZE) {
-                auto vis = std::make_unique<VisualizeOutput>();
+                auto vis = std::make_unique<VisualizeOutput>(aim_point);
                 vis->setMode(active_pipeline->mode());
                 output_modes.push_back(std::move(vis));
             } else if (m == OutputMode::GIMBAL) {
                 ensureRobotController();
-                output_modes.push_back(std::make_unique<GimbalOutput>(*robot_controller));
+                output_modes.push_back(std::make_unique<GimbalOutput>(*robot_controller, aim_point));
             }
         }
         std::cout << "[main] Output modes:";
