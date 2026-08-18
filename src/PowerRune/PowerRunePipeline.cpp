@@ -444,6 +444,8 @@ PipelineResult PowerRunePipeline::tryPopFrame(const std::chrono::steady_clock::t
         fillPerception(front.get(), result.power_rune);
         result.valid = true;
         output_queue_.pop_front();
+        // 输出队列腾出空间：唤醒调度器推进各阶段（尤其输出队列满导致阶段5停顿时）
+        wakeScheduler();
     }
 
     return result;
