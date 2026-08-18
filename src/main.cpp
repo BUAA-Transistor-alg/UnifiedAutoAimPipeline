@@ -13,10 +13,10 @@
 //  - 输入模式（相机/视频/交互）与输出模式（无/可视化/云台控制）在启动时
 //    指定，运行时也可通过 API（switchPipeline / toggleOutput）或热键 '1'/'2'、'v'/'g' 切换；
 //  - RobotController（串口 + MPC）仅在需要时构造（相机输入或云台输出）。
-#include "IInputMode.h"
-#include "CameraInputMode.h"
-#include "VideoInputMode.h"
-#include "InteractiveInputMode.h"
+#include "Input/IInputMode.h"
+#include "Input/CameraInputMode.h"
+#include "Input/VideoInputMode.h"
+#include "Input/InteractiveInputMode.h"
 #include "IPipeline.h"
 #include "OutpostPipeline.h"
 #include "PowerRunePipeline.h"

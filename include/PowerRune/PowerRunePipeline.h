@@ -8,7 +8,7 @@
 #include "RollPredictor.h"
 #include "TargetPositionCalculator.h"
 #include "TransformTree/RobotTfTree.h"
-#include "IInputMode.h"
+#include "Input/IInputMode.h"
 #include "IPipeline.h"
 #include "RobotConfig.h"
 

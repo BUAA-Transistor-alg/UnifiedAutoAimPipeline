@@ -15,7 +15,7 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "IInputMode.h"
+#include "Input/IInputMode.h"
 #include "OpenvinoInfer.h"
 #include "YoloPoseInfer.h"
 #include "RollPredictor.h"

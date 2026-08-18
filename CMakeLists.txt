@@ -80,9 +80,9 @@ set(COMMON_SOURCES
     src/common/Ballistic/PredictedBallisticSolver.cpp
     src/common/Ballistic/AimPredictor.cpp
     src/common/camera/Camera.cpp
-    src/common/CameraInputMode.cpp
-    src/common/VideoInputMode.cpp
-    src/common/InteractiveInputMode.cpp
+    src/common/Input/CameraInputMode.cpp
+    src/common/Input/VideoInputMode.cpp
+    src/common/Input/InteractiveInputMode.cpp
 )
 
 # ── Outpost 源文件 ──

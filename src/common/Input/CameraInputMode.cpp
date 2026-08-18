@@ -1,5 +1,5 @@
 // CameraInputMode.cpp — 海康相机输入模式实现
-#include "CameraInputMode.h"
+#include "Input/CameraInputMode.h"
 
 #include <iostream>
 

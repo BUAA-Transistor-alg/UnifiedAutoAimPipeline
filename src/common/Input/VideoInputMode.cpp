@@ -1,4 +1,4 @@
-#include "VideoInputMode.h"
+#include "Input/VideoInputMode.h"
 #include <iostream>
 #include <stdexcept>
 #include <fstream>

@@ -21,7 +21,7 @@
 #include "CameraProjection.h"
 #include "TransformTree/RobotTfTree.h"
 #include "OutpostModel.h"
-#include "IInputMode.h"
+#include "Input/IInputMode.h"
 #include "IPipeline.h"
 #include "RobotConfig.h"
 
