@@ -95,12 +95,15 @@ common:
 
   # ── 云台输入控制器参数（序列输入模式）──
   input_controller:
-    prediction_seq_len: 20          # n：预测序列长度（i=1..n 预测 extra+i*dt+飞行时间 的目标）
-    pitch_seq_lead: 15              # m：pitch 序列提前数（必须小于 n），pitch 序列截取第 m 个之后
-    fire_seq_lead: 5                # o：fire 序列提前数，fire 序列截取第 o 个之后
-    pitch_bias: 0.01745             # pitch 轴偏置（弧度），输出时叠加（约 1°）
-    fire_angle_lower_limit: 0.03491 # 2° # fire 判定角度阈值下限（弧度）
-    fire_angle_length: 0.05         # fire 判定弧长（米）：动态阈值 = length / 目标与 yaw 原点 xy 距离
+    prediction_points: 6             # M：预测点数（实际精确弹道解算的点数）
+    interpolation_refine: 4          # K：插值细化倍数（相邻实际计算点之间细分的返回点间隔数）
+                                     # 总返回点数 = (M-1)*K+1 = 21，间隔恰为 dt_control，
+                                     # 首末点必为实际计算点
+    pitch_seq_lead: 15               # m：pitch 序列提前数（必须小于总返回点数），pitch 序列截取第 m 个之后
+    fire_seq_lead: 5                 # o：fire 序列提前数，fire 序列截取第 o 个之后
+    pitch_bias: 0.01745              # pitch 轴偏置（弧度），输出时叠加（约 1°）
+    fire_angle_lower_limit: 0.03491  # 2° # fire 判定角度阈值下限（弧度）
+    fire_angle_length: 0.05          # fire 判定弧长（米）：动态阈值 = length / 目标与 yaw 原点 xy 距离
 
 # ════════════════════════════════════════════════════════════
 # outpost — Outpost 流水线独占参数

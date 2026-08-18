@@ -496,7 +496,7 @@ int main(int argc, char** argv) {
 
             float delay_s = input_mode->getFrameDelay() -
                 std::chrono::duration<float>(std::chrono::steady_clock::now() - time_for_delay).count();
-            int delay_us = 0;static_cast<int>(delay_s * 1e6);
+            int delay_us = static_cast<int>(delay_s * 1e6);
             if (delay_us > 0) {
                 std::this_thread::sleep_for(std::chrono::microseconds(delay_us));
             }

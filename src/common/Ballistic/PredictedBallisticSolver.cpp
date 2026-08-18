@@ -59,6 +59,7 @@ PredictedBallisticSolver::Result PredictedBallisticSolver::solve(const Predictor
                 candidate.predicted_point = pred_point;
                 candidate.predict_time    = pred_t;
                 candidate.gimbal          = aim;
+                candidate.target_index    = (int)i;   // 该候选对应预测列表中的目标 i
             }
 
             flight_time = aim.flight_time;   // 下次迭代使用本次解算的飞行时间

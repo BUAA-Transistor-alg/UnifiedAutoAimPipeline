@@ -78,12 +78,14 @@ public:
 
     // 云台输入控制器参数（序列输入模式）
     struct InputControllerParams {
-        int    predictionSeqLen;   // n：预测序列长度
-        int    pitchSeqLead;       // m：pitch 序列提前数
-        int    fireSeqLead;        // o：fire 序列提前数
-        double pitchBias;          // pitch 轴偏置（弧度）
-        double fireAngleLowerLimit;// fire 判定角度阈值下限（弧度）
-        double fireAngleLength;    // fire 判定弧长（米）
+        int    predictionPoints;    // 预测点数：实际精确弹道解算的点数（M）
+        int    interpolationRefine; // 插值细化倍数：相邻实际计算点之间细分的返回点间隔数（K）
+                                    // 总返回点数 = (M-1)*K + 1，间隔恰为 dt_control
+        int    pitchSeqLead;        // m：pitch 序列提前数（必须小于总返回点数）
+        int    fireSeqLead;         // o：fire 序列提前数
+        double pitchBias;           // pitch 轴偏置（弧度）
+        double fireAngleLowerLimit; // fire 判定角度阈值下限（弧度）
+        double fireAngleLength;     // fire 判定弧长（米）
     };
 
     // Outpost 流水线独占参数

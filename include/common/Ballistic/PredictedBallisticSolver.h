@@ -43,6 +43,7 @@ public:
         cv::Vec3f predicted_point;      // 使用的预测目标点（world 系）
         double predict_time = 0.0;      // 使用的预测时间 = 额外预测时间 + 飞行时间（秒）
         GimbalSolver::AimResult gimbal; // GimbalSolver 解算结果（含 yaw/pitch/flight_time）
+        int    target_index = -1;       // 选中的目标在预测函数返回列表中的索引（目标选择策略结果）
     };
 
     // gimbal：云台角度解算器（内部树需由调用方同步当前底盘位姿与 yaw/pitch 关节角）。
