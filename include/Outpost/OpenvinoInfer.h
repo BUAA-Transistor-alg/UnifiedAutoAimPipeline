@@ -28,6 +28,10 @@ constexpr int OUTPUT_DIM    = 22;    // 模型输出列数（8 kpts + 1 conf + 4
 constexpr int NUM_COLOR     = 4;
 constexpr int NUM_CLASSES   = 9;
 
+// 类别映射（模型训练标签）：0-5 哨兵/1~5号机器人，6 前哨站，7-8 基地/基地大装甲。
+// 识别流程仅保留前哨站类别（label 6）的装甲板，其余类别直接丢弃。
+constexpr int OUTPOST_CLASS = 6;
+
 // 检测结果
 struct Object {
     cv::Rect_<float> rect;         // 边界框（原图尺寸）

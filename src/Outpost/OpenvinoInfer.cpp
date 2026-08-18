@@ -137,6 +137,10 @@ std::vector<Object> OutpostPostprocessor::postprocess(
         _class_id = class_id.x;
         _color_id = color_id.x;
 
+        // 仅保留前哨站类别（label 6）的装甲板，其余类别（哨兵/1~5号机器人/基地）直接丢弃
+        if (_class_id != OUTPOST_CLASS)
+            continue;
+
         Object obj;
         obj.prob = confidence;
         obj.color = _color_id;
