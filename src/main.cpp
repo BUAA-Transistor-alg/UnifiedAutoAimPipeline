@@ -487,6 +487,8 @@ int main(int argc, char** argv) {
     std::thread process_thread([&]() {
         FrameRateCounter overlay_fps(60);
         cv::Mat last_frame;   // 最近一帧（可视化关闭时窗口仅显示原始画面）
+        TimePoint last_valid_ts{};   // 最近一次有效帧时间戳（覆盖层 TS 显示用；
+                                    // tryPopFrame 返回无效帧时 frame_timestamp 为默认 0）
         while (!t1_done.load(std::memory_order_acquire) && g_running) {
             TimePoint timestamp = shared_frame_timestamp.load(std::memory_order_acquire);
             if (timestamp == TimePoint{}) {
@@ -519,6 +521,7 @@ int main(int argc, char** argv) {
                 to_show = last_frame.clone();
             }
             if (result.valid) {
+                last_valid_ts = result.frame_timestamp;
                 last_frame = result.frame.clone();
             }
 
@@ -529,7 +532,7 @@ int main(int argc, char** argv) {
 
             if (vis_active) {
                 drawOverlay(to_show, active_pipeline->name(), outputNames(),
-                            overlay_fps.fps(), robot_controller.get(), result.frame_timestamp);
+                            overlay_fps.fps(), robot_controller.get(), last_valid_ts);
             }
 
             cv::imshow("Unified Auto-Aim", to_show);
