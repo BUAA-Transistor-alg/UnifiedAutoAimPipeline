@@ -21,9 +21,9 @@
 #include "OutpostPipeline.h"
 #include "PowerRunePipeline.h"
 #include "Output/IOutputMode.h"
-#include "Output/AimPoint.h"
 #include "Output/VisualizeOutput.h"
 #include "Output/GimbalOutput.h"
+#include "Ballistic/AimPredictor.h"
 #include "RobotConfig.h"
 #include "FrameRateCounter.h"
 
@@ -386,8 +386,9 @@ int main(int argc, char** argv) {
 
     // ── 输出模式组合（visualize 与 gimbal 独立开关，可同时启用；随时可切换）──
     std::vector<std::unique_ptr<IOutputMode>> output_modes;
-    // 预测瞄准点共享槽：GimbalOutput 写入，VisualizeOutput 读取绘制
-    auto aim_point = std::make_shared<AimPoint>();
+    // 预测瞄准点通用类：任何情况下（无论输出模式）每帧调用，生成预测云台控制
+    // 序列 + 瞄准点序列；GimbalOutput 消费控制序列，VisualizeOutput 消费首个瞄准点
+    AimPredictor aim_predictor;
     // 相机投影（与输入模式绑定，两个流水线/可视化共用）
     auto camera_proj = std::make_shared<CameraProjection>(
         camera_params.cameraMatrix, camera_params.distCoeffs,
@@ -395,13 +396,13 @@ int main(int argc, char** argv) {
     auto makeOutputs = [&](const OutputConfig& oc) {
         output_modes.clear();
         if (oc.visualize) {
-            auto vis = std::make_unique<VisualizeOutput>(camera_proj, aim_point);
+            auto vis = std::make_unique<VisualizeOutput>(camera_proj, aim_predictor);
             vis->setMode(active_pipeline->mode());
             output_modes.push_back(std::move(vis));
         }
         if (oc.gimbal) {
             ensureRobotController();
-            output_modes.push_back(std::make_unique<GimbalOutput>(*robot_controller, aim_point));
+            output_modes.push_back(std::make_unique<GimbalOutput>(aim_predictor, *robot_controller));
         }
         std::cout << "[main] Output modes:";
         if (output_modes.empty()) std::cout << " None";
@@ -454,12 +455,12 @@ int main(int argc, char** argv) {
         }
         if (add) {
             if (m == OutputMode::VISUALIZE) {
-                auto vis = std::make_unique<VisualizeOutput>(camera_proj, aim_point);
+                auto vis = std::make_unique<VisualizeOutput>(camera_proj, aim_predictor);
                 vis->setMode(active_pipeline->mode());
                 output_modes.push_back(std::move(vis));
             } else if (m == OutputMode::GIMBAL) {
                 ensureRobotController();
-                output_modes.push_back(std::make_unique<GimbalOutput>(*robot_controller, aim_point));
+                output_modes.push_back(std::make_unique<GimbalOutput>(aim_predictor, *robot_controller));
             }
         }
         std::cout << "[main] Output modes:";
@@ -519,6 +520,34 @@ int main(int argc, char** argv) {
             }
 
             PipelineResult result = active_pipeline->tryPopFrame(timestamp);
+
+            // ── 统一预测瞄准点（任何情况下都调用，与输出模式无关）──
+            // 生成预测云台控制序列 + 瞄准点序列；GimbalOutput 消费控制序列，
+            // VisualizeOutput 消费瞄准点序列第一个值。
+            if (result.valid) {
+                const RobotController::State st =
+                    robot_controller ? robot_controller->getState() : RobotController::State{};
+                if (result.outpost.esekf_initialized && result.outpost.predictor) {
+                    aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
+                    aim_predictor.predict(st, *result.outpost.predictor);
+                } else if (result.power_rune.target_predictor) {
+                    // PowerRune：靶点预测函数包装为统一签名（float→double, Vec3f→Point3f）
+                    aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::LOWEST_Z);
+                    const auto& pr_pred = result.power_rune.target_predictor;
+                    std::function<std::vector<cv::Point3f>(double)> wrapped =
+                        [&pr_pred](double dt) -> std::vector<cv::Point3f> {
+                        const auto pts = (*pr_pred)(static_cast<float>(dt));
+                        std::vector<cv::Point3f> out;
+                        out.reserve(pts.size());
+                        for (const auto& p : pts) out.emplace_back(p[0], p[1], p[2]);
+                        return out;
+                    };
+                    aim_predictor.predict(st, wrapped);
+                } else {
+                    aim_predictor.invalidate();
+                }
+            }
+
             // 更新全部输出模式（visualize 与 gimbal 可同时启用）
             for (auto& m : output_modes) {
                 m->update(result, robot_controller.get());

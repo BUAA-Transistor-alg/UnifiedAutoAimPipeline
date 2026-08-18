@@ -68,7 +68,6 @@ set(COMMON_SOURCES
     src/common/FrameRateCounter.cpp
     src/common/RobotConfig.cpp
     src/common/CameraProjection.cpp
-    src/common/InputController.cpp
     src/common/Infer/InferCore.cpp
     src/common/Output/VisualizeOutput.cpp
     src/common/Output/GimbalOutput.cpp
@@ -79,6 +78,7 @@ set(COMMON_SOURCES
     src/common/Ballistic/BallisticSolver.cpp
     src/common/Ballistic/GimbalSolver.cpp
     src/common/Ballistic/PredictedBallisticSolver.cpp
+    src/common/Ballistic/AimPredictor.cpp
     src/common/camera/Camera.cpp
     src/common/CameraInputMode.cpp
     src/common/VideoInputMode.cpp

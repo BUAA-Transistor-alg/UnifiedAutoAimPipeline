@@ -33,9 +33,9 @@ void drawAimPointOverlay(cv::Mat& img, const cv::Vec3f& aim_world, double aim_t,
 } // namespace
 
 VisualizeOutput::VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj,
-                                 std::shared_ptr<AimPoint> aim)
+                                 AimPredictor& aim)
     : camera_proj_(std::move(camera_proj)),
-      aim_(std::move(aim)) {}
+      aim_(aim) {}
 
 void VisualizeOutput::setMode(PipelineMode mode)
 {
@@ -66,12 +66,13 @@ void VisualizeOutput::update(const PipelineResult& result, RobotController* rc)
         renderPowerRune(result, rc);
     }
 
-    // 预测瞄准点（GimbalOutput 共享槽写入，两种模式统一绘制；无有效瞄准点时不画）
-    if (aim_ && !display_.empty()) {
-        cv::Vec3f aim_world;
-        double aim_t = 0.0;
-        if (aim_->get(aim_world, aim_t)) {
-            drawAimPointOverlay(display_, aim_world, aim_t, tree_, *camera_proj_);
+    // 预测瞄准点：取自 AimPredictor 瞄准点序列的第一个值（两种模式统一绘制；
+    // 无有效瞄准点时不画）
+    if (!display_.empty()) {
+        const AimPredictor::Result seq = aim_.latest();
+        if (seq.valid) {
+            drawAimPointOverlay(display_, seq.first_point, seq.first_predict_time,
+                                tree_, *camera_proj_);
         }
     }
 }

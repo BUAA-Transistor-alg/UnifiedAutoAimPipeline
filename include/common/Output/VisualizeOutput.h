@@ -3,12 +3,13 @@
 // 按当前流水线模式（Outpost / PowerRune）渲染对应画面：
 //  - 每帧从 PipelineResult.extra_info 同步自己的 RobotTfTree（world→cam 投影）；
 //  - Outpost 用 OutpostVisualizer，PowerRune 用 PowerRuneVisualizer；
-//  - 若 RobotController 可用，绘制其通信信息（否则以空状态参与）。
+//  - 预测瞄准点取自 AimPredictor 瞄准点序列的第一个值（main 每帧统一预测，
+//    两种流水线模式一致绘制，任何输出状态下都可用）。
 #ifndef VISUALIZE_OUTPUT_H
 #define VISUALIZE_OUTPUT_H
 
 #include "Output/IOutputMode.h"
-#include "Output/AimPoint.h"
+#include "Ballistic/AimPredictor.h"
 #include "OutpostVisualizer.h"
 #include "PowerRuneVisualizer.h"
 #include "TransformTree/RobotTfTree.h"
@@ -21,9 +22,9 @@
 class VisualizeOutput : public IOutputMode {
 public:
     /// @param camera_proj 相机投影（由输入模式选择的相机参数构建）
-    /// @param aim         预测瞄准点共享槽（读取 GimbalOutput 写入的最新瞄准点绘制；可为 nullptr）
+    /// @param aim         预测瞄准点通用类（读取瞄准点序列第一个值绘制）
     explicit VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj,
-                             std::shared_ptr<AimPoint> aim = nullptr);
+                             AimPredictor& aim);
 
     /// 切换当前渲染的流水线模式（相机投影与输入模式绑定，不随流水线切换）
     void setMode(PipelineMode mode);
@@ -48,7 +49,7 @@ private:
     PowerRuneVisualizer power_rune_vis_;
     FrameRateCounter fps_;
     cv::Mat display_;
-    std::shared_ptr<AimPoint> aim_;   // 可为 nullptr
+    AimPredictor& aim_;
 };
 
 #endif // VISUALIZE_OUTPUT_H
