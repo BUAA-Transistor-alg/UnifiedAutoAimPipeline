@@ -147,30 +147,44 @@ static Options parseArgs(int argc, char** argv) {
 }
 
 // ==================== 可视化统一覆盖层 ====================
-// 可视化开启时，无论 Outpost 还是 PowerRune 流水线，都在画面上叠加：
-//   1. 热键提醒  2. 帧数统计 + 流水线名 + 输出模式  3. 串口输入信息（MCU/IMU/FUSED/STRICT/MPC）
+// 可视化开启时，无论 Outpost 还是 PowerRune 流水线，都在画面上叠加三样内容，
+// 位置/大小与 Outpost 原项目一致：
+//   1. 热键提醒  — 原 main info 位置 (10,60)，0.6 号粗 2 绿
+//   2. 帧数统计  — 原 drawFps 样式：右上角 "FPS: xx" 0.7 粗 2 黄 + "TS: .." 0.45 粗 1 黄
+//   3. 串口输入信息 — 原 drawCommInfo 样式：(8,80) 起 0.45 粗 1 绿，含 MCU/IMU/FUSED/
+//      STRICT/MPC 摘要与温度行（按温度区间变色）
 static void drawOverlay(cv::Mat& img,
                         const std::string& pipeline_name,
                         const std::string& output_names,
                         double fps,
-                        RobotController* rc) {
-    // 1. 热键提醒（顶部）
+                        RobotController* rc,
+                        const std::chrono::steady_clock::time_point& frame_ts) {
+    // 1. 热键提醒（原 main info 位置与大小）
     cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
-                cv::Point(10, 20), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+                cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
 
-    // 2. 帧数统计 + 流水线名 + 输出模式
-    char buf[200];
-    std::snprintf(buf, sizeof(buf), "%s | %.2f fps | out: %s",
-                  pipeline_name.c_str(), fps, output_names.c_str());
-    cv::putText(img, buf, cv::Point(10, 42), cv::FONT_HERSHEY_SIMPLEX, 0.55,
-                cv::Scalar(0, 255, 255), 1);
+    // 2. 帧数统计（原 drawFps 样式，右上角）
+    using namespace std::chrono;
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(1) << "FPS: " << fps;
+    int baseline = 0;
+    cv::Size sz = cv::getTextSize(oss.str(), cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
+    cv::putText(img, oss.str(), cv::Point(img.cols - sz.width - 10, 30),
+                cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 255), 2);
+    // 时间戳 + 流水线名 + 输出模式（TS 行附加信息）
+    auto epoch = duration_cast<duration<double>>(frame_ts.time_since_epoch()).count();
+    oss.str("");
+    oss << std::fixed << std::setprecision(3) << "TS: " << epoch
+        << "  |  " << pipeline_name << "  |  out: " << output_names;
+    sz = cv::getTextSize(oss.str(), cv::FONT_HERSHEY_SIMPLEX, 0.45, 1, &baseline);
+    cv::putText(img, oss.str(), cv::Point(img.cols - sz.width - 10, 52),
+                cv::FONT_HERSHEY_SIMPLEX, 0.45, cv::Scalar(0, 255, 255), 1);
 
-    // 3. 串口输入信息（RobotController 未构造时提示 N/A）
-    int y = 66;
-    const int lineH = 17;
-    auto put = [&](const std::string& t) {
-        cv::putText(img, t, cv::Point(10, y), cv::FONT_HERSHEY_SIMPLEX, 0.45,
-                    cv::Scalar(0, 255, 0), 1);
+    // 3. 串口输入信息（原 drawCommInfo 样式）
+    int y = 80;
+    const int lineH = 18;
+    auto put = [&](const std::string& t, cv::Scalar color = cv::Scalar(0, 255, 0)) {
+        cv::putText(img, t, cv::Point(8, y), cv::FONT_HERSHEY_SIMPLEX, 0.45, color, 1);
         y += lineH;
     };
     if (rc == nullptr) {
@@ -178,6 +192,22 @@ static void drawOverlay(cv::Mat& img,
         return;
     }
     const RobotController::State st = rc->getState();
+
+    // 温度行（按温度区间变色：>=70 红 / >=50 黄 / 其余绿），加入输入信息显示
+    {
+        std::string tstr = "Yaw Motor Temp: ";
+        cv::Scalar color(0, 255, 0);
+        if (st.mcu.valid) {
+            tstr += std::to_string((int)st.mcu.yaw_temperature) + " C";
+            if (st.mcu.yaw_temperature >= 70)      color = cv::Scalar(0, 0, 255);
+            else if (st.mcu.yaw_temperature >= 50) color = cv::Scalar(0, 255, 255);
+        } else {
+            tstr += "N/A";
+        }
+        put(tstr, color);
+    }
+
+    char buf[200];
     if (st.mcu.valid) {
         std::snprintf(buf, sizeof(buf), "MCU  : bullet=%.2f pitch=%.3f yaw=%.3f",
                       st.mcu.bullet_velocity, st.mcu.pitch_angle, st.mcu.yaw_angle);
@@ -456,7 +486,7 @@ int main(int argc, char** argv) {
 
             if (vis_active) {
                 drawOverlay(to_show, active_pipeline->name(), outputNames(),
-                            overlay_fps.fps(), robot_controller.get());
+                            overlay_fps.fps(), robot_controller.get(), result.frame_timestamp);
             }
 
             cv::imshow("Unified Auto-Aim", to_show);

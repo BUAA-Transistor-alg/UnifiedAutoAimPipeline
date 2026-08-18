@@ -62,18 +62,18 @@ void PowerRuneVisualizer::render(Mat& image,
 
     // 2. 绘制世界坐标和欧拉角文字
     string label = format("%.3f   %.3f   %.3f", data.raw_pose.world_pos[0], data.raw_pose.world_pos[1], data.raw_pose.world_pos[2]);
-    putText(image, label, Point(20, 80),
+    putText(image, label, Point(620, 80),
         FONT_HERSHEY_SIMPLEX, 1, COLOR_GRAY, 2);
     label = format("%.3f   %.3f   %.3f", data.raw_pose.world_euler[0], data.raw_pose.world_euler[1], data.raw_pose.world_euler[2]);
-    putText(image, label, Point(20, 120),
+    putText(image, label, Point(620, 120),
         FONT_HERSHEY_SIMPLEX, 1, COLOR_GRAY, 2);
 
     // 3. 绘制角速度和跳变信息
     label = format("%.3f", data.filtered_pose.filtered_omega);
-    putText(image, label, Point(20, 160),
+    putText(image, label, Point(620, 160),
         FONT_HERSHEY_SIMPLEX, 1, COLOR_WHITE, 2);
     label = format("%d", data.filtered_pose.jump_a);
-    putText(image, label, Point(200, 160),
+    putText(image, label, Point(800, 160),
         FONT_HERSHEY_SIMPLEX, 1, data.filtered_pose.flip ? Scalar(255, 0, 255) : Scalar(0, 255, 0), 2);
 
     // 3.5. 绘制滤波后的世界坐标和欧拉角
@@ -83,11 +83,11 @@ void PowerRuneVisualizer::render(Mat& image,
                        data.filtered_pose.filtered_pos[0],
                        data.filtered_pose.filtered_pos[1],
                        data.filtered_pose.filtered_pos[2]);
-        putText(image, label, Point(20, 200),
+        putText(image, label, Point(620, 200),
             FONT_HERSHEY_SIMPLEX, 1, COLOR_WHITE, 2);
         label = format("%.3f  %.3f  %.3f",
                        filtered_euler[0], filtered_euler[1], filtered_euler[2]);
-        putText(image, label, Point(20, 240),
+        putText(image, label, Point(620, 240),
             FONT_HERSHEY_SIMPLEX, 1, COLOR_WHITE, 2);
     }
 
@@ -106,7 +106,7 @@ void PowerRuneVisualizer::render(Mat& image,
                            data.roll_predictor.correction_bias,
                            data.roll_predictor.direction);
         }
-        putText(image, label, Point(20, 280),
+        putText(image, label, Point(620, 280),
             FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 255, 0), 2);
     }
 
@@ -117,14 +117,14 @@ void PowerRuneVisualizer::render(Mat& image,
             if (i > 0) target_label += " ";
             target_label += std::to_string(data.filtered_pose.target_rotation_counts[i]);
         }
-        putText(image, target_label, Point(20, 660),
+        putText(image, target_label, Point(620, 660),
             FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 0, 255), 2);
     }
 
     // 3.9. 绘制当前使用的拟合方法（在 target rotation counts 下方，青色）
     if (data.roll_predictor.fit_valid && !data.roll_predictor.fit_method.empty()) {
         string method_label = "method: " + data.roll_predictor.fit_method;
-        putText(image, method_label, Point(20, 700),
+        putText(image, method_label, Point(620, 700),
             FONT_HERSHEY_SIMPLEX, 1, Scalar(255, 255, 0), 2);
     }
 
@@ -134,8 +134,8 @@ void PowerRuneVisualizer::render(Mat& image,
         !data.roll_predictor.raw_points.empty()) {
 
         // 绘图区域边界
-        constexpr int PLOT_X1 = 20, PLOT_Y1 = 320;
-        constexpr int PLOT_X2 = 320, PLOT_Y2 = 620;
+        constexpr int PLOT_X1 = 620, PLOT_Y1 = 320;
+        constexpr int PLOT_X2 = 920, PLOT_Y2 = 620;
         const cv::Point plot_tl(PLOT_X1, PLOT_Y1);
         const cv::Point plot_br(PLOT_X2, PLOT_Y2);
 

@@ -202,7 +202,7 @@ void OutpostVisualizer::drawFps(cv::Mat& img, double fps,
 
 void OutpostVisualizer::drawWorldPose(cv::Mat& img, int objIdx,
                                       const cv::Vec3f& world_pos, const cv::Vec3f& world_euler) {
-    int x0 = 8;
+    int x0 = 608;   // 原 8，右移 600 避开统一覆盖层（串口信息/热键提醒）
     int y0 = img.rows - 80;
     int lineH = 16;
     cv::Scalar color(255, 200, 0);
@@ -225,7 +225,7 @@ void OutpostVisualizer::drawWorldPose(cv::Mat& img, int objIdx,
 
 void OutpostVisualizer::drawEskfPose(cv::Mat& img, const cv::Vec3f& filtered_pos,
                                      const cv::Vec3f& filtered_euler) {
-    int x0 = 8;
+    int x0 = 608;   // 原 8，右移 600 避开统一覆盖层（串口信息/热键提醒）
     int lineH = 16;
     int y0 = img.rows - 80 - 2 * lineH - 6;  // 位于 drawWorldPose 上方
     cv::Scalar color(0, 255, 0);
