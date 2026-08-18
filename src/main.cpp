@@ -332,11 +332,15 @@ int main(int argc, char** argv) {
 
     const RobotConfig& cfg = RobotConfig::instance();
 
+    // 相机参数：按输入模式自动选择（camera → camera_mode；video/interactive → video_mode）
+    const RobotConfig::CameraParams& camera_params =
+        (opt.input == InputKind::CAMERA) ? cfg.common.cameraMode : cfg.common.videoMode;
+
     // ── RobotController（仅在需要时构造：相机输入需要 strict 数据，云台输出需要控制）──
     std::unique_ptr<RobotController> robot_controller;
     auto ensureRobotController = [&]() {
         if (robot_controller) return;
-        const auto& rp = cfg.robotController;
+        const auto& rp = cfg.common.robotController;
         robot_controller = std::make_unique<RobotController>(
             rp.dtControl, rp.mpcPredN, rp.J, rp.tauC, rp.b, rp.tauD,
             rp.maxTorque, rp.maxTorqueRate, rp.Q, rp.R, rp.Rd, rp.maxIter,
@@ -352,9 +356,9 @@ int main(int argc, char** argv) {
     std::unique_ptr<Camera> camera;
     switch (opt.input) {
         case InputKind::CAMERA: {
-            camera = std::make_unique<Camera>(cfg.camera.deviceIp, cfg.camera.netIp);
-            camera->setExposureTime(cfg.camera.exposure);
-            camera->setGain(cfg.camera.gain);
+            camera = std::make_unique<Camera>(camera_params.deviceIp, camera_params.netIp);
+            camera->setExposureTime(camera_params.exposure);
+            camera->setGain(camera_params.gain);
             if (!camera->start()) {
                 std::cerr << "Camera start failed!" << std::endl;
                 return -1;
@@ -372,8 +376,10 @@ int main(int argc, char** argv) {
     }
 
     // ── 启动时构造两套流水线（模型编译一次，之后不重建）──
-    OutpostPipeline   outpost_pipeline;
-    PowerRunePipeline power_rune_pipeline;
+    // max_delay_seconds 共用 config common.max_delay_seconds；相机参数按输入模式选择
+    const std::array<int, OutpostPipeline::NUM_QUEUES> queue_sizes = {10, 10, 10, 10, 10, 10};
+    OutpostPipeline   outpost_pipeline(queue_sizes, cfg.common.maxDelaySeconds, camera_params);
+    PowerRunePipeline power_rune_pipeline(queue_sizes, cfg.common.maxDelaySeconds, camera_params);
     IPipeline* active_pipeline =
         (opt.pipeline == PipelineMode::OUTPOST) ? static_cast<IPipeline*>(&outpost_pipeline)
                                                 : static_cast<IPipeline*>(&power_rune_pipeline);
@@ -382,10 +388,14 @@ int main(int argc, char** argv) {
     std::vector<std::unique_ptr<IOutputMode>> output_modes;
     // 预测瞄准点共享槽：GimbalOutput 写入，VisualizeOutput 读取绘制
     auto aim_point = std::make_shared<AimPoint>();
+    // 相机投影（与输入模式绑定，两个流水线/可视化共用）
+    auto camera_proj = std::make_shared<CameraProjection>(
+        camera_params.cameraMatrix, camera_params.distCoeffs,
+        ImageResolution{camera_params.width, camera_params.height});
     auto makeOutputs = [&](const OutputConfig& oc) {
         output_modes.clear();
         if (oc.visualize) {
-            auto vis = std::make_unique<VisualizeOutput>(aim_point);
+            auto vis = std::make_unique<VisualizeOutput>(camera_proj, aim_point);
             vis->setMode(active_pipeline->mode());
             output_modes.push_back(std::move(vis));
         }
@@ -444,7 +454,7 @@ int main(int argc, char** argv) {
         }
         if (add) {
             if (m == OutputMode::VISUALIZE) {
-                auto vis = std::make_unique<VisualizeOutput>(aim_point);
+                auto vis = std::make_unique<VisualizeOutput>(camera_proj, aim_point);
                 vis->setMode(active_pipeline->mode());
                 output_modes.push_back(std::move(vis));
             } else if (m == OutputMode::GIMBAL) {

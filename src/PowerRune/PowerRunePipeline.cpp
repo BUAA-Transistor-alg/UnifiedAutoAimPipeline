@@ -6,19 +6,19 @@
 
 // ==================== 构造 ====================
 
-PowerRunePipeline::Stage4Ctx::Stage4Ctx()
+PowerRunePipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)
     : tree(std::make_shared<RobotTfTree>()),
       camera_proj(std::make_shared<CameraProjection>(
-          RobotConfig::instance().powerRune.cameraMatrix,
-          RobotConfig::instance().powerRune.distCoeffs,
-          ImageResolution{RobotConfig::instance().powerRune.width,
-                          RobotConfig::instance().powerRune.height})),
+          camera.cameraMatrix, camera.distCoeffs,
+          ImageResolution{camera.width, camera.height})),
       pose_solver(camera_proj) {}
 
 PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
-                                     float max_delay_seconds)
+                                     float max_delay_seconds,
+                                     const RobotConfig::CameraParams& camera)
     : queue_max_sizes_(queue_max_sizes)
     , max_delay_seconds_(max_delay_seconds)
+    , s4_(camera)
 {
     const RobotConfig& cfg = RobotConfig::instance();
 

@@ -10,6 +10,7 @@
 #include "TransformTree/RobotTfTree.h"
 #include "IInputMode.h"
 #include "IPipeline.h"
+#include "RobotConfig.h"
 
 #include <opencv2/opencv.hpp>
 #include <chrono>
@@ -108,10 +109,12 @@ public:
 
     /**
      * @param queue_max_sizes  各缓冲队列最大长度数组 [input, inter0..inter3, output]
-     * @param max_delay_seconds 提取帧的最大延迟秒数，默认 0.2
+     * @param max_delay_seconds 提取帧的最大延迟秒数（由 config common.max_delay_seconds 提供）
+     * @param camera           相机参数（内参/畸变/分辨率，由输入模式选择后传入）
      */
-    PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes = {10, 10, 10, 10, 10, 10},
-                      float max_delay_seconds = 0.2f);
+    PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
+                      float max_delay_seconds,
+                      const RobotConfig::CameraParams& camera);
     ~PowerRunePipeline();
 
     // ---- IPipeline ----
@@ -169,7 +172,7 @@ private:
         std::shared_ptr<RobotTfTree> tree;
         std::shared_ptr<CameraProjection> camera_proj;
         PowerRunePoseSolver pose_solver;
-        Stage4Ctx();
+        explicit Stage4Ctx(const RobotConfig::CameraParams& camera);
     } s4_;
 
     /// 阶段5上下文：滤波 + 预测

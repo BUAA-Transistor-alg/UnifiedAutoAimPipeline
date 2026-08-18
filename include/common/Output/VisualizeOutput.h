@@ -20,10 +20,12 @@
 
 class VisualizeOutput : public IOutputMode {
 public:
-    /// @param aim 预测瞄准点共享槽（读取 GimbalOutput 写入的最新瞄准点绘制；可为 nullptr）
-    explicit VisualizeOutput(std::shared_ptr<AimPoint> aim = nullptr);
+    /// @param camera_proj 相机投影（由输入模式选择的相机参数构建）
+    /// @param aim         预测瞄准点共享槽（读取 GimbalOutput 写入的最新瞄准点绘制；可为 nullptr）
+    explicit VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj,
+                             std::shared_ptr<AimPoint> aim = nullptr);
 
-    /// 切换当前渲染的流水线模式（同时重建对应相机投影）
+    /// 切换当前渲染的流水线模式（相机投影与输入模式绑定，不随流水线切换）
     void setMode(PipelineMode mode);
 
     void update(const PipelineResult& result, RobotController* rc) override;

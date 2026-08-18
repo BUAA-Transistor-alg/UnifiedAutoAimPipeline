@@ -9,8 +9,8 @@
 
 PredictedBallisticSolver::PredictedBallisticSolver(std::shared_ptr<GimbalSolver> gimbal)
     : gimbal_(gimbal),
-      max_iterations_(std::max(1, RobotConfig::instance().predictedBallistic.maxIterations)),
-      time_error_tolerance_(RobotConfig::instance().predictedBallistic.timeErrorTolerance) {}
+      max_iterations_(std::max(1, RobotConfig::instance().common.predictedBallistic.maxIterations)),
+      time_error_tolerance_(RobotConfig::instance().common.predictedBallistic.timeErrorTolerance) {}
 
 PredictedBallisticSolver::Result PredictedBallisticSolver::solve(const Predictor& predictor,
                                                                  double extra_predict_time) const {

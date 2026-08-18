@@ -23,6 +23,7 @@
 #include "OutpostModel.h"
 #include "IInputMode.h"
 #include "IPipeline.h"
+#include "RobotConfig.h"
 
 #include <opencv2/opencv.hpp>
 #include <chrono>
@@ -102,10 +103,12 @@ public:
 
     /**
      * @param queue_max_sizes  各缓冲队列最大长度数组 [input, inter0..inter3, output]
-     * @param max_delay_seconds 提取帧的最大延迟秒数，默认 0.05s
+     * @param max_delay_seconds 提取帧的最大延迟秒数（由 config common.max_delay_seconds 提供）
+     * @param camera           相机参数（内参/畸变/分辨率，由输入模式选择后传入）
      */
-    OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes = {10, 10, 10, 10, 10, 10},
-                    float max_delay_seconds = 0.2f);
+    OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
+                    float max_delay_seconds,
+                    const RobotConfig::CameraParams& camera);
     ~OutpostPipeline();
 
     // ---- IPipeline ----
@@ -163,7 +166,7 @@ private:
     struct Stage4Ctx {
         RobotTfTree tree;
         std::shared_ptr<CameraProjection> camera_proj;
-        Stage4Ctx();
+        explicit Stage4Ctx(const RobotConfig::CameraParams& camera);
     } s4_;
 
     /// 阶段5上下文：ESEKF（独立变换树 + 相机投影 + 跨帧滤波状态）
@@ -174,7 +177,7 @@ private:
         bool esekf_initialized = false;
         std::chrono::steady_clock::time_point last_observation_time;
         bool has_observation_time = false;
-        Stage5Ctx();
+        explicit Stage5Ctx(const RobotConfig::CameraParams& camera);
     } s5_;
 
     // ==================== PipelineStage 实例 ====================

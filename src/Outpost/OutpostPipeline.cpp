@@ -9,20 +9,16 @@
 
 // ==================== 阶段上下文构造 ====================
 
-OutpostPipeline::Stage4Ctx::Stage4Ctx()
+OutpostPipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)
     : camera_proj(std::make_shared<CameraProjection>(
-          RobotConfig::instance().camera.cameraMatrix,
-          RobotConfig::instance().camera.distCoeffs,
-          ImageResolution{RobotConfig::instance().camera.width,
-                          RobotConfig::instance().camera.height})) {}
+          camera.cameraMatrix, camera.distCoeffs,
+          ImageResolution{camera.width, camera.height})) {}
 
-OutpostPipeline::Stage5Ctx::Stage5Ctx()
+OutpostPipeline::Stage5Ctx::Stage5Ctx(const RobotConfig::CameraParams& camera)
     : tree(std::make_shared<RobotTfTree>()),
       camera_proj(std::make_shared<CameraProjection>(
-          RobotConfig::instance().camera.cameraMatrix,
-          RobotConfig::instance().camera.distCoeffs,
-          ImageResolution{RobotConfig::instance().camera.width,
-                          RobotConfig::instance().camera.height})),
+          camera.cameraMatrix, camera.distCoeffs,
+          ImageResolution{camera.width, camera.height})),
       esekf(std::make_unique<ESEKF>(tree, camera_proj,
                                     OutpostModel::OUTPOST_POINTS_3D_LIST,
                                     OutpostModel::OUTPOST_TARGET_CENTER_3D_LIST)) {}
@@ -30,26 +26,29 @@ OutpostPipeline::Stage5Ctx::Stage5Ctx()
 // ==================== 构造 ====================
 
 OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
-                                 float max_delay_seconds)
+                                 float max_delay_seconds,
+                                 const RobotConfig::CameraParams& camera)
     : queue_max_sizes_(queue_max_sizes)
     , max_delay_seconds_(max_delay_seconds)
+    , s4_(camera)
+    , s5_(camera)
 {
     const RobotConfig& cfg = RobotConfig::instance();
 
     // 模型路径（相对项目根目录，经 PathResolver 解析；以 / 开头为绝对路径）
-    std::string model_path = (!cfg.modelPath.empty() && cfg.modelPath[0] == '/')
-        ? cfg.modelPath
-        : PathResolver::resolvePath(cfg.modelPath);
+    std::string model_path = (!cfg.outpost.modelPath.empty() && cfg.outpost.modelPath[0] == '/')
+        ? cfg.outpost.modelPath
+        : PathResolver::resolvePath(cfg.outpost.modelPath);
 
     s2_.infer_p = std::make_unique<OutpostDetect::OutpostInfer>(
-        model_path, cfg.inferenceDevice, MAX_INFERENCE_BATCH);
+        model_path, cfg.outpost.device, MAX_INFERENCE_BATCH);
     s3_.postprocessor = std::make_unique<OutpostDetect::OutpostPostprocessor>();
 
     std::cout << "========================================" << std::endl;
     std::cout << "Outpost Pipeline (5 stages)" << std::endl;
     std::cout << "----------------------------------------" << std::endl;
     std::cout << "    Model: " << model_path << std::endl;
-    std::cout << "    Device: " << cfg.inferenceDevice << std::endl;
+    std::cout << "    Device: " << cfg.outpost.device << std::endl;
     std::cout << "    Confidence threshold: " << conf_threshold_ << std::endl;
     std::cout << "    NMS threshold: " << nms_threshold_ << std::endl;
     std::cout << "    Max delay: " << max_delay_seconds_ << "s" << std::endl;
@@ -304,7 +303,7 @@ void OutpostPipeline::processStage5(DataDeque& data)
         s5_.last_observation_time = ts;
         s5_.has_observation_time = true;
     }
-    const double timeout = RobotConfig::instance().observationLostTimeoutSec;
+    const double timeout = RobotConfig::instance().outpost.observationLostTimeoutSec;
     if (s5_.has_observation_time &&
         std::chrono::duration<double>(ts - s5_.last_observation_time).count() > timeout) {
         s5_.esekf->reset();

@@ -11,14 +11,14 @@ GimbalSolver::GimbalSolver() : tree_(std::make_shared<RobotTfTree>()) {
     // 偏移 / 弹丸 / 搜索参数均来自 RobotConfig（config/config.yaml）
     const RobotConfig& cfg = RobotConfig::instance();
     ballistic_ = std::make_shared<BallisticSolver>(
-        cfg.gimbal.bulletDiameter, cfg.gimbal.bulletMass, cfg.gimbal.integrationStep);
-    bullet_velocity_    = cfg.gimbal.bulletVelocity;
-    distance_threshold_ = cfg.gimbal.distanceThreshold;
-    distance_iterate_threshold_ = cfg.gimbal.distanceIterateThreshold;
-    stop_z_             = cfg.gimbal.stopZ;
-    pitch_min_          = cfg.gimbal.pitchMin;
-    pitch_max_          = cfg.gimbal.pitchMax;
-    pitch_step_         = cfg.gimbal.pitchSearchStep;
+        cfg.common.gimbal.bulletDiameter, cfg.common.gimbal.bulletMass, cfg.common.gimbal.integrationStep);
+    bullet_velocity_    = cfg.common.gimbal.bulletVelocity;
+    distance_threshold_ = cfg.common.gimbal.distanceThreshold;
+    distance_iterate_threshold_ = cfg.common.gimbal.distanceIterateThreshold;
+    stop_z_             = cfg.common.gimbal.stopZ;
+    pitch_min_          = cfg.common.gimbal.pitchMin;
+    pitch_max_          = cfg.common.gimbal.pitchMax;
+    pitch_step_         = cfg.common.gimbal.pitchSearchStep;
 }
 
 void GimbalSolver::setChassisPosition(float x, float y, float z) {

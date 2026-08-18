@@ -1,4 +1,4 @@
-// RobotConfig.cpp — 从 yaml 配置文件加载全局参数
+// RobotConfig.cpp — 从 yaml 配置文件加载全局参数（common / outpost / power_rune 三结构）
 #include "RobotConfig.h"
 
 #include <stdexcept>
@@ -45,6 +45,32 @@ std::vector<double> requireList(const YAML::Node& section, const std::string& ke
     return v;
 }
 
+// 解析一套相机参数：resolution / camera_matrix / dist_coeffs 必填；
+// device_ip / net_ip / exposure / gain 可选（视频模式无）。
+void parseCameraParams(const YAML::Node& camNode, const std::string& name,
+                       RobotConfig::CameraParams& out) {
+    const YAML::Node& res = camNode["resolution"];
+    if (!res || !res.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + name + ".resolution' 配置段");
+    out.width  = requireScalar<int>(res, "width", name + ".resolution");
+    out.height = requireScalar<int>(res, "height", name + ".resolution");
+    std::vector<double> cm = requireList(camNode, "camera_matrix", name, 9);
+    std::vector<double> dc = requireList(camNode, "dist_coeffs", name, 5);
+    out.cameraMatrix = (cv::Mat_<double>(3, 3) <<
+        cm[0], cm[1], cm[2], cm[3], cm[4], cm[5], cm[6], cm[7], cm[8]);
+    out.distCoeffs.create((int)dc.size(), 1, CV_64F);
+    for (size_t i = 0; i < dc.size(); ++i) {
+        out.distCoeffs.at<double>((int)i, 0) = dc[i];
+    }
+    if (camNode["device_ip"] && camNode["device_ip"].IsDefined())
+        out.deviceIp = camNode["device_ip"].as<std::string>();
+    if (camNode["net_ip"] && camNode["net_ip"].IsDefined())
+        out.netIp = camNode["net_ip"].as<std::string>();
+    if (camNode["exposure"] && camNode["exposure"].IsDefined())
+        out.exposure = camNode["exposure"].as<float>();
+    if (camNode["gain"] && camNode["gain"].IsDefined())
+        out.gain = camNode["gain"].as<float>();
+}
+
 } // namespace
 
 RobotConfig RobotConfig::load(const std::string& yamlPath) {
@@ -60,130 +86,115 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
 
     RobotConfig cfg;
 
-    // ── tf 偏移 ──
-    const YAML::Node& tf = root["tf"];
-    if (!tf || !tf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'tf' 配置段");
-    cfg.tf.yawJointZOffset   = requireScalar<float>(tf, "yaw_joint_z_offset", "tf");
-    cfg.tf.pitchJointYOffset = requireScalar<float>(tf, "pitch_joint_y_offset", "tf");
-    cfg.tf.imuOffsetX        = requireScalar<float>(tf, "imu_offset_x", "tf");
-    cfg.tf.imuOffsetY        = requireScalar<float>(tf, "imu_offset_y", "tf");
-    cfg.tf.imuOffsetZ        = requireScalar<float>(tf, "imu_offset_z", "tf");
-    cfg.tf.cameraOffsetX     = requireScalar<float>(tf, "camera_offset_x", "tf");
-    cfg.tf.cameraOffsetY     = requireScalar<float>(tf, "camera_offset_y", "tf");
-    cfg.tf.cameraOffsetZ     = requireScalar<float>(tf, "camera_offset_z", "tf");
-    cfg.tf.muzzleOffsetX     = requireScalar<float>(tf, "muzzle_offset_x", "tf");
-    cfg.tf.muzzleOffsetY     = requireScalar<float>(tf, "muzzle_offset_y", "tf");
-    cfg.tf.muzzleOffsetZ     = requireScalar<float>(tf, "muzzle_offset_z", "tf");
+    // ══════════════ common（共用参数） ══════════════
+    const YAML::Node& cm = root["common"];
+    if (!cm || !cm.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common' 配置段");
 
-    // ── camera ──
-    const YAML::Node& cam = root["camera"];
-    if (!cam || !cam.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'camera' 配置段");
-    cfg.camera.deviceIp = requireScalar<std::string>(cam, "device_ip", "camera");
-    cfg.camera.netIp    = requireScalar<std::string>(cam, "net_ip", "camera");
-    cfg.camera.exposure = requireScalar<float>(cam, "exposure", "camera");
-    cfg.camera.gain     = requireScalar<float>(cam, "gain", "camera");
-    const YAML::Node& res = cam["resolution"];
-    if (!res || !res.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'camera.resolution' 配置段");
-    cfg.camera.width  = requireScalar<int>(res, "width", "camera.resolution");
-    cfg.camera.height = requireScalar<int>(res, "height", "camera.resolution");
-    std::vector<double> cm = requireList(cam, "camera_matrix", "camera", 9);
-    std::vector<double> dc = requireList(cam, "dist_coeffs", "camera", 5);
-    cfg.camera.cameraMatrix = (cv::Mat_<double>(3, 3) <<
-        cm[0], cm[1], cm[2], cm[3], cm[4], cm[5], cm[6], cm[7], cm[8]);
-    cfg.camera.distCoeffs.create((int)dc.size(), 1, CV_64F);
-    for (size_t i = 0; i < dc.size(); ++i) {
-        cfg.camera.distCoeffs.at<double>((int)i, 0) = dc[i];
-    }
+    // ── common.tf 偏移 ──
+    const YAML::Node& tf = cm["tf"];
+    if (!tf || !tf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.tf' 配置段");
+    cfg.common.tf.yawJointZOffset   = requireScalar<float>(tf, "yaw_joint_z_offset", "common.tf");
+    cfg.common.tf.pitchJointYOffset = requireScalar<float>(tf, "pitch_joint_y_offset", "common.tf");
+    cfg.common.tf.imuOffsetX        = requireScalar<float>(tf, "imu_offset_x", "common.tf");
+    cfg.common.tf.imuOffsetY        = requireScalar<float>(tf, "imu_offset_y", "common.tf");
+    cfg.common.tf.imuOffsetZ        = requireScalar<float>(tf, "imu_offset_z", "common.tf");
+    cfg.common.tf.cameraOffsetX     = requireScalar<float>(tf, "camera_offset_x", "common.tf");
+    cfg.common.tf.cameraOffsetY     = requireScalar<float>(tf, "camera_offset_y", "common.tf");
+    cfg.common.tf.cameraOffsetZ     = requireScalar<float>(tf, "camera_offset_z", "common.tf");
+    cfg.common.tf.muzzleOffsetX     = requireScalar<float>(tf, "muzzle_offset_x", "common.tf");
+    cfg.common.tf.muzzleOffsetY     = requireScalar<float>(tf, "muzzle_offset_y", "common.tf");
+    cfg.common.tf.muzzleOffsetZ     = requireScalar<float>(tf, "muzzle_offset_z", "common.tf");
 
-    // ── inference ──
-    const YAML::Node& inf = root["inference"];
-    if (!inf || !inf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'inference' 配置段");
-    cfg.modelPath       = requireScalar<std::string>(inf, "model_path", "inference");
-    cfg.inferenceDevice = requireScalar<std::string>(inf, "device", "inference");
+    // ── common.camera_mode / common.video_mode（按输入模式自动选择）──
+    const YAML::Node& cam = cm["camera_mode"];
+    if (!cam || !cam.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.camera_mode' 配置段");
+    parseCameraParams(cam, "common.camera_mode", cfg.common.cameraMode);
+    const YAML::Node& vid = cm["video_mode"];
+    if (!vid || !vid.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.video_mode' 配置段");
+    parseCameraParams(vid, "common.video_mode", cfg.common.videoMode);
 
-    // ── gimbal ──
-    const YAML::Node& gim = root["gimbal"];
-    if (!gim || !gim.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'gimbal' 配置段");
-    cfg.gimbal.bulletDiameter    = requireScalar<double>(gim, "bullet_diameter", "gimbal");
-    cfg.gimbal.bulletMass        = requireScalar<double>(gim, "bullet_mass", "gimbal");
-    cfg.gimbal.bulletVelocity    = requireScalar<double>(gim, "bullet_velocity", "gimbal");
-    cfg.gimbal.integrationStep   = requireScalar<double>(gim, "integration_step", "gimbal");
-    cfg.gimbal.distanceThreshold       = requireScalar<double>(gim, "distance_threshold", "gimbal");
-    cfg.gimbal.distanceIterateThreshold = requireScalar<double>(gim, "distance_iterate_threshold", "gimbal");
-    cfg.gimbal.stopZ                   = requireScalar<double>(gim, "stop_z", "gimbal");
-    cfg.gimbal.pitchMin          = requireScalar<float>(gim, "pitch_min", "gimbal");
-    cfg.gimbal.pitchMax          = requireScalar<float>(gim, "pitch_max", "gimbal");
-    cfg.gimbal.pitchSearchStep   = requireScalar<float>(gim, "pitch_search_step", "gimbal");
+    // ── common.max_delay_seconds（两个流水线共用）──
+    cfg.common.maxDelaySeconds = requireScalar<double>(cm, "max_delay_seconds", "common");
 
-    // ── predicted_ballistic ──
-    const YAML::Node& pb = root["predicted_ballistic"];
-    if (!pb || !pb.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'predicted_ballistic' 配置段");
-    cfg.predictedBallistic.extraPredictTime   = requireScalar<double>(pb, "extra_predict_time", "predicted_ballistic");
-    cfg.predictedBallistic.maxIterations      = requireScalar<int>(pb, "max_iterations", "predicted_ballistic");
-    cfg.predictedBallistic.timeErrorTolerance = requireScalar<double>(pb, "time_error_tolerance", "predicted_ballistic");
+    // ── common.gimbal ──
+    const YAML::Node& gim = cm["gimbal"];
+    if (!gim || !gim.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.gimbal' 配置段");
+    cfg.common.gimbal.bulletDiameter    = requireScalar<double>(gim, "bullet_diameter", "common.gimbal");
+    cfg.common.gimbal.bulletMass        = requireScalar<double>(gim, "bullet_mass", "common.gimbal");
+    cfg.common.gimbal.bulletVelocity    = requireScalar<double>(gim, "bullet_velocity", "common.gimbal");
+    cfg.common.gimbal.integrationStep   = requireScalar<double>(gim, "integration_step", "common.gimbal");
+    cfg.common.gimbal.distanceThreshold = requireScalar<double>(gim, "distance_threshold", "common.gimbal");
+    cfg.common.gimbal.distanceIterateThreshold = requireScalar<double>(gim, "distance_iterate_threshold", "common.gimbal");
+    cfg.common.gimbal.stopZ             = requireScalar<double>(gim, "stop_z", "common.gimbal");
+    cfg.common.gimbal.pitchMin          = requireScalar<float>(gim, "pitch_min", "common.gimbal");
+    cfg.common.gimbal.pitchMax          = requireScalar<float>(gim, "pitch_max", "common.gimbal");
+    cfg.common.gimbal.pitchSearchStep   = requireScalar<float>(gim, "pitch_search_step", "common.gimbal");
 
-    // ── robot_controller ──
-    const YAML::Node& rc = root["robot_controller"];
-    if (!rc || !rc.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'robot_controller' 配置段");
-    cfg.robotController.sequenceMode  = requireScalar<bool>(rc, "sequence_mode", "robot_controller");
-    cfg.robotController.dtControl     = requireScalar<double>(rc, "dt_control", "robot_controller");
-    cfg.robotController.mpcPredN      = requireScalar<int>(rc, "mpc_pred_n", "robot_controller");
-    cfg.robotController.J             = requireScalar<double>(rc, "J", "robot_controller");
-    cfg.robotController.tauC          = requireScalar<double>(rc, "tau_c", "robot_controller");
-    cfg.robotController.b             = requireScalar<double>(rc, "b", "robot_controller");
-    cfg.robotController.tauD          = requireScalar<double>(rc, "tau_d", "robot_controller");
-    cfg.robotController.maxTorque     = requireScalar<double>(rc, "max_torque", "robot_controller");
-    cfg.robotController.maxTorqueRate = requireScalar<double>(rc, "max_torque_rate", "robot_controller");
-    cfg.robotController.Q             = requireScalar<double>(rc, "Q", "robot_controller");
-    cfg.robotController.R             = requireScalar<double>(rc, "R", "robot_controller");
-    cfg.robotController.Rd            = requireScalar<double>(rc, "Rd", "robot_controller");
-    cfg.robotController.maxIter       = requireScalar<int>(rc, "max_iter", "robot_controller");
+    // ── common.predicted_ballistic ──
+    const YAML::Node& pb = cm["predicted_ballistic"];
+    if (!pb || !pb.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.predicted_ballistic' 配置段");
+    cfg.common.predictedBallistic.extraPredictTime   = requireScalar<double>(pb, "extra_predict_time", "common.predicted_ballistic");
+    cfg.common.predictedBallistic.maxIterations      = requireScalar<int>(pb, "max_iterations", "common.predicted_ballistic");
+    cfg.common.predictedBallistic.timeErrorTolerance = requireScalar<double>(pb, "time_error_tolerance", "common.predicted_ballistic");
 
-    // ── input_controller ──
-    const YAML::Node& ic = root["input_controller"];
-    if (!ic || !ic.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'input_controller' 配置段");
-    cfg.inputController.predictionSeqLen   = requireScalar<int>(ic, "prediction_seq_len", "input_controller");
-    cfg.inputController.pitchSeqLead       = requireScalar<int>(ic, "pitch_seq_lead", "input_controller");
-    cfg.inputController.fireSeqLead        = requireScalar<int>(ic, "fire_seq_lead", "input_controller");
-    cfg.inputController.pitchBias          = requireScalar<double>(ic, "pitch_bias", "input_controller");
-    cfg.inputController.fireAngleLowerLimit = requireScalar<double>(ic, "fire_angle_lower_limit", "input_controller");
-    cfg.inputController.fireAngleLength    = requireScalar<double>(ic, "fire_angle_length", "input_controller");
+    // ── common.robot_controller ──
+    const YAML::Node& rc = cm["robot_controller"];
+    if (!rc || !rc.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.robot_controller' 配置段");
+    cfg.common.robotController.sequenceMode  = requireScalar<bool>(rc, "sequence_mode", "common.robot_controller");
+    cfg.common.robotController.dtControl     = requireScalar<double>(rc, "dt_control", "common.robot_controller");
+    cfg.common.robotController.mpcPredN      = requireScalar<int>(rc, "mpc_pred_n", "common.robot_controller");
+    cfg.common.robotController.J             = requireScalar<double>(rc, "J", "common.robot_controller");
+    cfg.common.robotController.tauC          = requireScalar<double>(rc, "tau_c", "common.robot_controller");
+    cfg.common.robotController.b             = requireScalar<double>(rc, "b", "common.robot_controller");
+    cfg.common.robotController.tauD          = requireScalar<double>(rc, "tau_d", "common.robot_controller");
+    cfg.common.robotController.maxTorque     = requireScalar<double>(rc, "max_torque", "common.robot_controller");
+    cfg.common.robotController.maxTorqueRate = requireScalar<double>(rc, "max_torque_rate", "common.robot_controller");
+    cfg.common.robotController.Q             = requireScalar<double>(rc, "Q", "common.robot_controller");
+    cfg.common.robotController.R             = requireScalar<double>(rc, "R", "common.robot_controller");
+    cfg.common.robotController.Rd            = requireScalar<double>(rc, "Rd", "common.robot_controller");
+    cfg.common.robotController.maxIter       = requireScalar<int>(rc, "max_iter", "common.robot_controller");
+
+    // ── common.input_controller ──
+    const YAML::Node& ic = cm["input_controller"];
+    if (!ic || !ic.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.input_controller' 配置段");
+    cfg.common.inputController.predictionSeqLen   = requireScalar<int>(ic, "prediction_seq_len", "common.input_controller");
+    cfg.common.inputController.pitchSeqLead       = requireScalar<int>(ic, "pitch_seq_lead", "common.input_controller");
+    cfg.common.inputController.fireSeqLead        = requireScalar<int>(ic, "fire_seq_lead", "common.input_controller");
+    cfg.common.inputController.pitchBias          = requireScalar<double>(ic, "pitch_bias", "common.input_controller");
+    cfg.common.inputController.fireAngleLowerLimit = requireScalar<double>(ic, "fire_angle_lower_limit", "common.input_controller");
+    cfg.common.inputController.fireAngleLength    = requireScalar<double>(ic, "fire_angle_length", "common.input_controller");
 
     // 交叉校验：pitch 序列提前数 m 必须小于预测序列长度 n
-    if (cfg.inputController.predictionSeqLen < 1) {
-        throw std::runtime_error("RobotConfig: input_controller.prediction_seq_len 必须 >= 1");
+    if (cfg.common.inputController.predictionSeqLen < 1) {
+        throw std::runtime_error("RobotConfig: common.input_controller.prediction_seq_len 必须 >= 1");
     }
-    if (cfg.inputController.pitchSeqLead < 0 ||
-        cfg.inputController.pitchSeqLead >= cfg.inputController.predictionSeqLen) {
-        throw std::runtime_error("RobotConfig: input_controller.pitch_seq_lead 必须小于 prediction_seq_len");
+    if (cfg.common.inputController.pitchSeqLead < 0 ||
+        cfg.common.inputController.pitchSeqLead >= cfg.common.inputController.predictionSeqLen) {
+        throw std::runtime_error("RobotConfig: common.input_controller.pitch_seq_lead 必须小于 prediction_seq_len");
     }
-    if (cfg.inputController.fireSeqLead < 0) {
-        throw std::runtime_error("RobotConfig: input_controller.fire_seq_lead 必须 >= 0");
+    if (cfg.common.inputController.fireSeqLead < 0) {
+        throw std::runtime_error("RobotConfig: common.input_controller.fire_seq_lead 必须 >= 0");
     }
 
-    // ── power_rune（能量机关）推理与相机参数 ──
+    // ══════════════ outpost（独占参数） ══════════════
+    const YAML::Node& op = root["outpost"];
+    if (!op || !op.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'outpost' 配置段");
+    const YAML::Node& oinf = op["inference"];
+    if (!oinf || !oinf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'outpost.inference' 配置段");
+    cfg.outpost.modelPath = requireScalar<std::string>(oinf, "model_path", "outpost.inference");
+    cfg.outpost.device    = requireScalar<std::string>(oinf, "device", "outpost.inference");
+    cfg.outpost.observationLostTimeoutSec = requireScalar<double>(op, "observation_lost_timeout", "outpost");
+
+    // ══════════════ power_rune（独占参数） ══════════════
     const YAML::Node& pr = root["power_rune"];
     if (!pr || !pr.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'power_rune' 配置段");
-    cfg.powerRune.modelPath     = requireScalar<std::string>(pr, "model_path", "power_rune");
-    cfg.powerRune.device        = requireScalar<std::string>(pr, "device", "power_rune");
-    cfg.powerRune.manualNms     = requireScalar<bool>(pr, "manual_nms", "power_rune");
-    cfg.powerRune.confThreshold = requireScalar<float>(pr, "conf_threshold", "power_rune");
-    cfg.powerRune.maxBatch      = requireScalar<int>(pr, "max_batch", "power_rune");
-    const YAML::Node& pres = pr["resolution"];
-    if (!pres || !pres.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'power_rune.resolution' 配置段");
-    cfg.powerRune.width  = requireScalar<int>(pres, "width", "power_rune.resolution");
-    cfg.powerRune.height = requireScalar<int>(pres, "height", "power_rune.resolution");
-    std::vector<double> pcm = requireList(pr, "camera_matrix", "power_rune", 9);
-    std::vector<double> pdc = requireList(pr, "dist_coeffs", "power_rune", 5);
-    cfg.powerRune.cameraMatrix = (cv::Mat_<double>(3, 3) <<
-        pcm[0], pcm[1], pcm[2], pcm[3], pcm[4], pcm[5], pcm[6], pcm[7], pcm[8]);
-    cfg.powerRune.distCoeffs.create((int)pdc.size(), 1, CV_64F);
-    for (size_t i = 0; i < pdc.size(); ++i) {
-        cfg.powerRune.distCoeffs.at<double>((int)i, 0) = pdc[i];
-    }
-
-    // ── 其他 ──
-    cfg.observationLostTimeoutSec = requireScalar<double>(root, "observation_lost_timeout", "");
+    const YAML::Node& prinf = pr["inference"];
+    if (!prinf || !prinf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'power_rune.inference' 配置段");
+    cfg.powerRune.modelPath     = requireScalar<std::string>(prinf, "model_path", "power_rune.inference");
+    cfg.powerRune.device        = requireScalar<std::string>(prinf, "device", "power_rune.inference");
+    cfg.powerRune.manualNms     = requireScalar<bool>(prinf, "manual_nms", "power_rune.inference");
+    cfg.powerRune.confThreshold = requireScalar<float>(prinf, "conf_threshold", "power_rune.inference");
+    cfg.powerRune.maxBatch      = requireScalar<int>(prinf, "max_batch", "power_rune.inference");
 
     return cfg;
 }

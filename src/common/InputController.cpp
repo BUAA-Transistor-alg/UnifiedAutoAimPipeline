@@ -30,14 +30,14 @@ InputController::InputController(RobotController& rc, std::shared_ptr<GimbalSolv
     : rc_(rc),
       gimbal_(gimbal),
       pred_ballistic_(gimbal),
-      extra_predict_time_(RobotConfig::instance().predictedBallistic.extraPredictTime),
-      dt_control_(RobotConfig::instance().robotController.dtControl),
-      prediction_seq_len_(RobotConfig::instance().inputController.predictionSeqLen),
-      pitch_seq_lead_(RobotConfig::instance().inputController.pitchSeqLead),
-      fire_seq_lead_(RobotConfig::instance().inputController.fireSeqLead),
-      pitch_bias_(RobotConfig::instance().inputController.pitchBias),
-      fire_angle_lower_limit_(RobotConfig::instance().inputController.fireAngleLowerLimit),
-      fire_angle_length_(RobotConfig::instance().inputController.fireAngleLength) {
+      extra_predict_time_(RobotConfig::instance().common.predictedBallistic.extraPredictTime),
+      dt_control_(RobotConfig::instance().common.robotController.dtControl),
+      prediction_seq_len_(RobotConfig::instance().common.inputController.predictionSeqLen),
+      pitch_seq_lead_(RobotConfig::instance().common.inputController.pitchSeqLead),
+      fire_seq_lead_(RobotConfig::instance().common.inputController.fireSeqLead),
+      pitch_bias_(RobotConfig::instance().common.inputController.pitchBias),
+      fire_angle_lower_limit_(RobotConfig::instance().common.inputController.fireAngleLowerLimit),
+      fire_angle_length_(RobotConfig::instance().common.inputController.fireAngleLength) {
     if (prediction_seq_len_ < 1) {
         throw std::invalid_argument("InputController: prediction_seq_len 必须 >= 1");
     }

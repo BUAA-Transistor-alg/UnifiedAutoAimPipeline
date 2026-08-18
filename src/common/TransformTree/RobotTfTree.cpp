@@ -7,7 +7,7 @@ RobotTfTree::RobotTfTree() {
     // 构造时自动读取项目根目录 config/config.yaml（相对路径经 PathResolver 解析），
     // 各节点偏移不再硬编码，修改配置文件即可调整。
     const RobotConfig& cfg = RobotConfig::instance();
-    const RobotConfig::TfOffsets& o = cfg.tf;
+    const RobotConfig::TfOffsets& o = cfg.common.tf;
 
     const float yawJointZOffset   = o.yawJointZOffset;   // yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
     const float pitchJointYOffset = o.pitchJointYOffset; // pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）

@@ -32,27 +32,14 @@ void drawAimPointOverlay(cv::Mat& img, const cv::Vec3f& aim_world, double aim_t,
 
 } // namespace
 
-VisualizeOutput::VisualizeOutput(std::shared_ptr<AimPoint> aim)
-    : camera_proj_(std::make_shared<CameraProjection>(
-          RobotConfig::instance().camera.cameraMatrix,
-          RobotConfig::instance().camera.distCoeffs,
-          ImageResolution{RobotConfig::instance().camera.width,
-                          RobotConfig::instance().camera.height})),
+VisualizeOutput::VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj,
+                                 std::shared_ptr<AimPoint> aim)
+    : camera_proj_(std::move(camera_proj)),
       aim_(std::move(aim)) {}
 
 void VisualizeOutput::setMode(PipelineMode mode)
 {
-    mode_ = mode;
-    const RobotConfig& cfg = RobotConfig::instance();
-    if (mode == PipelineMode::OUTPOST) {
-        camera_proj_ = std::make_shared<CameraProjection>(
-            cfg.camera.cameraMatrix, cfg.camera.distCoeffs,
-            ImageResolution{cfg.camera.width, cfg.camera.height});
-    } else {
-        camera_proj_ = std::make_shared<CameraProjection>(
-            cfg.powerRune.cameraMatrix, cfg.powerRune.distCoeffs,
-            ImageResolution{cfg.powerRune.width, cfg.powerRune.height});
-    }
+    mode_ = mode;   // 相机投影与输入模式绑定，不随流水线切换
 }
 
 void VisualizeOutput::syncTree(const ExtraInputInfo& info)
