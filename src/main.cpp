@@ -70,8 +70,10 @@ static void printUsage(const char* prog) {
               << "  -e, --extra-info <file>         视频额外信息 txt (相机位姿)\n"
               << "  -i, --interactive               交互式图片输入 (等价 --input interactive)\n"
               << "  -h, --help                      显示帮助\n"
-              << "热键 (visualize 窗口内):\n"
-              << "  '1'/'2' 切换流水线  'v'/'g' 独立开关可视化/云台  'n' 全关  'q'/ESC 退出\n";
+              << "无参数运行默认显示本帮助。\n"
+              << "热键 (窗口内，窗口常驻不消失):\n"
+              << "  '1'/'2' 切换流水线  'g' 开关云台输出  'n' 关闭全部输出  'q'/ESC 退出\n"
+              << "  (可视化无法通过热键关闭，避免窗口消失导致程序失去响应；关闭输出后窗口显示最近一帧)\n";
 }
 
 static PipelineMode parsePipeline(const std::string& s) {
@@ -150,6 +152,12 @@ void signalHandler(int) {
 
 int main(int argc, char** argv) {
     signal(SIGINT, signalHandler);
+
+    // ── 无参数运行：显示帮助 ──
+    if (argc <= 1) {
+        printUsage(argv[0]);
+        return 0;
+    }
 
     Options opt;
     try {
@@ -295,6 +303,7 @@ int main(int argc, char** argv) {
     std::atomic<TimePoint> shared_frame_timestamp{TimePoint{}};
     std::atomic<bool> t1_done{false};
     std::atomic<bool> t2_done{false};
+    cv::Mat last_frame;   // 最近一帧（无 visualize 输出时窗口兜底显示，保证窗口/热键/退出路径常驻）
 
     std::thread input_thread([&]() {
         while (!t2_done.load(std::memory_order_acquire) && g_running) {
@@ -338,30 +347,40 @@ int main(int argc, char** argv) {
                 m->update(result, robot_controller.get());
             }
 
+            // 窗口常驻：有 visualize 输出时显示渲染画面；否则显示最近一帧原图
+            // （附提示文字），保证任意输出状态下都有窗口、热键与退出路径，不会卡死。
             VisualizeOutput* vis = findVisualize();
-            if (vis != nullptr) {
-                if (!vis->display().empty()) {
-                    cv::imshow("Unified Auto-Aim", vis->display());
-                    int key = cv::waitKey(1) & 0xFF;
-                    if (key == 'q' || key == 'Q' || key == 27) {
-                        t1_done.store(true, std::memory_order_release);
-                        break;
-                    } else if (key == '1') {
-                        switchPipeline(PipelineMode::OUTPOST);
-                    } else if (key == '2') {
-                        switchPipeline(PipelineMode::POWER_RUNE);
-                    } else if (key == 'n') {
-                        // 全部关闭
-                        output_modes.clear();
-                        std::cout << "[main] Output modes: None" << std::endl;
-                    } else if (key == 'v') {
-                        toggleOutput(OutputMode::VISUALIZE);
-                    } else if (key == 'g') {
-                        toggleOutput(OutputMode::GIMBAL);
-                    }
-                } else {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            cv::Mat to_show;
+            if (vis != nullptr && !vis->display().empty()) {
+                to_show = vis->display();
+            } else if (!last_frame.empty()) {
+                to_show = last_frame.clone();
+                cv::putText(to_show, "No visual output - 'g' gimbal | '1'/'2' pipeline | 'q' quit",
+                            cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                            cv::Scalar(0, 255, 0), 2);
+            }
+            if (result.valid) {
+                last_frame = result.frame.clone();   // 保留最近一帧（无 visualize 时兜底显示）
+            }
+
+            if (!to_show.empty()) {
+                cv::imshow("Unified Auto-Aim", to_show);
+                int key = cv::waitKey(1) & 0xFF;
+                if (key == 'q' || key == 'Q' || key == 27) {
+                    t1_done.store(true, std::memory_order_release);
+                    break;
+                } else if (key == '1') {
+                    switchPipeline(PipelineMode::OUTPOST);
+                } else if (key == '2') {
+                    switchPipeline(PipelineMode::POWER_RUNE);
+                } else if (key == 'n') {
+                    // 全部关闭（窗口保留，显示最近一帧）
+                    output_modes.clear();
+                    std::cout << "[main] Output modes: None" << std::endl;
+                } else if (key == 'g') {
+                    toggleOutput(OutputMode::GIMBAL);
                 }
+                // 注意：不提供关闭可视化的热键（'v' 已取消），避免窗口消失导致程序失去响应
             } else {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
