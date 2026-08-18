@@ -71,9 +71,13 @@ static void printUsage(const char* prog) {
               << "  -i, --interactive               交互式图片输入 (等价 --input interactive)\n"
               << "  -h, --help                      显示帮助\n"
               << "无参数运行默认显示本帮助。\n"
-              << "热键 (窗口内，窗口常驻不消失):\n"
-              << "  '1'/'2' 切换流水线  'v' 开关可视化  'g' 开关云台输出  'n' 关闭全部输出  'q'/ESC 退出\n"
-              << "  (窗口常驻：关闭可视化后仍显示最近一帧，热键始终可用，'v' 可随时恢复)\n";
+              << "窗口行为:\n"
+              << "  - 启动时未指定 visualize：不显示窗口、不绘制任何可视化，纯后台运行\n"
+              << "  - 启动时指定 visualize：可视化开启时绘制检测/位姿/滤波 + 统一覆盖层\n"
+              << "    (串口信息 / 帧数统计 / 热键提醒，两流水线一致)；按 'v' 关闭可视化后\n"
+              << "    窗口仅显示原始画面，热键仍可用，'v' 可随时恢复\n"
+              << "热键 (窗口内):\n"
+              << "  '1'/'2' 切换流水线  'v' 开关可视化  'g' 开关云台输出  'n' 关闭全部输出  'q'/ESC 退出\n";
 }
 
 static PipelineMode parsePipeline(const std::string& s) {
@@ -140,6 +144,69 @@ static Options parseArgs(int argc, char** argv) {
         throw std::runtime_error("input=video 时必须指定 -v <视频路径>");
     }
     return opt;
+}
+
+// ==================== 可视化统一覆盖层 ====================
+// 可视化开启时，无论 Outpost 还是 PowerRune 流水线，都在画面上叠加：
+//   1. 热键提醒  2. 帧数统计 + 流水线名 + 输出模式  3. 串口输入信息（MCU/IMU/FUSED/STRICT/MPC）
+static void drawOverlay(cv::Mat& img,
+                        const std::string& pipeline_name,
+                        const std::string& output_names,
+                        double fps,
+                        RobotController* rc) {
+    // 1. 热键提醒（顶部）
+    cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
+                cv::Point(10, 20), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+
+    // 2. 帧数统计 + 流水线名 + 输出模式
+    char buf[200];
+    std::snprintf(buf, sizeof(buf), "%s | %.2f fps | out: %s",
+                  pipeline_name.c_str(), fps, output_names.c_str());
+    cv::putText(img, buf, cv::Point(10, 42), cv::FONT_HERSHEY_SIMPLEX, 0.55,
+                cv::Scalar(0, 255, 255), 1);
+
+    // 3. 串口输入信息（RobotController 未构造时提示 N/A）
+    int y = 66;
+    const int lineH = 17;
+    auto put = [&](const std::string& t) {
+        cv::putText(img, t, cv::Point(10, y), cv::FONT_HERSHEY_SIMPLEX, 0.45,
+                    cv::Scalar(0, 255, 0), 1);
+        y += lineH;
+    };
+    if (rc == nullptr) {
+        put("Serial: N/A (RobotController not constructed)");
+        return;
+    }
+    const RobotController::State st = rc->getState();
+    if (st.mcu.valid) {
+        std::snprintf(buf, sizeof(buf), "MCU  : bullet=%.2f pitch=%.3f yaw=%.3f",
+                      st.mcu.bullet_velocity, st.mcu.pitch_angle, st.mcu.yaw_angle);
+    } else {
+        std::snprintf(buf, sizeof(buf), "MCU  : (no data)");
+    }
+    put(buf);
+    if (st.imu.valid) {
+        std::snprintf(buf, sizeof(buf), "IMU  : euler=(%.3f, %.3f, %.3f)",
+                      st.imu.euler_yaw, st.imu.euler_pitch, st.imu.euler_roll);
+    } else {
+        std::snprintf(buf, sizeof(buf), "IMU  : (no data)");
+    }
+    put(buf);
+    if (st.fused.valid) {
+        std::snprintf(buf, sizeof(buf), "FUSED: yaw_pos=%.3f yaw_rate=%.3f",
+                      st.fused.yaw_pos, st.fused.yaw_rate);
+    } else {
+        std::snprintf(buf, sizeof(buf), "FUSED: (no data)");
+    }
+    put(buf);
+    std::snprintf(buf, sizeof(buf), "STRICT: chs=(%.3f, %.3f, %.3f) yaw=%.3f pitch=%.3f",
+                  st.strict.chassis_yaw, st.strict.chassis_pitch, st.strict.chassis_roll,
+                  st.strict.yaw_pos, st.strict.pitch_angle);
+    put(buf);
+    std::snprintf(buf, sizeof(buf), "MPC  : torque=%.3f target=%.3f (ref/pred=%zu/%zu)",
+                  st.mpc.yaw_torque, st.mpc.yaw_target_angle,
+                  st.mpc.ref_sequence.size(), st.mpc.pred_sequence.size());
+    put(buf);
 }
 
 // ==================== 主程序 ====================
@@ -256,6 +323,16 @@ int main(int argc, char** argv) {
         return nullptr;
     };
 
+    // 当前输出模式组合名（覆盖层显示用，如 "Visualize+Gimbal" / "None"）
+    auto outputNames = [&]() -> std::string {
+        std::string s;
+        for (auto& m : output_modes) {
+            if (!s.empty()) s += "+";
+            s += m->getName();
+        }
+        return s.empty() ? "None" : s;
+    };
+
     // ── 运行时切换接口（API；热键在 visualize 窗口内触发）──
     auto switchPipeline = [&](PipelineMode m) {
         if (active_pipeline->mode() == m) return;
@@ -303,7 +380,6 @@ int main(int argc, char** argv) {
     std::atomic<TimePoint> shared_frame_timestamp{TimePoint{}};
     std::atomic<bool> t1_done{false};
     std::atomic<bool> t2_done{false};
-    cv::Mat last_frame;   // 最近一帧（无 visualize 输出时窗口兜底显示，保证窗口/热键/退出路径常驻）
 
     std::thread input_thread([&]() {
         while (!t2_done.load(std::memory_order_acquire) && g_running) {
@@ -332,8 +408,12 @@ int main(int argc, char** argv) {
         t1_done.store(true, std::memory_order_release);
     });
 
-    // ── 处理线程：提取到时帧 → 输出模式；visualize 窗口内处理热键 ──
+    // ── 处理线程：提取到时帧 → 输出模式；窗口显示与热键 ──
+    // 窗口仅在启动时指定了 visualize 时创建；否则纯后台运行（不显示窗口、不绘制任何可视化）。
+    const bool show_window = opt.output.visualize;
     std::thread process_thread([&]() {
+        FrameRateCounter overlay_fps(60);
+        cv::Mat last_frame;   // 最近一帧（可视化关闭时窗口仅显示原始画面）
         while (!t1_done.load(std::memory_order_acquire) && g_running) {
             TimePoint timestamp = shared_frame_timestamp.load(std::memory_order_acquire);
             if (timestamp == TimePoint{}) {
@@ -347,44 +427,56 @@ int main(int argc, char** argv) {
                 m->update(result, robot_controller.get());
             }
 
-            // 窗口常驻：有 visualize 输出时显示渲染画面；否则显示最近一帧原图
-            // （附提示文字），保证任意输出状态下都有窗口、热键与退出路径，不会卡死。
-            VisualizeOutput* vis = findVisualize();
-            cv::Mat to_show;
-            if (vis != nullptr && !vis->display().empty()) {
-                to_show = vis->display();
-            } else if (!last_frame.empty()) {
-                to_show = last_frame.clone();
-                cv::putText(to_show, "No visual output - 'g' gimbal | '1'/'2' pipeline | 'q' quit",
-                            cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.6,
-                            cv::Scalar(0, 255, 0), 2);
-            }
-            if (result.valid) {
-                last_frame = result.frame.clone();   // 保留最近一帧（无 visualize 时兜底显示）
+            if (!show_window) {
+                // 纯后台运行：不显示窗口、不绘制任何可视化信息
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                continue;
             }
 
-            if (!to_show.empty()) {
-                cv::imshow("Unified Auto-Aim", to_show);
-                int key = cv::waitKey(1) & 0xFF;
-                if (key == 'q' || key == 'Q' || key == 27) {
-                    t1_done.store(true, std::memory_order_release);
-                    break;
-                } else if (key == '1') {
-                    switchPipeline(PipelineMode::OUTPOST);
-                } else if (key == '2') {
-                    switchPipeline(PipelineMode::POWER_RUNE);
-                } else if (key == 'n') {
-                    // 全部关闭（窗口保留，显示最近一帧）
-                    output_modes.clear();
-                    std::cout << "[main] Output modes: None" << std::endl;
-                } else if (key == 'v') {
-                    // 开关可视化：关闭后窗口仍显示最近一帧（常驻），热键始终可用，可随时恢复
-                    toggleOutput(OutputMode::VISUALIZE);
-                } else if (key == 'g') {
-                    toggleOutput(OutputMode::GIMBAL);
-                }
-            } else {
+            // 可视化开启：显示各 visualizer 的完整渲染画面并叠加统一覆盖层
+            // （串口信息 / 帧数统计 / 热键提醒，两个流水线一致）；
+            // 可视化关闭：窗口仅显示原始画面，不绘制任何覆盖层。
+            VisualizeOutput* vis = findVisualize();
+            bool vis_active = (vis != nullptr && !vis->display().empty());
+            cv::Mat to_show;
+            if (vis_active) {
+                to_show = vis->display().clone();
+                if (result.valid) overlay_fps.tick();
+            } else if (!last_frame.empty()) {
+                to_show = last_frame.clone();
+            }
+            if (result.valid) {
+                last_frame = result.frame.clone();
+            }
+
+            if (to_show.empty()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                continue;
+            }
+
+            if (vis_active) {
+                drawOverlay(to_show, active_pipeline->name(), outputNames(),
+                            overlay_fps.fps(), robot_controller.get());
+            }
+
+            cv::imshow("Unified Auto-Aim", to_show);
+            int key = cv::waitKey(1) & 0xFF;
+            if (key == 'q' || key == 'Q' || key == 27) {
+                t1_done.store(true, std::memory_order_release);
+                break;
+            } else if (key == '1') {
+                switchPipeline(PipelineMode::OUTPOST);
+            } else if (key == '2') {
+                switchPipeline(PipelineMode::POWER_RUNE);
+            } else if (key == 'n') {
+                // 全部关闭（窗口保留，仅显示原始画面）
+                output_modes.clear();
+                std::cout << "[main] Output modes: None" << std::endl;
+            } else if (key == 'v') {
+                // 开关可视化：关闭后窗口仅显示原始画面，热键始终可用，可随时恢复
+                toggleOutput(OutputMode::VISUALIZE);
+            } else if (key == 'g') {
+                toggleOutput(OutputMode::GIMBAL);
             }
         }
         t2_done.store(true, std::memory_order_release);

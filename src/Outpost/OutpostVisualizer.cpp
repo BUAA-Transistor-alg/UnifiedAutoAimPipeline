@@ -41,9 +41,11 @@ void OutpostVisualizer::render(cv::Mat& image,
     }
 
     // ── 4. 通信信息 / 温度 / FPS ──
-    drawCommInfo(image, data.robot_state);
-    drawYawTemperature(image, (int)data.robot_state.mcu.yaw_temperature, data.robot_state.mcu.valid);
-    drawFps(image, data.fps, data.frame_timestamp);
+    // 以下三项改由 main（输出模式窗口覆盖层）统一绘制，保证 Outpost / PowerRune
+    // 两个流水线的可视化行为一致（串口信息 + 帧数统计 + 热键提醒）：
+    // drawCommInfo(image, data.robot_state);
+    // drawYawTemperature(image, (int)data.robot_state.mcu.yaw_temperature, data.robot_state.mcu.valid);
+    // drawFps(image, data.fps, data.frame_timestamp);
 
     // ── 5. 检测结果（最上层） ──
     drawDetectionResults(image, data.detection.objects);

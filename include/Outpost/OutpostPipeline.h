@@ -105,7 +105,7 @@ public:
      * @param max_delay_seconds 提取帧的最大延迟秒数，默认 0.05s
      */
     OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes = {10, 10, 10, 10, 10, 10},
-                    float max_delay_seconds = 0.05f);
+                    float max_delay_seconds = 0.2f);
     ~OutpostPipeline();
 
     // ---- IPipeline ----
