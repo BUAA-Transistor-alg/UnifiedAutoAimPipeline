@@ -121,7 +121,9 @@ public:
     PipelineMode mode() const override { return PipelineMode::POWER_RUNE; }
     std::string name() const override { return "PowerRune"; }
 
-    void addFrame(cv::Mat frame,
+    /// 输入帧：队列满时抛弃新帧。
+    /// @return true 成功加入输入缓冲队列；false 队列满被抛弃（未进入流水线）
+    bool addFrame(cv::Mat frame,
                   const std::chrono::steady_clock::time_point& frame_timestamp,
                   const ExtraInputInfo& extra_info) override;
 

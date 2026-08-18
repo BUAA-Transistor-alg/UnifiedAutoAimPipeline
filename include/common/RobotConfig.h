@@ -12,6 +12,7 @@
 #ifndef ROBOT_CONFIG_H
 #define ROBOT_CONFIG_H
 
+#include <cstdint>
 #include <string>
 
 #include <opencv2/opencv.hpp>
@@ -74,6 +75,11 @@ public:
         double R;                // MPC 控制代价
         double Rd;               // MPC 控制变化率代价
         int    maxIter;          // MPC 迭代上限
+        // ── MCU 数据线性映射标定参数（McuDataPreprocessor::LinearParams，当前标定默认值）──
+        double sendPitchScale;   // imu_euler_pitch → pitch_target_angle（发送）
+        double sendPitchOffset;  // 发送偏移
+        double recvPitchScale;   // mcu_pitch_angle → imu_euler_pitch（接收）
+        double recvPitchOffset;  // 接收偏移
     };
 
     // 云台输入控制器参数（序列输入模式）
@@ -114,6 +120,13 @@ public:
         RobotControllerParams robotController;         // RobotController 构造参数
         InputControllerParams inputController;         // 云台输入控制器参数
         double       maxDelaySeconds;           // 两个流水线共用的提取帧最大延迟（秒）
+
+        // 录制参数（--record 开启录制时生效）
+        struct RecordingParams {
+            std::string outputDir = "recordings";           // 录制输出目录（相对项目根目录或以 / 开头为绝对路径）
+            int64_t minFreeSpaceBytes = 1024LL * 1024 * 1024; // 剩余空间阈值（字节），低于该值停止写入
+        };
+        RecordingParams recording;
     };
 
     CommonParams    common;      // 共用参数

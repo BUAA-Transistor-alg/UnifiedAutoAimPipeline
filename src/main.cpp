@@ -4,7 +4,7 @@
 //   unified_auto_aim [--pipeline outpost|power_rune]
 //                    [--input camera|video|interactive]
 //                    [--output none|visualize|gimbal]
-//                    [-v <video>] [-e <extra_info.txt>] [-i] [-h]
+//                    [-v <video>] [-e <extra_info.txt>] [--record] [--skip-unaccepted] [-i] [-h]
 //
 // 设计要点：
 //  - 两个流水线在启动时全部构造（模型编译一次），之后不重建；
@@ -26,6 +26,7 @@
 #include "Ballistic/AimPredictor.h"
 #include "RobotConfig.h"
 #include "FrameRateCounter.h"
+#include "Record/FrameRecorder.h"
 
 #include <opencv2/opencv.hpp>
 #include <iostream>
@@ -58,6 +59,8 @@ struct Options {
     OutputConfig output;    // 默认 visualize
     std::string  video_path;
     std::string  extra_info_path;
+    bool         record = false;            // 开启录制（帧 + 时间戳 + extra_info）
+    bool         skip_unaccepted = false;   // 回放时跳过未成功加入流水线的帧（v2 extra info）
 
     Options() { output.visualize = true; }
 };
@@ -69,8 +72,13 @@ static void printUsage(const char* prog) {
               << "  --output <mode>[+<mode>...]     输出模式组合 (默认 visualize)\n"
               << "            none | visualize | gimbal | visualize+gimbal\n"
               << "  -v, --video <file>              视频路径 (input=video 时必需)\n"
-              << "  -e, --extra-info <file>         视频额外信息 txt (相机位姿)\n"
+              << "  -e, --extra-info <file>         视频额外信息 txt (相机位姿 / 完整 ExtraInputInfo)\n"
               << "  -i, --interactive               交互式图片输入 (等价 --input interactive)\n"
+              << "  -r, --record                    开启录制：每帧保存为 MKV 视频 + 时间戳 + 完整\n"
+              << "                                   extra_info txt（输出目录与剩余空间阈值见\n"
+              << "                                   config/config.yaml 的 common.recording）\n"
+              << "      --skip-unaccepted           回放视频时跳过录制中未成功加入流水线的帧\n"
+              << "                                   （需 -e 指定 v2 格式的 extra info 文件）\n"
               << "  -h, --help                      显示帮助\n"
               << "无参数运行默认显示本帮助。\n"
               << "窗口行为:\n"
@@ -136,6 +144,10 @@ static Options parseArgs(int argc, char** argv) {
             opt.video_path = next();
         } else if (arg == "-e" || arg == "--extra-info") {
             opt.extra_info_path = next();
+        } else if (arg == "-r" || arg == "--record") {
+            opt.record = true;
+        } else if (arg == "--skip-unaccepted") {
+            opt.skip_unaccepted = true;
         } else if (arg == "-i" || arg == "--interactive") {
             opt.input = InputKind::INTERACTIVE;
         } else {
@@ -328,6 +340,8 @@ int main(int argc, char** argv) {
               << (opt.output.visualize ? "Visualize " : "")
               << (opt.output.gimbal ? "Gimbal " : "")
               << (!opt.output.visualize && !opt.output.gimbal ? "None" : "") << std::endl;
+    std::cout << "  Record:   " << (opt.record ? "ON" : "OFF")
+              << (opt.skip_unaccepted ? "  (skip-unaccepted: ON)" : "") << std::endl;
     std::cout << "========================================" << std::endl;
 
     const RobotConfig& cfg = RobotConfig::instance();
@@ -344,6 +358,9 @@ int main(int argc, char** argv) {
         robot_controller = std::make_unique<RobotController>(
             rp.dtControl, rp.mpcPredN, rp.J, rp.tauC, rp.b, rp.tauD,
             rp.maxTorque, rp.maxTorqueRate, rp.Q, rp.R, rp.Rd, rp.maxIter,
+            McuDataPreprocessor::LinearParams{
+                rp.sendPitchScale, rp.sendPitchOffset,
+                rp.recvPitchScale, rp.recvPitchOffset},
             rp.sequenceMode);
         std::cout << "[main] RobotController constructed (serial threads may fail silently without hardware)." << std::endl;
     };
@@ -367,12 +384,27 @@ int main(int argc, char** argv) {
             break;
         }
         case InputKind::VIDEO:
-            input_mode = std::make_unique<VideoInputMode>(opt.video_path, opt.extra_info_path);
+            input_mode = std::make_unique<VideoInputMode>(opt.video_path, opt.extra_info_path,
+                                                          opt.skip_unaccepted);
             break;
         case InputKind::INTERACTIVE:
         default:
             input_mode = std::make_unique<InteractiveInputMode>();
             break;
+    }
+
+    // ── 录制器（--record 开启）：帧 + 时间戳 + extra_info 完整保存 ──
+    // 输出目录与剩余空间阈值来自 config/common.recording（路径已加入 .gitignore）
+    std::unique_ptr<FrameRecorder> recorder;
+    if (opt.record) {
+        FrameRecorder::Config rcfg;
+        rcfg.outputDir = cfg.common.recording.outputDir;
+        rcfg.minFreeSpaceBytes = cfg.common.recording.minFreeSpaceBytes;
+        recorder = std::make_unique<FrameRecorder>(rcfg);
+        if (!recorder->start()) {
+            std::cerr << "[main] 录制启动失败，录制已禁用。" << std::endl;
+            recorder.reset();
+        }
     }
 
     // ── 启动时构造两套流水线（模型编译一次，之后不重建）──
@@ -492,7 +524,18 @@ int main(int argc, char** argv) {
             }
 
             shared_frame_timestamp.store(frame_timestamp, std::memory_order_release);
-            active_pipeline->addFrame(std::move(frame), frame_timestamp, extra_info);
+
+            // 录制：addFrame 会移动原帧，故先克隆一份（仅在录制开启时）
+            cv::Mat frame_for_record;
+            if (recorder && recorder->active()) {
+                frame_for_record = frame.clone();
+            }
+
+            // 无论 addFrame 成败都记录该帧；accepted 标记该帧是否成功加入流水线
+            bool accepted = active_pipeline->addFrame(std::move(frame), frame_timestamp, extra_info);
+            if (recorder && !frame_for_record.empty()) {
+                recorder->recordFrame(frame_for_record, frame_timestamp, extra_info, accepted);
+            }
 
             float delay_s = input_mode->getFrameDelay() -
                 std::chrono::duration<float>(std::chrono::steady_clock::now() - time_for_delay).count();
@@ -614,6 +657,12 @@ int main(int argc, char** argv) {
     process_thread.join();
 
     std::cout << "\nExiting." << std::endl;
+    if (recorder) {
+        recorder->close();   // 写视频尾并关闭信息文件（幂等）
+        if (recorder->spaceExhausted()) {
+            std::cout << "[main] 注意：录制因剩余空间不足而提前停止。" << std::endl;
+        }
+    }
     if (camera) camera->stop();
     // robot_controller 析构时自动停止串口线程与 MPC 后台发送线程
     cv::destroyAllWindows();

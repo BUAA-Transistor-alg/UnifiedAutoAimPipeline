@@ -365,7 +365,7 @@ void PowerRunePipeline::schedulerLoop()
 
 // ==================== 外部接口 ====================
 
-void PowerRunePipeline::addFrame(cv::Mat frame,
+bool PowerRunePipeline::addFrame(cv::Mat frame,
                                  const std::chrono::steady_clock::time_point& frame_timestamp,
                                  const ExtraInputInfo& extra_info)
 {
@@ -378,12 +378,13 @@ void PowerRunePipeline::addFrame(cv::Mat frame,
     {
         std::lock_guard<std::mutex> lock(input_mtx_);
         if ((int)input_queue_.size() >= queue_max_sizes_[0]) {
-            return;
+            return false;   // 队列满：抛弃该帧
         }
         input_queue_.push_back(std::move(data));
     }
 
     wakeScheduler();
+    return true;            // 成功加入输入缓冲队列
 }
 
 void PowerRunePipeline::fillPerception(PowerRunePipelineData* d, PowerRunePerception& out)

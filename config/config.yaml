@@ -15,6 +15,11 @@ common:
   # 两个流水线共用的提取帧最大延迟（秒，tryPopFrame 固定延迟返回）
   max_delay_seconds: 0.2
 
+  # ── 录制参数（--record 开启录制时生效）──
+  recording:
+    output_dir: "recordings"        # 录制输出目录（相对项目根目录；以 / 开头为绝对路径）
+    min_free_space_mb: 16384         # 剩余空间低于该值（MB）时停止写入（0 = 不检查）
+
   # ── 变换树各节点相对其父节点的固定偏移（单位：米）──
   tf:
     yaw_joint_z_offset: 0.32      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
@@ -92,6 +97,11 @@ common:
     R: 0.01                     # MPC 控制代价
     Rd: 0.1                     # MPC 控制变化率代价
     max_iter: 30                # MPC 迭代上限
+    # ── MCU 数据线性映射标定参数（McuDataPreprocessor::LinearParams，当前标定默认值）──
+    send_pitch_scale: 20.523245    # imu_euler_pitch → pitch_target_angle（发送）
+    send_pitch_offset: 0.475049    # 发送偏移
+    recv_pitch_scale: 1.122635     # mcu_pitch_angle → imu_euler_pitch（接收）
+    recv_pitch_offset: -0.170755   # 接收偏移
 
   # ── 云台输入控制器参数（序列输入模式）──
   input_controller:

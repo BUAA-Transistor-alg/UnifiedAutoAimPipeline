@@ -116,6 +116,20 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     // ── common.max_delay_seconds（两个流水线共用）──
     cfg.common.maxDelaySeconds = requireScalar<double>(cm, "max_delay_seconds", "common");
 
+    // ── common.recording（可选：录制参数；缺失时使用默认值）──
+    //   output_dir        ：录制输出目录（相对项目根目录或以 / 开头为绝对路径）
+    //   min_free_space_mb ：剩余空间低于该值（MB）时停止写入
+    cfg.common.recording.outputDir = "recordings";
+    cfg.common.recording.minFreeSpaceBytes = 1024LL * 1024 * 1024;   // 默认 1 GiB
+    const YAML::Node& rec = cm["recording"];
+    if (rec && rec.IsMap()) {
+        if (rec["output_dir"] && rec["output_dir"].IsDefined())
+            cfg.common.recording.outputDir = rec["output_dir"].as<std::string>();
+        if (rec["min_free_space_mb"] && rec["min_free_space_mb"].IsDefined())
+            cfg.common.recording.minFreeSpaceBytes = static_cast<int64_t>(
+                rec["min_free_space_mb"].as<double>() * 1024.0 * 1024.0);
+    }
+
     // ── common.gimbal ──
     const YAML::Node& gim = cm["gimbal"];
     if (!gim || !gim.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.gimbal' 配置段");
@@ -153,6 +167,10 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.common.robotController.R             = requireScalar<double>(rc, "R", "common.robot_controller");
     cfg.common.robotController.Rd            = requireScalar<double>(rc, "Rd", "common.robot_controller");
     cfg.common.robotController.maxIter       = requireScalar<int>(rc, "max_iter", "common.robot_controller");
+    cfg.common.robotController.sendPitchScale  = requireScalar<double>(rc, "send_pitch_scale", "common.robot_controller");
+    cfg.common.robotController.sendPitchOffset = requireScalar<double>(rc, "send_pitch_offset", "common.robot_controller");
+    cfg.common.robotController.recvPitchScale  = requireScalar<double>(rc, "recv_pitch_scale", "common.robot_controller");
+    cfg.common.robotController.recvPitchOffset = requireScalar<double>(rc, "recv_pitch_offset", "common.robot_controller");
 
     // ── common.input_controller ──
     const YAML::Node& ic = cm["input_controller"];

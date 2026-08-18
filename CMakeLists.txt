@@ -26,6 +26,9 @@ find_package(Ceres REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(YAMLCPP REQUIRED yaml-cpp)
 
+# FFmpeg（录制：MkvWriter 视频编码）
+pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
+
 # 查找 udev（串口通信需要）
 find_library(UDEV_LIBRARY udev)
 if(NOT UDEV_LIBRARY)
@@ -45,6 +48,7 @@ endif()
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/common/Record
     ${CMAKE_CURRENT_SOURCE_DIR}/include/common/TransformTree
     ${CMAKE_CURRENT_SOURCE_DIR}/include/Outpost
     ${CMAKE_CURRENT_SOURCE_DIR}/include/PowerRune
@@ -55,6 +59,7 @@ include_directories(
     ${EIGEN3_INCLUDE_DIRS}
     ${CERES_INCLUDE_DIRS}
     ${YAMLCPP_INCLUDE_DIRS}
+    ${FFMPEG_INCLUDE_DIRS}
 )
 
 # ── TorqueController 子模组：通信 + 融合 + MPC 一体化封装（RobotController）──
@@ -83,6 +88,8 @@ set(COMMON_SOURCES
     src/common/Input/CameraInputMode.cpp
     src/common/Input/VideoInputMode.cpp
     src/common/Input/InteractiveInputMode.cpp
+    src/common/Record/MkvWriter.cpp
+    src/common/Record/FrameRecorder.cpp
 )
 
 # ── Outpost 源文件 ──
@@ -122,6 +129,7 @@ target_link_libraries(unified_auto_aim PRIVATE
     Eigen3::Eigen
     ${CERES_LIBRARIES}
     ${YAMLCPP_LIBRARIES}
+    ${FFMPEG_LIBRARIES}
     ${CMAKE_DL_LIBS}       # libdl (backward-cpp 需要 dladdr)
 )
 
