@@ -54,11 +54,6 @@ public:
     }
     void setPitchSearchStep(float step) { pitch_step_ = step; }
 
-    // pitch 粗搜索评估是否并行（默认 true）。当外部已有并行（如 AimPredictor 并行
-    // 序列元素时）应设为 false，避免多个调用方并发使用内部 TaskPool 产生竞争。
-    void setParallelPitchSearch(bool enable) { parallel_pitch_ = enable; }
-    bool parallelPitchSearch() const { return parallel_pitch_; }
-
     // yaw 解算：在给定 pitch 下，使 muzzle 系 +y 方向（Rz(yaw)*Rx(pitch)*[0,1,0]）在 world xy
     // 平面上的投影经过目标点 xy 投影（muzzle 原点位置随 pitch 一并计入）。pitch = 0 时退化为
     // 原有"水平瞄准"语义。只读取内部树节点数据，不依赖变换缓存，不受上锁限制。
@@ -122,8 +117,7 @@ private:
 
     std::shared_ptr<RobotTfTree>     tree_;      // 内部专用坐标系树（偏移来自 RobotConfig）
     std::shared_ptr<BallisticSolver> ballistic_; // 弹道解算器（弹丸参数来自 RobotConfig）
-    mutable TaskPool pool_;        // 线程池：并行加速 pitch 粗搜索评估（默认开启）
-    bool parallel_pitch_ = true;   // pitch 粗搜索是否并行（外层并行时置 false 防竞争）
+    mutable TaskPool pool_;        // 线程池：并行加速 pitch 粗搜索评估（始终保持并行）
     // 以下参数均在构造函数中从 RobotConfig（config/config.yaml）读取，代码中不写默认值
     double bullet_velocity_;               // 默认弹丸初速（m/s）
     double distance_threshold_;            // 成功阈值（米）：最终最近距离不超过该值才算解算成功

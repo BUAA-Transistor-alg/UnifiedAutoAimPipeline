@@ -48,13 +48,14 @@ public:
     /// 构造时创建内部 GimbalSolver，序列/弹道/偏置参数从 RobotConfig common 段读取
     AimPredictor();
 
-    // 目标选择策略透传（Outpost NEAREST / PowerRune LOWEST_Z）
+    // 目标选择策略透传（Outpost NEAREST / PowerRune LOWEST_Z），作用于全部线程实例
     void setTargetSelection(PredictedBallisticSolver::TargetSelection sel) {
-        solver_.setTargetSelection(sel);
+        for (auto& s : solvers_) s.setTargetSelection(sel);
     }
 
-    /// 同步内部树（st.strict + MCU 弹速）并生成预测云台控制序列 + 瞄准点序列，
-    /// 序列元素（solve）经内部线程池并行执行（内层 pitch 粗搜索置串行防竞争），
+    /// 同步内部树（st.strict + MCU 弹速）并生成预测云台控制序列 + 瞄准点序列。
+    /// 序列元素（solve）经内部线程池并行执行；每个工作线程通过 thread_local 绑定
+    /// 一个独立的 GimbalSolver（内部 pitch 粗搜索保持并行且互不竞争），
     /// 结果同时写入最新槽（线程安全）。
     Result predict(const RobotController::State& st, const Predictor& predictor);
 
@@ -64,13 +65,15 @@ public:
     /// 最新一次预测结果（无有效预测时 valid == false）
     Result latest() const;
 
-    /// 内部云台解算器（fire 判定距离等用途）
-    std::shared_ptr<GimbalSolver> gimbal() const { return gimbal_; }
+    /// 任一内部云台解算器（fire 判定距离等用途；各线程实例树状态相同）
+    std::shared_ptr<GimbalSolver> gimbal() const { return gimbals_.front(); }
 
 private:
-    std::shared_ptr<GimbalSolver> gimbal_;
-    PredictedBallisticSolver solver_;
-    TaskPool pool_;   // 并行生成预测序列元素（solve 之间并行）
+    // 为每个工作线程准备一个独立的 GimbalSolver（内部 TaskPool 互不竞争）
+    std::vector<std::shared_ptr<GimbalSolver>> gimbals_;
+    std::vector<PredictedBallisticSolver> solvers_;
+    TaskPool pool_;                 // 默认构造（min(硬件核数/2, 4) 线程）
+    std::atomic<int> next_gimbal_{0};   // thread_local 绑定：worker 首次执行时领取编号
 
     // 序列生成参数（构造时从 RobotConfig common 读取）
     double extra_predict_time_;
