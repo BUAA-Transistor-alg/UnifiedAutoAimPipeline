@@ -148,11 +148,11 @@ static Options parseArgs(int argc, char** argv) {
 }
 
 // ==================== 可视化统一覆盖层 ====================
-// 可视化开启时，无论 Outpost 还是 PowerRune 流水线，都在画面上叠加三样内容，
-// 位置/大小与 Outpost 原项目一致：
-//   1. 热键提醒  — 原 main info 位置 (10,60)，0.6 号粗 2 绿
-//   2. 帧数统计  — 原 drawFps 样式：右上角 "FPS: xx" 0.7 粗 2 黄 + "TS: .." 0.45 粗 1 黄
-//   3. 串口输入信息 — 原 drawCommInfo 样式：(8,80) 起 0.45 粗 1 绿，按来源分块显示
+// 可视化开启时，无论 Outpost 还是 PowerRune 流水线，都在画面上叠加：
+//   1. 热键提醒  — 顶部 (10,20)，0.6 号粗 2 绿
+//   2. 队列积压  — 原 main info 位置 (10,60)，Q[in i0 i1 i2 i3 out] 格式
+//   3. 帧数统计  — 原 drawFps 样式：右上角 "FPS: xx" 0.7 粗 2 黄 + "TS: .." 0.45 粗 1 黄
+//   4. 串口输入信息 — 原 drawCommInfo 样式：(8,80) 起 0.45 粗 1 绿，按来源分块显示
 //      （--- MCU --- / --- IMU --- / --- FUSED --- / --- STRICT --- / --- MPC ---），
 //      MCU 块含温度行（按温度区间变色）
 static void drawOverlay(cv::Mat& img,
@@ -160,12 +160,21 @@ static void drawOverlay(cv::Mat& img,
                         const std::string& output_names,
                         double fps,
                         RobotController* rc,
-                        const std::chrono::steady_clock::time_point& frame_ts) {
-    // 1. 热键提醒（原 main info 位置与大小）
+                        const std::chrono::steady_clock::time_point& frame_ts,
+                        const PipelineResult::QueueSizes& queue_sizes) {
+    // 1. 热键提醒（顶部）
     cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
-                cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
+                cv::Point(10, 20), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
 
-    // 2. 帧数统计（原 drawFps 样式，右上角）
+    // 2. 当前流水线各缓存积压长度（与原来 main info 的 Q[...] 格式一致）
+    char qbuf[160];
+    std::snprintf(qbuf, sizeof(qbuf), "Q[in:%d i0:%d i1:%d i2:%d i3:%d out:%d]",
+                  queue_sizes.input, queue_sizes.inter0, queue_sizes.inter1,
+                  queue_sizes.inter2, queue_sizes.inter3, queue_sizes.output);
+    cv::putText(img, qbuf, cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                cv::Scalar(0, 255, 0), 2);
+
+    // 3. 帧数统计（原 drawFps 样式，右上角）
     using namespace std::chrono;
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(1) << "FPS: " << fps;
@@ -182,7 +191,7 @@ static void drawOverlay(cv::Mat& img,
     cv::putText(img, oss.str(), cv::Point(img.cols - sz.width - 10, 52),
                 cv::FONT_HERSHEY_SIMPLEX, 0.45, cv::Scalar(0, 255, 255), 1);
 
-    // 3. 串口输入信息（原 drawCommInfo 样式）
+    // 4. 串口输入信息（原 drawCommInfo 样式）
     int y = 80;
     const int lineH = 18;
     auto put = [&](const std::string& t, cv::Scalar color = cv::Scalar(0, 255, 0)) {
@@ -532,7 +541,8 @@ int main(int argc, char** argv) {
 
             if (vis_active) {
                 drawOverlay(to_show, active_pipeline->name(), outputNames(),
-                            overlay_fps.fps(), robot_controller.get(), last_valid_ts);
+                            overlay_fps.fps(), robot_controller.get(), last_valid_ts,
+                            result.queue_sizes);
             }
 
             cv::imshow("Unified Auto-Aim", to_show);
