@@ -293,13 +293,21 @@ bool GimbalSolver::computePitchToAimTarget(const cv::Vec3f& targetWorld, float y
     const EvalContext ctx = buildContext();
 
     // 粗搜索：先取整条距离曲线，用于收集全部局部极小值。
-    // 各候选 pitch 的评估相互独立，交给线程池（TaskPool）并行执行。
+    // 各候选 pitch 的评估相互独立：默认交给线程池（TaskPool）并行执行；
+    // 当外部已有并行（AimPredictor 并行序列元素）时置串行，避免并发使用内部 TaskPool。
     const int n = std::max(1, static_cast<int>(std::ceil((pitch_max_ - pitch_min_) / pitch_step_)));
     std::vector<double> ds(n + 1);
-    pool_.run_parallel(n + 1, [&](int i) {
-        const float pitch = std::min(pitch_max_, pitch_min_ + pitch_step_ * i);
-        ds[i] = evaluateDistance(ctx, targetWorld, yaw, pitch, bulletVelocity).distance;
-    });
+    if (parallel_pitch_) {
+        pool_.run_parallel(n + 1, [&](int i) {
+            const float pitch = std::min(pitch_max_, pitch_min_ + pitch_step_ * i);
+            ds[i] = evaluateDistance(ctx, targetWorld, yaw, pitch, bulletVelocity).distance;
+        });
+    } else {
+        for (int i = 0; i <= n; ++i) {
+            const float pitch = std::min(pitch_max_, pitch_min_ + pitch_step_ * i);
+            ds[i] = evaluateDistance(ctx, targetWorld, yaw, pitch, bulletVelocity).distance;
+        }
+    }
 
     // 收集距离曲线的全部局部极小值点（含两端边界），取其中 pitch 最小的一个进行细化。
     // 目标较近时距离曲线可能有两个（弹道较水平 / 较高）甚至更多（非线性阻力）极小值，

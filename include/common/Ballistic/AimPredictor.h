@@ -19,6 +19,7 @@
 #include <opencv2/opencv.hpp>
 
 #include "RobotController.h"
+#include "TaskPool.h"
 #include "Ballistic/GimbalSolver.h"
 #include "Ballistic/PredictedBallisticSolver.h"
 
@@ -53,6 +54,7 @@ public:
     }
 
     /// 同步内部树（st.strict + MCU 弹速）并生成预测云台控制序列 + 瞄准点序列，
+    /// 序列元素（solve）经内部线程池并行执行（内层 pitch 粗搜索置串行防竞争），
     /// 结果同时写入最新槽（线程安全）。
     Result predict(const RobotController::State& st, const Predictor& predictor);
 
@@ -68,6 +70,7 @@ public:
 private:
     std::shared_ptr<GimbalSolver> gimbal_;
     PredictedBallisticSolver solver_;
+    TaskPool pool_;   // 并行生成预测序列元素（solve 之间并行）
 
     // 序列生成参数（构造时从 RobotConfig common 读取）
     double extra_predict_time_;
