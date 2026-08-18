@@ -11,7 +11,7 @@
 //    任意时刻只有一个是"激活"状态（接收帧），运行时可通过 API（switchPipeline）
 //    或热键 '1'/'2' 切换；切换时调用 clear() 清空其队列与滤波状态；
 //  - 输入模式（相机/视频/交互）与输出模式（无/可视化/云台控制）在启动时
-//    指定，运行时也可通过 API（switchOutput）或热键 'n'/'v'/'g' 切换；
+//    指定，运行时也可通过 API（switchPipeline / toggleOutput）或热键 '1'/'2'、'v'/'g' 切换；
 //  - RobotController（串口 + MPC）仅在需要时构造（相机输入或云台输出）。
 #include "IInputMode.h"
 #include "CameraInputMode.h"
@@ -21,7 +21,6 @@
 #include "OutpostPipeline.h"
 #include "PowerRunePipeline.h"
 #include "Output/IOutputMode.h"
-#include "Output/NoneOutput.h"
 #include "Output/VisualizeOutput.h"
 #include "Output/GimbalOutput.h"
 #include "RobotConfig.h"
@@ -45,25 +44,34 @@ backward::SignalHandling sh;  // 自动捕获 SIGSEGV/SIGABRT 等信号并打印
 
 enum class InputKind { CAMERA, VIDEO, INTERACTIVE };
 
+/// 输出模式组合（visualize 与 gimbal 独立开关，可同时启用）
+struct OutputConfig {
+    bool visualize = false;
+    bool gimbal = false;
+};
+
 struct Options {
     PipelineMode pipeline = PipelineMode::OUTPOST;
     InputKind    input    = InputKind::INTERACTIVE;
-    OutputMode   output   = OutputMode::VISUALIZE;
+    OutputConfig output;    // 默认 visualize
     std::string  video_path;
     std::string  extra_info_path;
+
+    Options() { output.visualize = true; }
 };
 
 static void printUsage(const char* prog) {
     std::cout << "Usage: " << prog << " [options]\n"
               << "  --pipeline outpost|power_rune  流水线模式 (默认 outpost)\n"
               << "  --input camera|video|interactive  输入模式 (默认 interactive)\n"
-              << "  --output none|visualize|gimbal  输出模式 (默认 visualize)\n"
+              << "  --output <mode>[+<mode>...]     输出模式组合 (默认 visualize)\n"
+              << "            none | visualize | gimbal | visualize+gimbal\n"
               << "  -v, --video <file>              视频路径 (input=video 时必需)\n"
               << "  -e, --extra-info <file>         视频额外信息 txt (相机位姿)\n"
               << "  -i, --interactive               交互式图片输入 (等价 --input interactive)\n"
               << "  -h, --help                      显示帮助\n"
               << "热键 (visualize 窗口内):\n"
-              << "  '1'/'2' 切换流水线  'n'/'v'/'g' 切换输出模式  'q'/ESC 退出\n";
+              << "  '1'/'2' 切换流水线  'v'/'g' 独立开关可视化/云台  'n' 全关  'q'/ESC 退出\n";
 }
 
 static PipelineMode parsePipeline(const std::string& s) {
@@ -79,11 +87,24 @@ static InputKind parseInput(const std::string& s) {
     throw std::runtime_error("未知输入模式: " + s + " (可选 camera / video / interactive)");
 }
 
-static OutputMode parseOutput(const std::string& s) {
-    if (s == "none") return OutputMode::NONE;
-    if (s == "visualize") return OutputMode::VISUALIZE;
-    if (s == "gimbal") return OutputMode::GIMBAL;
-    throw std::runtime_error("未知输出模式: " + s + " (可选 none / visualize / gimbal)");
+/// 解析输出模式组合："none" 全关；支持 "+" 或 "," 分隔多个模式
+static OutputConfig parseOutput(const std::string& s) {
+    OutputConfig cfg;
+    auto flush = [&](const std::string& tok) {
+        if (tok.empty()) return;
+        if (tok == "visualize") cfg.visualize = true;
+        else if (tok == "gimbal") cfg.gimbal = true;
+        else if (tok == "none") { cfg.visualize = false; cfg.gimbal = false; }
+        else throw std::runtime_error("未知输出模式: " + tok +
+                                      " (可选 none / visualize / gimbal / visualize+gimbal)");
+    };
+    std::string cur;
+    for (char c : s) {
+        if (c == '+' || c == ',') { flush(cur); cur.clear(); }
+        else cur += c;
+    }
+    flush(cur);
+    return cfg;
 }
 
 static Options parseArgs(int argc, char** argv) {
@@ -145,8 +166,10 @@ int main(int argc, char** argv) {
     std::cout << "  Pipeline: " << (opt.pipeline == PipelineMode::OUTPOST ? "Outpost" : "PowerRune") << std::endl;
     std::cout << "  Input:    " << (opt.input == InputKind::CAMERA ? "Camera"
                                    : opt.input == InputKind::VIDEO ? "Video" : "Interactive") << std::endl;
-    std::cout << "  Output:   " << (opt.output == OutputMode::NONE ? "None"
-                                   : opt.output == OutputMode::VISUALIZE ? "Visualize" : "Gimbal") << std::endl;
+    std::cout << "  Output:   "
+              << (opt.output.visualize ? "Visualize " : "")
+              << (opt.output.gimbal ? "Gimbal " : "")
+              << (!opt.output.visualize && !opt.output.gimbal ? "None" : "") << std::endl;
     std::cout << "========================================" << std::endl;
 
     const RobotConfig& cfg = RobotConfig::instance();
@@ -162,7 +185,7 @@ int main(int argc, char** argv) {
             rp.sequenceMode);
         std::cout << "[main] RobotController constructed (serial threads may fail silently without hardware)." << std::endl;
     };
-    if (opt.input == InputKind::CAMERA || opt.output == OutputMode::GIMBAL) {
+    if (opt.input == InputKind::CAMERA || opt.output.gimbal) {
         ensureRobotController();
     }
 
@@ -197,24 +220,33 @@ int main(int argc, char** argv) {
         (opt.pipeline == PipelineMode::OUTPOST) ? static_cast<IPipeline*>(&outpost_pipeline)
                                                 : static_cast<IPipeline*>(&power_rune_pipeline);
 
-    // ── 输出模式（可随时切换，按需构造）──
-    std::unique_ptr<IOutputMode> output_mode;
-    OutputMode current_output = opt.output;
-    auto makeOutput = [&](OutputMode m) {
-        if (m == OutputMode::NONE) {
-            output_mode = std::make_unique<NoneOutput>();
-        } else if (m == OutputMode::VISUALIZE) {
+    // ── 输出模式组合（visualize 与 gimbal 独立开关，可同时启用；随时可切换）──
+    std::vector<std::unique_ptr<IOutputMode>> output_modes;
+    auto makeOutputs = [&](const OutputConfig& oc) {
+        output_modes.clear();
+        if (oc.visualize) {
             auto vis = std::make_unique<VisualizeOutput>();
             vis->setMode(active_pipeline->mode());
-            output_mode = std::move(vis);
-        } else if (m == OutputMode::GIMBAL) {
-            ensureRobotController();
-            output_mode = std::make_unique<GimbalOutput>(*robot_controller);
+            output_modes.push_back(std::move(vis));
         }
-        current_output = m;
-        std::cout << "[main] Output mode -> " << output_mode->getName() << std::endl;
+        if (oc.gimbal) {
+            ensureRobotController();
+            output_modes.push_back(std::make_unique<GimbalOutput>(*robot_controller));
+        }
+        std::cout << "[main] Output modes:";
+        if (output_modes.empty()) std::cout << " None";
+        for (auto& m : output_modes) std::cout << " " << m->getName();
+        std::cout << std::endl;
     };
-    makeOutput(opt.output);
+    makeOutputs(opt.output);
+
+    // 查找当前 visualize 输出（若存在）
+    auto findVisualize = [&]() -> VisualizeOutput* {
+        for (auto& m : output_modes)
+            if (m->type() == OutputMode::VISUALIZE)
+                return static_cast<VisualizeOutput*>(m.get());
+        return nullptr;
+    };
 
     // ── 运行时切换接口（API；热键在 visualize 窗口内触发）──
     auto switchPipeline = [&](PipelineMode m) {
@@ -225,14 +257,35 @@ int main(int argc, char** argv) {
             ? static_cast<IPipeline*>(&outpost_pipeline)
             : static_cast<IPipeline*>(&power_rune_pipeline);
         active_pipeline->clear();
-        if (current_output == OutputMode::VISUALIZE) {
-            static_cast<VisualizeOutput*>(output_mode.get())->setMode(m);
+        if (VisualizeOutput* vis = findVisualize()) {
+            vis->setMode(m);
         }
         std::cout << "[main] Pipeline -> " << active_pipeline->name() << std::endl;
     };
-    auto switchOutput = [&](OutputMode m) {
-        if (m == current_output) return;
-        makeOutput(m);
+    // 'v'：切换可视化开关（不影响云台）；'g'：切换云台开关（不影响可视化）；'n'：全部关闭
+    auto toggleOutput = [&](OutputMode m) {
+        bool add = true;
+        for (auto it = output_modes.begin(); it != output_modes.end(); ++it) {
+            if ((*it)->type() == m) {
+                output_modes.erase(it);
+                add = false;
+                break;
+            }
+        }
+        if (add) {
+            if (m == OutputMode::VISUALIZE) {
+                auto vis = std::make_unique<VisualizeOutput>();
+                vis->setMode(active_pipeline->mode());
+                output_modes.push_back(std::move(vis));
+            } else if (m == OutputMode::GIMBAL) {
+                ensureRobotController();
+                output_modes.push_back(std::make_unique<GimbalOutput>(*robot_controller));
+            }
+        }
+        std::cout << "[main] Output modes:";
+        if (output_modes.empty()) std::cout << " None";
+        for (auto& om : output_modes) std::cout << " " << om->getName();
+        std::cout << std::endl;
     };
 
     // ── 输入线程：从 input_mode 取帧，送入激活流水线 ──
@@ -280,10 +333,13 @@ int main(int argc, char** argv) {
             }
 
             PipelineResult result = active_pipeline->tryPopFrame(timestamp);
-            output_mode->update(result, robot_controller.get());
+            // 更新全部输出模式（visualize 与 gimbal 可同时启用）
+            for (auto& m : output_modes) {
+                m->update(result, robot_controller.get());
+            }
 
-            if (current_output == OutputMode::VISUALIZE) {
-                const VisualizeOutput* vis = static_cast<const VisualizeOutput*>(output_mode.get());
+            VisualizeOutput* vis = findVisualize();
+            if (vis != nullptr) {
                 if (!vis->display().empty()) {
                     cv::imshow("Unified Auto-Aim", vis->display());
                     int key = cv::waitKey(1) & 0xFF;
@@ -295,11 +351,13 @@ int main(int argc, char** argv) {
                     } else if (key == '2') {
                         switchPipeline(PipelineMode::POWER_RUNE);
                     } else if (key == 'n') {
-                        switchOutput(OutputMode::NONE);
+                        // 全部关闭
+                        output_modes.clear();
+                        std::cout << "[main] Output modes: None" << std::endl;
                     } else if (key == 'v') {
-                        switchOutput(OutputMode::VISUALIZE);
+                        toggleOutput(OutputMode::VISUALIZE);
                     } else if (key == 'g') {
-                        switchOutput(OutputMode::GIMBAL);
+                        toggleOutput(OutputMode::GIMBAL);
                     }
                 } else {
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
