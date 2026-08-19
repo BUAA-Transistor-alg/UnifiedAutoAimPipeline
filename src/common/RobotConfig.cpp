@@ -180,6 +180,7 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.common.inputController.pitchSeqLead        = requireScalar<int>(ic, "pitch_seq_lead", "common.input_controller");
     cfg.common.inputController.fireSeqLead         = requireScalar<int>(ic, "fire_seq_lead", "common.input_controller");
     cfg.common.inputController.pitchBias           = requireScalar<double>(ic, "pitch_bias", "common.input_controller");
+    cfg.common.inputController.yawBias             = requireScalar<double>(ic, "yaw_bias", "common.input_controller");
     cfg.common.inputController.fireAngleLowerLimit = requireScalar<double>(ic, "fire_angle_lower_limit", "common.input_controller");
     cfg.common.inputController.fireAngleLength     = requireScalar<double>(ic, "fire_angle_length", "common.input_controller");
 

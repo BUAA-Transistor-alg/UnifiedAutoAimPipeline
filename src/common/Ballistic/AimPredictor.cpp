@@ -16,6 +16,7 @@ AimPredictor::AimPredictor()
     : extra_predict_time_(RobotConfig::instance().common.predictedBallistic.extraPredictTime),
       dt_control_(RobotConfig::instance().common.robotController.dtControl),
       pitch_bias_(RobotConfig::instance().common.inputController.pitchBias),
+      yaw_bias_(RobotConfig::instance().common.inputController.yawBias),
       prediction_points_(RobotConfig::instance().common.inputController.predictionPoints),
       interpolation_refine_(RobotConfig::instance().common.inputController.interpolationRefine) {
     // 默认线程数 min(硬件核数/2, 4)；为每个工作线程准备一个独立的
@@ -92,7 +93,7 @@ AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
         item.success = r.success;
         item.predicted_point = r.predicted_point;
         item.predict_time = r.predict_time;
-        item.yaw = r.gimbal.yaw + (float)chassis_yaw;   // 叠加底盘 yaw 修正
+        item.yaw = r.gimbal.yaw + (float)chassis_yaw + (float)yaw_bias_;   // 叠加底盘 yaw 修正与 yaw 偏置
         item.pitch = r.gimbal.pitch + (float)pitch_bias_;   // 叠加 pitch 偏置
         item.flight_time = r.gimbal.flight_time;
         item.target_index = r.target_index;

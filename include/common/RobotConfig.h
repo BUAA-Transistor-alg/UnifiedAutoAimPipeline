@@ -90,6 +90,7 @@ public:
         int    pitchSeqLead;        // m：pitch 序列提前数（必须小于总返回点数）
         int    fireSeqLead;         // o：fire 序列提前数
         double pitchBias;           // pitch 轴偏置（弧度）
+        double yawBias;             // yaw 轴偏置（弧度）
         double fireAngleLowerLimit; // fire 判定角度阈值下限（弧度）
         double fireAngleLength;     // fire 判定弧长（米）
     };
