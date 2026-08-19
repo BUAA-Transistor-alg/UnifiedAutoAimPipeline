@@ -124,6 +124,7 @@ common:
     pitch_seq_lead: 15               # m：pitch 序列提前数（必须小于总返回点数），pitch 序列截取第 m 个之后
     fire_seq_lead: 5                 # o：fire 序列提前数，fire 序列截取第 o 个之后
     pitch_bias: 0.01745              # pitch 轴偏置（弧度），输出时叠加（约 1°）
+    yaw_bias: 0.0                    # yaw 轴偏置（弧度），输出时叠加
     fire_angle_lower_limit: 0.03491  # 2° # fire 判定角度阈值下限（弧度）
     fire_angle_length: 0.05          # fire 判定弧长（米）：动态阈值 = length / 目标与 yaw 原点 xy 距离
 

@@ -2,7 +2,7 @@
 //
 // 基于 PredictedBallisticSolver：对目标预测函数生成预测云台控制序列与对应的
 // 瞄准点序列，并保存最新结果供多个输出模式消费：
-//   - GimbalOutput    使用预测云台控制序列（yaw/pitch，已含底盘修正与 pitch 偏置），
+//   - GimbalOutput    使用预测云台控制序列（yaw/pitch，已含底盘修正与 yaw/pitch 偏置），
 //                     自行计算 fire 序列并截取后发送；
 //   - VisualizeOutput 使用瞄准点序列中的第一个值绘制预测瞄准点。
 //
@@ -40,7 +40,7 @@ public:
         bool   success = false;
         cv::Vec3f predicted_point;   // 瞄准点（world 系）
         double predict_time = 0.0;   // 预测时间 = 额外预测时间 + 飞行时间（秒）
-        float  yaw = 0.0f;           // 云台解算 yaw（已叠加底盘修正）
+        float  yaw = 0.0f;           // 云台解算 yaw（已叠加底盘修正与 yaw 偏置）
         float  pitch = 0.0f;         // 云台解算 pitch（已叠加 pitch 偏置）
         double flight_time = 0.0;    // 弹道飞行时间（秒）
         int    target_index = -1;    // 该点对应的目标索引（实际计算点为选中目标，插值/外推继承左侧）
@@ -88,6 +88,7 @@ private:
     double extra_predict_time_;
     double dt_control_;
     double pitch_bias_;
+    double yaw_bias_;
     int    prediction_points_;       // M：实际精确解算点数
     int    interpolation_refine_;    // K：插值细化倍数
 
