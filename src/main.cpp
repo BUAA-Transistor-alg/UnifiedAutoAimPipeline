@@ -299,7 +299,11 @@ static void drawOverlay(cv::Mat& img,
     {
         oss.str(""); oss << std::fixed << std::setprecision(4);
         oss << "target_yaw: " << st.mpc.yaw_target_angle
+            << "  target_vel: " << st.mpc.yaw_target_velocity
             << "  torque: " << st.mpc.yaw_torque;
+        put(oss.str());
+        oss.str(""); oss << "delayed: " << st.mpc.delayed_target
+                         << "  integral: " << st.mpc.integral;
         put(oss.str());
     }
 }
