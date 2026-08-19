@@ -7,6 +7,28 @@
 #include <iostream>
 #include <cmath>
 
+namespace {
+
+// 配置文件 outpost.esekf 段 → ESEKF::Params（字段一一对应）
+ESEKF::Params makeEsekfParams(const RobotConfig::OutpostParams::EsekfParams& p) {
+    ESEKF::Params r;
+    r.positionNoise        = p.positionNoise;
+    r.rotationNoise        = p.rotationNoise;
+    r.measurementNoise     = p.measurementNoise;
+    r.orientationZRegNoise = p.orientationZRegNoise;
+    r.dzNoise              = p.dzNoise;
+    r.dzSearchRange        = p.dzSearchRange;
+    r.dzLimit              = p.dzLimit;
+    r.initPositionNoise    = p.initPositionNoise;
+    r.initOrientationNoise = p.initOrientationNoise;
+    r.initYawRateNoise     = p.initYawRateNoise;
+    r.initDz2Noise         = p.initDz2Noise;
+    r.initDz3Noise         = p.initDz3Noise;
+    return r;
+}
+
+} // namespace
+
 // ==================== 阶段上下文构造 ====================
 
 OutpostPipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)
@@ -14,14 +36,16 @@ OutpostPipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)
           camera.cameraMatrix, camera.distCoeffs,
           ImageResolution{camera.width, camera.height})) {}
 
-OutpostPipeline::Stage5Ctx::Stage5Ctx(const RobotConfig::CameraParams& camera)
+OutpostPipeline::Stage5Ctx::Stage5Ctx(const RobotConfig::CameraParams& camera,
+                                      const RobotConfig::OutpostParams::EsekfParams& esekf_params)
     : tree(std::make_shared<RobotTfTree>()),
       camera_proj(std::make_shared<CameraProjection>(
           camera.cameraMatrix, camera.distCoeffs,
           ImageResolution{camera.width, camera.height})),
       esekf(std::make_unique<ESEKF>(tree, camera_proj,
                                     OutpostModel::OUTPOST_POINTS_3D_LIST,
-                                    OutpostModel::OUTPOST_TARGET_CENTER_3D_LIST)) {}
+                                    OutpostModel::OUTPOST_TARGET_CENTER_3D_LIST,
+                                    makeEsekfParams(esekf_params))) {}
 
 // ==================== 构造 ====================
 
@@ -31,7 +55,7 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
     : queue_max_sizes_(queue_max_sizes)
     , max_delay_seconds_(max_delay_seconds)
     , s4_(camera)
-    , s5_(camera)
+    , s5_(camera, RobotConfig::instance().outpost.esekf)
 {
     const RobotConfig& cfg = RobotConfig::instance();
 

@@ -7,7 +7,8 @@
 ESEKF::ESEKF(std::shared_ptr<RobotTfTree> tf_tree,
              std::shared_ptr<CameraProjection> camera_proj,
              const std::vector<std::vector<cv::Point3f>>& points_3d_list,
-             const std::vector<cv::Point3f>& target_centers_3d_list)
+             const std::vector<cv::Point3f>& target_centers_3d_list,
+             const Params& params)
     : tf_tree_(tf_tree),
       camera_proj_(camera_proj),
       points_3d_list_(points_3d_list),
@@ -16,7 +17,19 @@ ESEKF::ESEKF(std::shared_ptr<RobotTfTree> tf_tree,
       orientation_(Eigen::Quaterniond::Identity()),
       yaw_rate_(0.0),
       dz2_(0.0), dz3_(0.0),
-      dz2_initialized_(false), dz3_initialized_(false) {
+      dz2_initialized_(false), dz3_initialized_(false),
+      position_noise_(params.positionNoise),
+      rotation_noise_(params.rotationNoise),
+      measurement_noise_(params.measurementNoise),
+      orientation_z_reg_noise_(params.orientationZRegNoise),
+      dz_noise_(params.dzNoise),
+      dz_search_range_(params.dzSearchRange),
+      dz_limit_(params.dzLimit),
+      init_position_noise_(params.initPositionNoise),
+      init_orientation_noise_(params.initOrientationNoise),
+      init_yaw_rate_noise_(params.initYawRateNoise),
+      init_dz2_noise_(params.initDz2Noise),
+      init_dz3_noise_(params.initDz3Noise) {
     CV_Assert(!points_3d_list_.empty());
     const size_t np = points_3d_list_[0].size();
     for (const auto& p : points_3d_list_) CV_Assert(p.size() == np);
@@ -33,9 +46,9 @@ void ESEKF::init(const cv::Vec3d& position, const cv::Mat& rotation_matrix,
     P_ = Eigen::Matrix<double, 9, 9>::Identity();
     P_.topLeftCorner<3, 3>() *= init_position_noise_;
     P_.block<3, 3>(3, 3)   *= init_orientation_noise_;
-    P_(6, 6) = 1.0;     // 绕 z 轴旋转速度的初始不确定性
-    P_(7, 7) = 0.01;
-    P_(8, 8) = 0.01;
+    P_(6, 6) = init_yaw_rate_noise_;   // 绕 z 轴旋转速度的初始不确定性
+    P_(7, 7) = init_dz2_noise_;
+    P_(8, 8) = init_dz3_noise_;
 }
 
 void ESEKF::reset() {

@@ -138,6 +138,21 @@ outpost:
     device: "GPU"                          # 推理设备（CPU / GPU / ...）
   observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 ESEKF（秒）
 
+  # ── ESEKF 误差状态扩展卡尔曼滤波参数 ──
+  esekf:
+    position_noise: 100.0         # 位置过程噪声（Q 位置块）
+    rotation_noise: 10.0          # 姿态过程噪声（Q 姿态块）
+    measurement_noise: 400.0      # 观测噪声（重投影误差 R）
+    orientation_z_reg_noise: 0.0001  # 姿态 z 轴正则化观测噪声
+    dz_noise: 0.1                 # dz 偏移过程噪声（Q(7,7)/Q(8,8)）
+    dz_search_range: 0.5          # dz 黄金分割搜索范围（米）
+    dz_limit: 0.3                 # dz 偏移限幅（米，|dz| 上限）
+    init_position_noise: 1.0      # 初始化位置噪声系数（P 位置块）
+    init_orientation_noise: 0.1   # 初始化姿态噪声系数（P 姿态块）
+    init_yaw_rate_noise: 1.0      # 初始化旋转速度不确定性（P(6,6)）
+    init_dz2_noise: 0.01          # 初始化 dz2 不确定性（P(7,7)）
+    init_dz3_noise: 0.01          # 初始化 dz3 不确定性（P(8,8)）
+
 # ════════════════════════════════════════════════════════════
 # power_rune — PowerRune 流水线独占参数
 # ════════════════════════════════════════════════════════════

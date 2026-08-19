@@ -101,6 +101,23 @@ public:
         std::string modelPath;              // 推理模型路径
         std::string device;                 // 推理设备
         double observationLostTimeoutSec;   // 连续观测丢失多久后重置滤波器（秒）
+
+        // ESEKF 误差状态扩展卡尔曼滤波参数
+        struct EsekfParams {
+            double positionNoise;           // 位置过程噪声（Q 位置块）
+            double rotationNoise;           // 姿态过程噪声（Q 姿态块）
+            double measurementNoise;        // 观测噪声（重投影误差 R）
+            double orientationZRegNoise;    // 姿态 z 轴正则化观测噪声
+            double dzNoise;                 // dz 偏移过程噪声（Q(7,7)/Q(8,8)）
+            double dzSearchRange;           // dz 黄金分割搜索范围（米）
+            double dzLimit;                 // dz 偏移限幅（米，|dz| 上限）
+            double initPositionNoise;       // 初始化位置噪声系数（P 位置块）
+            double initOrientationNoise;    // 初始化姿态噪声系数（P 姿态块）
+            double initYawRateNoise;        // 初始化旋转速度不确定性（P(6,6)）
+            double initDz2Noise;            // 初始化 dz2 不确定性（P(7,7)）
+            double initDz3Noise;            // 初始化 dz3 不确定性（P(8,8)）
+        };
+        EsekfParams esekf;
     };
 
     // PowerRune 流水线独占参数

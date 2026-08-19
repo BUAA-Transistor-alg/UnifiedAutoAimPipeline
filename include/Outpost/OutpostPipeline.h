@@ -179,7 +179,8 @@ private:
         bool esekf_initialized = false;
         std::chrono::steady_clock::time_point last_observation_time;
         bool has_observation_time = false;
-        explicit Stage5Ctx(const RobotConfig::CameraParams& camera);
+        explicit Stage5Ctx(const RobotConfig::CameraParams& camera,
+                           const RobotConfig::OutpostParams::EsekfParams& esekf_params);
     } s5_;
 
     // ==================== PipelineStage 实例 ====================

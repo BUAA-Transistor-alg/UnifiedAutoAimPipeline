@@ -213,6 +213,22 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.outpost.device    = requireScalar<std::string>(oinf, "device", "outpost.inference");
     cfg.outpost.observationLostTimeoutSec = requireScalar<double>(op, "observation_lost_timeout", "outpost");
 
+    // ── outpost.esekf（ESEKF 滤波参数）──
+    const YAML::Node& ek = op["esekf"];
+    if (!ek || !ek.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'outpost.esekf' 配置段");
+    cfg.outpost.esekf.positionNoise        = requireScalar<double>(ek, "position_noise", "outpost.esekf");
+    cfg.outpost.esekf.rotationNoise        = requireScalar<double>(ek, "rotation_noise", "outpost.esekf");
+    cfg.outpost.esekf.measurementNoise     = requireScalar<double>(ek, "measurement_noise", "outpost.esekf");
+    cfg.outpost.esekf.orientationZRegNoise = requireScalar<double>(ek, "orientation_z_reg_noise", "outpost.esekf");
+    cfg.outpost.esekf.dzNoise              = requireScalar<double>(ek, "dz_noise", "outpost.esekf");
+    cfg.outpost.esekf.dzSearchRange        = requireScalar<double>(ek, "dz_search_range", "outpost.esekf");
+    cfg.outpost.esekf.dzLimit              = requireScalar<double>(ek, "dz_limit", "outpost.esekf");
+    cfg.outpost.esekf.initPositionNoise    = requireScalar<double>(ek, "init_position_noise", "outpost.esekf");
+    cfg.outpost.esekf.initOrientationNoise = requireScalar<double>(ek, "init_orientation_noise", "outpost.esekf");
+    cfg.outpost.esekf.initYawRateNoise     = requireScalar<double>(ek, "init_yaw_rate_noise", "outpost.esekf");
+    cfg.outpost.esekf.initDz2Noise         = requireScalar<double>(ek, "init_dz2_noise", "outpost.esekf");
+    cfg.outpost.esekf.initDz3Noise         = requireScalar<double>(ek, "init_dz3_noise", "outpost.esekf");
+
     // ══════════════ power_rune（独占参数） ══════════════
     const YAML::Node& pr = root["power_rune"];
     if (!pr || !pr.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'power_rune' 配置段");

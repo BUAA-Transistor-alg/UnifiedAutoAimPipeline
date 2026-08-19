@@ -20,10 +20,33 @@ class ESEKF {
 public:
     using TimePoint = std::chrono::steady_clock::time_point;
 
+    // 滤波可调参数（默认值与历史硬编码值一致；运行时由 config/outpost.esekf 覆盖）
+    struct Params {
+        double positionNoise;        // 位置过程噪声（Q 位置块）
+        double rotationNoise;        // 姿态过程噪声（Q 姿态块）
+        double measurementNoise;     // 观测噪声（重投影误差 R）
+        double orientationZRegNoise; // 姿态 z 轴正则化观测噪声
+        double dzNoise;              // dz 偏移过程噪声（Q(7,7)/Q(8,8)）
+        double dzSearchRange;        // dz 黄金分割搜索范围（米）
+        double dzLimit;              // dz 偏移限幅（米，|dz| 上限）
+        double initPositionNoise;    // 初始化位置噪声系数（P 位置块）
+        double initOrientationNoise; // 初始化姿态噪声系数（P 姿态块）
+        double initYawRateNoise;     // 初始化旋转速度不确定性（P(6,6)）
+        double initDz2Noise;         // 初始化 dz2 不确定性（P(7,7)）
+        double initDz3Noise;         // 初始化 dz3 不确定性（P(8,8)）
+
+        Params()
+            : positionNoise(100.0), rotationNoise(10.0), measurementNoise(400.0),
+              orientationZRegNoise(1e-4), dzNoise(0.1), dzSearchRange(0.5), dzLimit(0.3),
+              initPositionNoise(1.0), initOrientationNoise(0.1), initYawRateNoise(1.0),
+              initDz2Noise(0.01), initDz3Noise(0.01) {}
+    };
+
     ESEKF(std::shared_ptr<RobotTfTree> tf_tree,
           std::shared_ptr<CameraProjection> camera_proj,
           const std::vector<std::vector<cv::Point3f>>& points_3d_list,
-          const std::vector<cv::Point3f>& target_centers_3d_list);
+          const std::vector<cv::Point3f>& target_centers_3d_list,
+          const Params& params = Params{});
 
     void init(const cv::Vec3d& position, const cv::Mat& rotation_matrix, const TimePoint& t);
     void reset();
@@ -118,15 +141,18 @@ private:
 
     Eigen::Matrix<double, 9, 9> P_;
 
-    double position_noise_    = 100.0;
-    double rotation_noise_    = 10.0;
-    double measurement_noise_ = 400.0;
-    double orientation_z_reg_noise_ = 1e-4;
-    double dz_noise_ = 0.1;
-    double dz_search_range_ = 0.5;
-    double dz_limit_ = 0.3;
-    double init_position_noise_ = 1.0;     // 位置直接观测的噪声系数
-    double init_orientation_noise_ = 0.1;  // 姿态直接观测的噪声系数
+    double position_noise_;
+    double rotation_noise_;
+    double measurement_noise_;
+    double orientation_z_reg_noise_;
+    double dz_noise_;
+    double dz_search_range_;
+    double dz_limit_;
+    double init_position_noise_;
+    double init_orientation_noise_;
+    double init_yaw_rate_noise_;
+    double init_dz2_noise_;
+    double init_dz3_noise_;
 };
 
 #endif // ESEKF_HPP
