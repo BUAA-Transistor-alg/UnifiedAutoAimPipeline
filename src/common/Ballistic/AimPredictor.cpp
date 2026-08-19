@@ -140,6 +140,8 @@ AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
     res.valid = res.items.front().success;             // 第一个返回点 = 实际计算点 1
     res.first_point = res.items.front().predicted_point;
     res.first_predict_time = res.items.front().predict_time;
+    // 积分补偿开关：仅在预测有效且 MCU 自瞄开关打开时启用
+    res.integral_enable = res.valid && (st.mcu.auto_aim_switch == 1);
 
     {
         std::lock_guard<std::mutex> lock(mtx_);

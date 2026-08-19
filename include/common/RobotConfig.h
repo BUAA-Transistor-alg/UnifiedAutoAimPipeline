@@ -75,6 +75,7 @@ public:
         double R;                // MPC 控制代价
         double Rd;               // MPC 控制变化率代价
         int    maxIter;          // MPC 迭代上限
+        double integralGain;     // yaw 力矩积分补偿比例系数
         // ── MCU 数据线性映射标定参数（McuDataPreprocessor::LinearParams，当前标定默认值）──
         double sendPitchScale;   // imu_euler_pitch → pitch_target_angle（发送）
         double sendPitchOffset;  // 发送偏移

@@ -109,6 +109,7 @@ common:
     R: 0.01                     # MPC 控制代价
     Rd: 0.1                     # MPC 控制变化率代价
     max_iter: 30                # MPC 迭代上限
+    integral_gain: 0.01         # yaw 力矩积分补偿比例系数
     # ── MCU 数据线性映射标定参数（McuDataPreprocessor::LinearParams，当前标定默认值）──
     send_pitch_scale: 20.523245    # imu_euler_pitch → pitch_target_angle（发送）
     send_pitch_offset: 0.475049    # 发送偏移

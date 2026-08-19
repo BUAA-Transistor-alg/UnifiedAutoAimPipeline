@@ -358,6 +358,7 @@ int main(int argc, char** argv) {
         robot_controller = std::make_unique<RobotController>(
             rp.dtControl, rp.mpcPredN, rp.J, rp.tauC, rp.b, rp.tauD,
             rp.maxTorque, rp.maxTorqueRate, rp.Q, rp.R, rp.Rd, rp.maxIter,
+            rp.integralGain,
             McuDataPreprocessor::LinearParams{
                 rp.sendPitchScale, rp.sendPitchOffset,
                 rp.recvPitchScale, rp.recvPitchOffset},

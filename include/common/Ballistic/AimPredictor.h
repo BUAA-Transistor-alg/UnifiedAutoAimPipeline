@@ -49,6 +49,8 @@ public:
     // 预测结果：预测云台控制序列 + 瞄准点序列
     struct Result {
         bool valid = false;          // 首个返回点（实际计算点）解算是否有效
+        bool integral_enable = false;  // 本帧 yaw 力矩积分补偿是否启用：
+                                       // 仅当 valid 且 st.mcu.auto_aim_switch == 1 时为 true
         std::vector<Item> items;     // 总返回点数 = (M-1)*K + 1
         cv::Vec3f first_point;       // 瞄准点序列第一个值（可视化用）
         double first_predict_time = 0.0;

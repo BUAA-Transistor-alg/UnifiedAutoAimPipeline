@@ -94,7 +94,8 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*)
         last_.fire_seq        = fire_out;
         last_.mpc_available   = mpc_available;
         rc_.set(/*auto_aim_enable=*/true, /*yaw_torque_only_mode=*/false,
-                yaw_out, pitch_out, fire_out);
+                yaw_out, pitch_out, fire_out,
+                /*integral_enable=*/seq.integral_enable);
     } else {
         // 预测不可用：保持模式（自瞄关闭，目标保持当前严格反解位置）。
         // 序列模式下用单元素序列调用序列 set。
@@ -104,6 +105,7 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*)
         rc_.set(/*auto_aim_enable=*/false, /*yaw_torque_only_mode=*/false,
                 std::vector<double>{hold_yaw},
                 std::vector<double>{hold_pitch},
-                std::vector<bool>{false});
+                std::vector<bool>{false},
+                /*integral_enable=*/false);
     }
 }

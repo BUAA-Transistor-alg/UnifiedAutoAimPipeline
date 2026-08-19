@@ -167,6 +167,7 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.common.robotController.R             = requireScalar<double>(rc, "R", "common.robot_controller");
     cfg.common.robotController.Rd            = requireScalar<double>(rc, "Rd", "common.robot_controller");
     cfg.common.robotController.maxIter       = requireScalar<int>(rc, "max_iter", "common.robot_controller");
+    cfg.common.robotController.integralGain  = requireScalar<double>(rc, "integral_gain", "common.robot_controller");
     cfg.common.robotController.sendPitchScale  = requireScalar<double>(rc, "send_pitch_scale", "common.robot_controller");
     cfg.common.robotController.sendPitchOffset = requireScalar<double>(rc, "send_pitch_offset", "common.robot_controller");
     cfg.common.robotController.recvPitchScale  = requireScalar<double>(rc, "recv_pitch_scale", "common.robot_controller");
