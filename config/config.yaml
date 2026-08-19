@@ -21,18 +21,30 @@ common:
     min_free_space_mb: 16384         # 剩余空间低于该值（MB）时停止写入（0 = 不检查）
 
   # ── 变换树各节点相对其父节点的固定偏移（单位：米）──
-  tf:
-    yaw_joint_z_offset: 0.32      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
-    pitch_joint_y_offset: 0.0     # pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）
+  # tf: # 小步参数
+  #   yaw_joint_z_offset: 0.32      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
+  #   pitch_joint_y_offset: 0.0     # pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）
+  #   imu_offset_x: 0.0             # imu 相对 head 的 x 偏移 // head 节点实际上为 picth轴 和 一个垂直于picth轴且经过yaw轴的面 的交点位置
+  #   imu_offset_y: -0.03           # imu 相对 head 的 y 偏移
+  #   imu_offset_z: 0.13            # imu 相对 head 的 z 偏移
+  #   camera_offset_x: 0.0          # camera 相对 head 的 x 偏移
+  #   camera_offset_y: 0.0          # camera 相对 head 的 y 偏移
+  #   camera_offset_z: 0.1          # camera 相对 head 的 z 偏移
+  #   muzzle_offset_x: 0.0          # muzzle 相对 head 的 x 偏移
+  #   muzzle_offset_y: 0.15         # muzzle 相对 head 的 y 偏移
+  #   muzzle_offset_z: 0.0          # muzzle 相对 head 的 z 偏移
+  tf: # 大步参数 # 粗略估计
+    yaw_joint_z_offset: 0.40      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
+    pitch_joint_y_offset: 0.01     # pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）
     imu_offset_x: 0.0             # imu 相对 head 的 x 偏移 // head 节点实际上为 picth轴 和 一个垂直于picth轴且经过yaw轴的面 的交点位置
-    imu_offset_y: -0.03           # imu 相对 head 的 y 偏移
-    imu_offset_z: 0.13            # imu 相对 head 的 z 偏移
-    camera_offset_x: 0.0          # camera 相对 head 的 x 偏移
-    camera_offset_y: 0.0          # camera 相对 head 的 y 偏移
-    camera_offset_z: 0.1          # camera 相对 head 的 z 偏移
+    imu_offset_y: 0.02           # imu 相对 head 的 y 偏移
+    imu_offset_z: 0.10            # imu 相对 head 的 z 偏移
+    camera_offset_x: 0.05          # camera 相对 head 的 x 偏移
+    camera_offset_y: 0.15          # camera 相对 head 的 y 偏移
+    camera_offset_z: 0.05          # camera 相对 head 的 z 偏移
     muzzle_offset_x: 0.0          # muzzle 相对 head 的 x 偏移
-    muzzle_offset_y: 0.15         # muzzle 相对 head 的 y 偏移
-    muzzle_offset_z: 0.0          # muzzle 相对 head 的 z 偏移
+    muzzle_offset_y: 0.20         # muzzle 相对 head 的 y 偏移
+    muzzle_offset_z: 0.02          # muzzle 相对 head 的 z 偏移
 
   # ── 相机内参（两流水线共用，按输入模式自动选择）──
   # camera_mode：--input camera（实机相机，含 IP / 曝光 / 增益）
@@ -87,9 +99,9 @@ common:
     sequence_mode: true         # 序列输入模式（true=序列 set / false=单目标 set）
     dt_control: 0.01            # 控制周期（秒，100Hz）
     mpc_pred_n: 20              # MPC 预测步数
-    J: 0.016541                 # yaw 轴转动惯量
-    tau_c: 0.097297             # 库仑摩擦
-    b: 0.0321                   # 粘滞摩擦系数
+    J: 0.024986                 # yaw 轴转动惯量
+    tau_c: 0.122514             # 库仑摩擦
+    b: 0.025648                   # 粘滞摩擦系数
     tau_d: 0.0                  # 常数扰动
     max_torque: 1.0             # 最大力矩（N·m）
     max_torque_rate: 40.0       # 最大力矩变化率（N·m/s）
