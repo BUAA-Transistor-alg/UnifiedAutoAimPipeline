@@ -120,7 +120,7 @@ private:
 
     double position_noise_    = 100.0;
     double rotation_noise_    = 10.0;
-    double measurement_noise_ = 40.0;
+    double measurement_noise_ = 400.0;
     double orientation_z_reg_noise_ = 1e-4;
     double dz_noise_ = 0.1;
     double dz_search_range_ = 0.5;

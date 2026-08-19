@@ -52,16 +52,16 @@ common:
     device_ip: "192.168.10.10"    # 相机设备 IP
     net_ip: "192.168.10.25"       # 本机网口 IP
     exposure: 2000.0              # 曝光时间（微秒）
-    gain: 23.0                    # 增益
+    gain: 16.0                    # 增益
     resolution:
       width: 1440                 # 图像宽（像素）
       height: 1080                # 图像高（像素）
     # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
-    camera_matrix: [2145.79634, 0.0, 707.253641,
-                    0.0, 2144.40959, 561.739611,
-                    0.0, 0.0, 1.0]
-    # 畸变系数（k1, k2, p1, p2, k3）
-    dist_coeffs: [-0.39408536, 0.09804124, 0.00156227, 0.00072548, 0.52671345]
+    camera_matrix: # 相机内参矩阵
+      [1.31280460e+03, 0.00000000e+00, 6.38736364e+02, 
+      0.00000000e+00, 1.31309593e+03, 5.34133502e+02, 
+      0.00000000e+00, 0.00000000e+00, 1.00000000e+00]
+    dist_coeffs: [-0.05392145, -0.02516686, -0.00222499, -0.00149047,  0.43693918] # 畸变系数
 
   # video_mode：--input video / interactive（录制视频 / 交互图片，无网络/曝光参数）
   video_mode:
@@ -142,7 +142,7 @@ outpost:
 power_rune:
   inference:
     model_path: "Model/PowerRune/SECDO-plussmall.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
-    device: "GPU"                                       # 推理设备（CPU / GPU / ...）
+    device: "CPU"                                       # 推理设备（CPU / GPU / ...）
     manual_nms: true            # true: 模型为无 NMS 的原始输出，需手动 NMS；false: NMS 已内嵌
     conf_threshold: 0.5         # 置信度阈值
     max_batch: 4                # 推理最大批量
