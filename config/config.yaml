@@ -22,7 +22,7 @@ common:
       # 相机输入模式（CameraInputMode）extra_info 延迟（秒）：
       # 后台线程持续采样 RobotController::getState() 并维护延迟队列，返回给流水线的
       # extra_info 为相对当前时刻 extra_info_delay 前的队头数据（0.0 = 最新状态）
-      extra_info_delay: 0.0
+      extra_info_delay: 0.019587
       device_ip: "192.168.10.10"    # 相机设备 IP
       net_ip: "192.168.10.25"       # 本机网口 IP
       exposure: 2000.0              # 曝光时间（微秒）
@@ -95,7 +95,7 @@ common:
 
   # ── 预测弹道解算参数 ──
   predicted_ballistic:
-    extra_predict_time: 0.27      # 额外预测时间（秒），叠加在弹道飞行时间之上
+    extra_predict_time: 0.27      # 额外预测时间（秒），叠加在弹道飞行时间之上 # 待调
     max_iterations: 5             # 飞行时间迭代上限
     time_error_tolerance: 0.005    # 迭代提前停止的时间误差容差（秒）
 
@@ -150,7 +150,7 @@ outpost:
   esekf:
     position_noise: 100.0         # 位置过程噪声（Q 位置块）
     rotation_noise: 10.0          # 姿态过程噪声（Q 姿态块）
-    measurement_noise: 400.0      # 观测噪声（重投影误差 R）
+    measurement_noise: 40.0      # 观测噪声（重投影误差 R）
     orientation_z_reg_noise: 0.0001  # 姿态 z 轴正则化观测噪声
     dz_noise: 0.1                 # dz 偏移过程噪声（Q(7,7)/Q(8,8)）
     dz_search_range: 0.5          # dz 黄金分割搜索范围（米）

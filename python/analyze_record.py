@@ -397,8 +397,8 @@ def main():
     parser.add_argument("record_dir", help="Record 会话目录（record_YYYYmmdd_HHMMSS，含 video_* 与 frame_info_*）")
     parser.add_argument("--mode", choices=["camera", "video"], default="camera",
                         help="config.yaml 中使用的相机参数段（默认 camera_mode）")
-    parser.add_argument("--precision", type=float, default=0.1,
-                        help="自动搜索 shift 的小数精度（默认 0.1 帧）")
+    parser.add_argument("--precision", type=float, default=0.01,
+                        help="自动搜索 shift 的小数精度（默认 0.01 帧）")
     parser.add_argument("--show", action="store_true", help="额外交互显示图像")
     parser.add_argument("--output", default=None, help="结果图保存路径")
     args = parser.parse_args()
