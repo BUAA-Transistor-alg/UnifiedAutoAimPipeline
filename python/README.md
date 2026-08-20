@@ -18,8 +18,9 @@ python3 python/analyze_record.py <record_dir>
 # 换用 video_mode 相机参数（无畸变标定 / 模拟相机录制）
 python3 python/analyze_record.py <record_dir> --mode video
 
-# 文本数据平移 3 帧（视频帧 k 对应文本行 k-3）；负数同样允许（如 --shift -2 → k+2）
-python3 python/analyze_record.py <record_dir> --shift 3
+# 帧平移量自动搜索（视频帧 k 对应文本行 k-shift），默认小数精度 0.1 帧；
+# 可用 --precision 调整小数搜索精度（如 0.05）
+python3 python/analyze_record.py <record_dir> --precision 0.1
 
 # 额外交互显示 + 自定义输出路径
 python3 python/analyze_record.py <record_dir> --show --output /path/to/out.png
@@ -33,8 +34,13 @@ python3 python/analyze_record.py <record_dir> --show --output /path/to/out.png
   `CameraProjection::pnpRvecToEuler` 相同的约定取 cam 系欧拉角
   （`yaw = atan2(-R02, R22)`、`pitch = asin(-R12)`、`roll = atan2(R10, R11)`）。
 - 未成功解析的帧使用前一帧数据（再往前推；直到第一帧都无有效值则为 0）。
-- `--shift N`：文本数据帧平移量，视频帧 k 对应文本行 k-N（N 可为负数，默认 0），
-  再以相同方法（min 公共长度）计算公共段；默认 0。
+- 帧平移量自动搜索：不再手动指定 `--shift`。在
+  `|shift| <= min(视频帧数, 文本行数)/2` 范围内先整数粗搜，再在最佳整数附近按
+  `--precision`（默认 0.1）细化，目标为使「成功解析帧上的误差 MSE」（先做与绘图一致的
+  均值对齐）最小；小数 shift 用线性插值采样 IMU yaw 曲线（文本位置 k-shift），
+  并抛弃插值窗口越出文本数据范围的端点帧。
+- 平均 dt：取最终公共段（计算范围）对应文本行内所有帧 dt 的均值；
+  结果图标题与汇总输出同时显示最优 shift 与 `shift × 平均 dt`（时间量，单位秒）。
 - `imu_euler_yaw`（frame_info 第 5 列）先解缠绕，再整体平移一个常数，
   使「视频成功解析的点」上两条曲线的平均值相等，然后绘制。
 - 误差曲线 = 平移后 imu yaw − 棋盘格 yaw。
