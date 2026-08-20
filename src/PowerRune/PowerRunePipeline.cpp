@@ -18,6 +18,8 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
                                      const RobotConfig::CameraParams& camera)
     : queue_max_sizes_(queue_max_sizes)
     , max_delay_seconds_(max_delay_seconds)
+    , s1_(RobotConfig::instance().powerRune.inputWidth,
+          RobotConfig::instance().powerRune.inputHeight)
     , s4_(camera)
 {
     const RobotConfig& cfg = RobotConfig::instance();
@@ -28,15 +30,19 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
         : PathResolver::resolvePath(cfg.powerRune.modelPath);
 
     conf_threshold_ = cfg.powerRune.confThreshold;
-    s3_.postprocessor = std::make_unique<YoloPose::YoloPosePostprocessor>(cfg.powerRune.manualNms);
+    s3_.postprocessor = std::make_unique<YoloPose::YoloPosePostprocessor>(
+        cfg.powerRune.manualNms,
+        cfg.powerRune.inputWidth, cfg.powerRune.inputHeight);
     s2_.infer_p = std::make_unique<YoloPose::YoloPoseInfer>(
-        model_path, cfg.powerRune.device, cfg.powerRune.maxBatch);
+        model_path, cfg.powerRune.device,
+        cfg.powerRune.inputWidth, cfg.powerRune.inputHeight, cfg.powerRune.maxBatch);
 
     std::cout << "========================================" << std::endl;
     std::cout << "PowerRune Pipeline (5 stages)" << std::endl;
     std::cout << "----------------------------------------" << std::endl;
     std::cout << "    Model: " << model_path << std::endl;
     std::cout << "    Device: " << cfg.powerRune.device << std::endl;
+    std::cout << "    Input resolution: " << cfg.powerRune.inputWidth << "x" << cfg.powerRune.inputHeight << std::endl;
     std::cout << "    Manual NMS: " << (cfg.powerRune.manualNms ? "true" : "false") << std::endl;
     std::cout << "    Confidence threshold: " << conf_threshold_ << std::endl;
     std::cout << "    Max delay: " << max_delay_seconds_ << "s" << std::endl;

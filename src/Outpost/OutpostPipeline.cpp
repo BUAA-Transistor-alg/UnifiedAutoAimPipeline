@@ -54,6 +54,8 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
                                  const RobotConfig::CameraParams& camera)
     : queue_max_sizes_(queue_max_sizes)
     , max_delay_seconds_(max_delay_seconds)
+    , s1_(RobotConfig::instance().outpost.inputWidth,
+          RobotConfig::instance().outpost.inputHeight)
     , s4_(camera)
     , s5_(camera, RobotConfig::instance().outpost.esekf)
 {
@@ -65,14 +67,17 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
         : PathResolver::resolvePath(cfg.outpost.modelPath);
 
     s2_.infer_p = std::make_unique<OutpostDetect::OutpostInfer>(
-        model_path, cfg.outpost.device, MAX_INFERENCE_BATCH);
-    s3_.postprocessor = std::make_unique<OutpostDetect::OutpostPostprocessor>();
+        model_path, cfg.outpost.device,
+        cfg.outpost.inputWidth, cfg.outpost.inputHeight, MAX_INFERENCE_BATCH);
+    s3_.postprocessor = std::make_unique<OutpostDetect::OutpostPostprocessor>(
+        cfg.outpost.inputWidth, cfg.outpost.inputHeight);
 
     std::cout << "========================================" << std::endl;
     std::cout << "Outpost Pipeline (5 stages)" << std::endl;
     std::cout << "----------------------------------------" << std::endl;
     std::cout << "    Model: " << model_path << std::endl;
     std::cout << "    Device: " << cfg.outpost.device << std::endl;
+    std::cout << "    Input resolution: " << cfg.outpost.inputWidth << "x" << cfg.outpost.inputHeight << std::endl;
     std::cout << "    Confidence threshold: " << conf_threshold_ << std::endl;
     std::cout << "    NMS threshold: " << nms_threshold_ << std::endl;
     std::cout << "    Max delay: " << max_delay_seconds_ << "s" << std::endl;

@@ -1,7 +1,7 @@
 // OutpostPipeline.h — 前哨站感知流水线（5 阶段，统一 IPipeline 接口）
 //
 // 五阶段（各有独立工作线程，由 PipelineStage 模板管理）：
-//   1. 预处理          — OutpostPreprocessor 并行 resize 640×640
+//   1. 预处理          — OutpostPreprocessor 并行 resize（分辨率取 config outpost.inference.resolution）
 //   2. 推理            — OutpostInfer 动态 batch 1..N（编译 + 预热，公共 InferCore）
 //   3. 后处理          — OutpostPostprocessor 并行解码 + NMS
 //   4. PnP + 坐标转换  — 每物体 solvePnP + world 转换 + 重投影；初始化 PnP（面 0）
@@ -52,7 +52,7 @@ struct OutpostPipelineData {
 
     // ==================== 阶段1：预处理 ====================
     struct Stage1Data {
-        cv::Mat frame;  // 预处理后图像 (640×640)
+        cv::Mat frame;  // 预处理后图像（outpost.inference.resolution 指定尺寸）
     } stage1;
 
     // ==================== 阶段2：推理 ====================
@@ -152,6 +152,8 @@ private:
     /// 阶段1上下文：预处理
     struct Stage1Ctx {
         OutpostDetect::OutpostPreprocessor preprocessor;
+        explicit Stage1Ctx(int input_width, int input_height)
+            : preprocessor(input_width, input_height) {}
     } s1_;
 
     /// 阶段2上下文：推理

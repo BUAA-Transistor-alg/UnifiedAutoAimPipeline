@@ -1,6 +1,7 @@
 // OpenvinoInfer.h — 前哨站检测推理封装（预处理/推理使用公共 InferCore，解码为 Outpost 特有）
 //
-// 模型：输入 (bs, 3, 640, 640)，输出 (bs, 25200, 22)：
+// 模型：输入 (bs, 3, W, H)，输出 (bs, 25200, 22)；输入分辨率由 config.yaml
+// 的 outpost.inference.resolution 提供（默认当前模型 640×640）：
 //   col 0-7    4 个关键点 xy（左上/左下/右下/右上）
 //   col 8      obj 置信度（需 sigmoid）
 //   col 9-12   颜色独热（0=red, 1=blue, 2/3=丢弃）
@@ -21,8 +22,6 @@
 namespace OutpostDetect {
 
 // ---- 共享常量（与当前模型对齐） ----
-constexpr int INPUT_WIDTH   = 640;
-constexpr int INPUT_HEIGHT  = 640;
 constexpr int NUM_ANCHORS   = 25200;
 constexpr int OUTPUT_DIM    = 22;    // 模型输出列数（8 kpts + 1 conf + 4 color + 9 class）
 constexpr int NUM_COLOR     = 4;
@@ -52,10 +51,11 @@ using InferenceOutput = Infer::InferenceOutput;
 // ==========================================================================
 class OutpostPreprocessor {
 public:
-    /// @param num_threads  内部 TaskPool 线程数, 0 = 自动
-    explicit OutpostPreprocessor(int num_threads = 0);
+    /// @param input_width/input_height  模型输入分辨率（像素，须与模型输入一致）
+    /// @param num_threads               内部 TaskPool 线程数, 0 = 自动
+    OutpostPreprocessor(int input_width, int input_height, int num_threads = 0);
 
-    /// 批量预处理：将原始图像 resize 到 INPUT_WIDTH × INPUT_HEIGHT
+    /// 批量预处理：将原始图像 resize 到 input_width × input_height
     void preprocess(const std::vector<const cv::Mat*>& imgs,
                     std::vector<cv::Mat*>& out);
 
@@ -71,13 +71,15 @@ public:
     OutpostInfer(const std::string& model_path_xml,
                  const std::string& model_path_bin,
                  const std::string& device,
+                 int input_width, int input_height,
                  int max_batch = 4);
 
     OutpostInfer(const std::string& model_path_onnx,
                  const std::string& device,
+                 int input_width, int input_height,
                  int max_batch = 4);
 
-    /// 主推理接口：接收已预处理（resize 到 INPUT_WIDTH×INPUT_HEIGHT）的图像指针向量
+    /// 主推理接口：接收已预处理（resize 到 input_width×input_height）的图像指针向量
     /// @return 每个输入图对应一个 InferenceOutput（同一 batch 共享同一张量）
     std::vector<InferenceOutput> runInference(
         const std::vector<const cv::Mat*>& preprocessed_imgs);
@@ -91,8 +93,9 @@ private:
 // ==========================================================================
 class OutpostPostprocessor {
 public:
-    /// @param num_threads 线程池线程数，0 = 自动
-    explicit OutpostPostprocessor(int num_threads = 0);
+    /// @param input_width/input_height  模型输入分辨率（后处理坐标缩放基准）
+    /// @param num_threads               线程池线程数，0 = 自动
+    OutpostPostprocessor(int input_width, int input_height, int num_threads = 0);
 
     /// 处理单个推理输出（一个 batch 张量 + 该图在 batch 中的索引）
     /// @param detect_color 0=仅红, 1=仅蓝, 2=双色
@@ -116,6 +119,8 @@ public:
                           std::vector<std::vector<Object>>& out);
 
 private:
+    int input_width_;
+    int input_height_;
     TaskPool pool_;
 };
 

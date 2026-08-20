@@ -106,6 +106,8 @@ public:
     struct OutpostParams {
         std::string modelPath;              // 推理模型路径
         std::string device;                 // 推理设备
+        int inputWidth;                     // YOLO 推理输入宽度（像素，须与模型输入一致）
+        int inputHeight;                    // YOLO 推理输入高度（像素，须与模型输入一致）
         double observationLostTimeoutSec;   // 连续观测丢失多久后重置滤波器（秒）
 
         // ESEKF 误差状态扩展卡尔曼滤波参数
@@ -130,6 +132,8 @@ public:
     struct PowerRuneParams {
         std::string modelPath;      // 推理模型路径
         std::string device;         // 推理设备
+        int         inputWidth;     // YOLO 推理输入宽度（像素，须与模型输入一致）
+        int         inputHeight;    // YOLO 推理输入高度（像素，须与模型输入一致）
         bool        manualNms;      // true: 无 NMS 原始输出，需手动 NMS
         float       confThreshold;  // 置信度阈值
         int         maxBatch;       // 推理最大批量

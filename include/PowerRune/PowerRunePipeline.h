@@ -39,7 +39,7 @@ struct PowerRunePipelineData {
 
     // ==================== 阶段1：预处理 ====================
     struct Stage1Data {
-        cv::Mat frame;  // 预处理后图像 (INPUT_WIDTH x INPUT_HEIGHT)
+        cv::Mat frame;  // 预处理后图像（power_rune.inference.resolution 指定尺寸）
     } stage1;
 
     // ==================== 阶段2：推理 ====================
@@ -158,6 +158,8 @@ private:
     /// 阶段1上下文：预处理
     struct Stage1Ctx {
         YoloPose::YoloPosePreprocessor preprocessor;
+        explicit Stage1Ctx(int input_width, int input_height)
+            : preprocessor(input_width, input_height) {}
     } s1_;
 
     /// 阶段2上下文：推理

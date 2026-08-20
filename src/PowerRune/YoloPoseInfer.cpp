@@ -10,8 +10,8 @@ using namespace YoloPose;
 // YoloPosePreprocessor 实现（公共 InferCore 预处理）
 // ==========================================================================
 
-YoloPosePreprocessor::YoloPosePreprocessor(int num_threads)
-    : impl_(INPUT_WIDTH, INPUT_HEIGHT, num_threads) {}
+YoloPosePreprocessor::YoloPosePreprocessor(int input_width, int input_height, int num_threads)
+    : impl_(input_width, input_height, num_threads) {}
 
 void YoloPosePreprocessor::preprocess(const std::vector<const cv::Mat*>& imgs,
                                       std::vector<cv::Mat*>& out) {
@@ -25,15 +25,17 @@ void YoloPosePreprocessor::preprocess(const std::vector<const cv::Mat*>& imgs,
 YoloPoseInfer::YoloPoseInfer(const std::string& model_path_xml,
                              const std::string& model_path_bin,
                              const std::string& device,
+                             int input_width, int input_height,
                              int max_batch)
     : engine_(std::make_unique<Infer::InferEngine>(
-          model_path_xml, model_path_bin, device, INPUT_WIDTH, INPUT_HEIGHT, max_batch)) {}
+          model_path_xml, model_path_bin, device, input_width, input_height, max_batch)) {}
 
 YoloPoseInfer::YoloPoseInfer(const std::string& model_path_onnx,
                              const std::string& device,
+                             int input_width, int input_height,
                              int max_batch)
     : engine_(std::make_unique<Infer::InferEngine>(
-          model_path_onnx, device, INPUT_WIDTH, INPUT_HEIGHT, max_batch)) {}
+          model_path_onnx, device, input_width, input_height, max_batch)) {}
 
 std::vector<InferenceOutput> YoloPoseInfer::runInference(
     const std::vector<const cv::Mat*>& preprocessed_imgs) {
@@ -44,8 +46,10 @@ std::vector<InferenceOutput> YoloPoseInfer::runInference(
 // YoloPosePostprocessor 实现
 // ==========================================================================
 
-YoloPosePostprocessor::YoloPosePostprocessor(bool manual_nms, int num_threads)
-    : manual_nms_(manual_nms), pool_(num_threads) {}
+YoloPosePostprocessor::YoloPosePostprocessor(bool manual_nms, int input_width, int input_height,
+                                             int num_threads)
+    : manual_nms_(manual_nms), input_width_(input_width), input_height_(input_height),
+      pool_(num_threads) {}
 
 void YoloPosePostprocessor::postprocessBatch(
     const std::vector<std::shared_ptr<ov::Tensor>>& tensors,
@@ -107,8 +111,8 @@ std::vector<PoseDetection> YoloPosePostprocessor::postprocessNms(const float* da
                                                                   int orig_w, int orig_h,
                                                                   float conf_threshold) {
     std::vector<PoseDetection> detections;
-    float scale_x = (float)orig_w / INPUT_WIDTH;
-    float scale_y = (float)orig_h / INPUT_HEIGHT;
+    float scale_x = (float)orig_w / input_width_;
+    float scale_y = (float)orig_h / input_height_;
 
     for (int i = 0; i < num_dets; ++i) {
         const float* det = data + i * OUTPUT_DIM;
@@ -143,15 +147,15 @@ std::vector<PoseDetection> YoloPosePostprocessor::postprocessRaw(const float* da
                                                                  int orig_w, int orig_h,
                                                                  float conf_threshold) {
     // data 布局 (RAW_OUTPUT_DIM, num_anchors)，通道优先：
-    //   [0:4]              box (cx, cy, w, h)，已是 512 空间像素坐标
+    //   [0:4]              box (cx, cy, w, h)，已是模型输入分辨率空间像素坐标
     //   [4:4+NUM_CLASSES]  类别分数（已 sigmoid）
     //   [12:...]           关键点 (x, y, vis)，x/y 为像素坐标，vis 已 sigmoid
     const float* box_ch = data;
     const float* cls_ch = data + 4 * num_anchors;
     const float* kpt_ch = data + (4 + NUM_CLASSES) * num_anchors;
 
-    const float scale_x = (float)orig_w / INPUT_WIDTH;
-    const float scale_y = (float)orig_h / INPUT_HEIGHT;
+    const float scale_x = (float)orig_w / input_width_;
+    const float scale_y = (float)orig_h / input_height_;
 
     struct Candidate {
         cv::Rect2f rect;

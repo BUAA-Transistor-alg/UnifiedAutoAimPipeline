@@ -21,8 +21,8 @@ struct PoseDetection {
 namespace YoloPose {
 
 // ---- 共享参数 ----
-constexpr int INPUT_WIDTH   = 512;
-constexpr int INPUT_HEIGHT  = 512;
+// 输入分辨率 INPUT_WIDTH × INPUT_HEIGHT 不再硬编码为 512×512：由 config.yaml
+// 的 power_rune.inference.resolution 提供（见 PowerRunePipeline 构造）。
 constexpr int MAX_DET       = 300;
 constexpr int NUM_KEYPOINTS = 32;
 constexpr int NUM_CLASSES   = 8;   // 类别数（当前模型 8 分类）
@@ -37,10 +37,11 @@ using InferenceOutput = Infer::InferenceOutput;
 // ==========================================================================
 class YoloPosePreprocessor {
 public:
-    /// @param num_threads  内部 TaskPool 线程数, 0 = 自动
-    explicit YoloPosePreprocessor(int num_threads = 0);
+    /// @param input_width/input_height  模型输入分辨率（像素，须与模型输入一致）
+    /// @param num_threads               内部 TaskPool 线程数, 0 = 自动
+    YoloPosePreprocessor(int input_width, int input_height, int num_threads = 0);
 
-    /// 批量预处理：将原始图像 resize 到 INPUT_WIDTH × INPUT_HEIGHT
+    /// 批量预处理：将原始图像 resize 到 input_width × input_height
     void preprocess(const std::vector<const cv::Mat*>& imgs,
                     std::vector<cv::Mat*>& out);
 
@@ -53,9 +54,10 @@ private:
 // ==========================================================================
 class YoloPosePostprocessor {
 public:
-    /// @param manual_nms  true: 模型为无 NMS 的原始输出，需手动 NMS；false: NMS 已内嵌
-    /// @param num_threads 线程池线程数，0 = 自动
-    explicit YoloPosePostprocessor(bool manual_nms = false, int num_threads = 0);
+    /// @param manual_nms    true: 模型为无 NMS 的原始输出，需手动 NMS；false: NMS 已内嵌
+    /// @param input_width/input_height  模型输入分辨率（后处理坐标缩放基准）
+    /// @param num_threads   线程池线程数，0 = 自动
+    YoloPosePostprocessor(bool manual_nms, int input_width, int input_height, int num_threads = 0);
 
     /// 处理单个推理输出（一个 batch 张量 + 该图在 batch 中的索引）
     /// @return 该图的所有检测结果（坐标已缩放到原图尺寸）
@@ -76,6 +78,8 @@ public:
 
 private:
     bool manual_nms_;
+    int input_width_;
+    int input_height_;
     TaskPool pool_;
 
     std::vector<PoseDetection> postprocessNms(const float* data, int num_dets,
@@ -93,13 +97,15 @@ public:
     YoloPoseInfer(const std::string& model_path_xml,
                   const std::string& model_path_bin,
                   const std::string& device,
+                  int input_width, int input_height,
                   int max_batch = 4);
 
     YoloPoseInfer(const std::string& model_path_onnx,
                   const std::string& device,
+                  int input_width, int input_height,
                   int max_batch = 4);
 
-    /// 主推理接口：接收已预处理（resize 到 INPUT_WIDTH×INPUT_HEIGHT）的图像指针向量
+    /// 主推理接口：接收已预处理（resize 到 input_width×input_height）的图像指针向量
     /// @return 每个输入图对应一个 InferenceOutput（同一 batch 共享同一张量）
     std::vector<InferenceOutput> runInference(
         const std::vector<const cv::Mat*>& preprocessed_imgs);

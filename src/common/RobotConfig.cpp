@@ -218,6 +218,16 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (!oinf || !oinf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'outpost.inference' 配置段");
     cfg.outpost.modelPath = requireScalar<std::string>(oinf, "model_path", "outpost.inference");
     cfg.outpost.device    = requireScalar<std::string>(oinf, "device", "outpost.inference");
+
+    // ── outpost.inference.resolution（YOLO 推理输入分辨率）──
+    const YAML::Node& ores = oinf["resolution"];
+    if (!ores || !ores.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'outpost.inference.resolution' 配置段");
+    cfg.outpost.inputWidth  = requireScalar<int>(ores, "width", "outpost.inference.resolution");
+    cfg.outpost.inputHeight = requireScalar<int>(ores, "height", "outpost.inference.resolution");
+    if (cfg.outpost.inputWidth <= 0 || cfg.outpost.inputHeight <= 0) {
+        throw std::runtime_error("RobotConfig: outpost.inference.resolution 宽高必须为正整数");
+    }
     cfg.outpost.observationLostTimeoutSec = requireScalar<double>(op, "observation_lost_timeout", "outpost");
 
     // ── outpost.esekf（ESEKF 滤波参数）──
@@ -243,6 +253,16 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (!prinf || !prinf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'power_rune.inference' 配置段");
     cfg.powerRune.modelPath     = requireScalar<std::string>(prinf, "model_path", "power_rune.inference");
     cfg.powerRune.device        = requireScalar<std::string>(prinf, "device", "power_rune.inference");
+
+    // ── power_rune.inference.resolution（YOLO 推理输入分辨率）──
+    const YAML::Node& prres = prinf["resolution"];
+    if (!prres || !prres.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'power_rune.inference.resolution' 配置段");
+    cfg.powerRune.inputWidth  = requireScalar<int>(prres, "width", "power_rune.inference.resolution");
+    cfg.powerRune.inputHeight = requireScalar<int>(prres, "height", "power_rune.inference.resolution");
+    if (cfg.powerRune.inputWidth <= 0 || cfg.powerRune.inputHeight <= 0) {
+        throw std::runtime_error("RobotConfig: power_rune.inference.resolution 宽高必须为正整数");
+    }
     cfg.powerRune.manualNms     = requireScalar<bool>(prinf, "manual_nms", "power_rune.inference");
     cfg.powerRune.confThreshold = requireScalar<float>(prinf, "conf_threshold", "power_rune.inference");
     cfg.powerRune.maxBatch      = requireScalar<int>(prinf, "max_batch", "power_rune.inference");

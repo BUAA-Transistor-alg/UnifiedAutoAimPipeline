@@ -12,8 +12,8 @@ using namespace OutpostDetect;
 // OutpostPreprocessor 实现（公共 InferCore 预处理）
 // ==========================================================================
 
-OutpostPreprocessor::OutpostPreprocessor(int num_threads)
-    : impl_(INPUT_WIDTH, INPUT_HEIGHT, num_threads) {}
+OutpostPreprocessor::OutpostPreprocessor(int input_width, int input_height, int num_threads)
+    : impl_(input_width, input_height, num_threads) {}
 
 void OutpostPreprocessor::preprocess(const std::vector<const cv::Mat*>& imgs,
                                      std::vector<cv::Mat*>& out) {
@@ -27,15 +27,17 @@ void OutpostPreprocessor::preprocess(const std::vector<const cv::Mat*>& imgs,
 OutpostInfer::OutpostInfer(const std::string& model_path_xml,
                            const std::string& model_path_bin,
                            const std::string& device,
+                           int input_width, int input_height,
                            int max_batch)
     : engine_(std::make_unique<Infer::InferEngine>(
-          model_path_xml, model_path_bin, device, INPUT_WIDTH, INPUT_HEIGHT, max_batch)) {}
+          model_path_xml, model_path_bin, device, input_width, input_height, max_batch)) {}
 
 OutpostInfer::OutpostInfer(const std::string& model_path_onnx,
                            const std::string& device,
+                           int input_width, int input_height,
                            int max_batch)
     : engine_(std::make_unique<Infer::InferEngine>(
-          model_path_onnx, device, INPUT_WIDTH, INPUT_HEIGHT, max_batch)) {}
+          model_path_onnx, device, input_width, input_height, max_batch)) {}
 
 std::vector<InferenceOutput> OutpostInfer::runInference(
     const std::vector<const cv::Mat*>& preprocessed_imgs) {
@@ -46,8 +48,8 @@ std::vector<InferenceOutput> OutpostInfer::runInference(
 // OutpostPostprocessor 实现
 // ==========================================================================
 
-OutpostPostprocessor::OutpostPostprocessor(int num_threads)
-    : pool_(num_threads) {}
+OutpostPostprocessor::OutpostPostprocessor(int input_width, int input_height, int num_threads)
+    : input_width_(input_width), input_height_(input_height), pool_(num_threads) {}
 
 void OutpostPostprocessor::postprocessBatch(
     const std::vector<std::shared_ptr<ov::Tensor>>& tensors,
@@ -98,8 +100,8 @@ std::vector<Object> OutpostPostprocessor::postprocess(
     float* batch_data = data + (size_t)batch_index * NUM_ANCHORS * OUTPUT_DIM;
     cv::Mat output_buffer(NUM_ANCHORS, OUTPUT_DIM, CV_32F, batch_data);
 
-    const float sx = (float)orig_w / INPUT_WIDTH;
-    const float sy = (float)orig_h / INPUT_HEIGHT;
+    const float sx = (float)orig_w / input_width_;
+    const float sy = (float)orig_h / input_height_;
 
     std::vector<Object> objects;
     std::vector<cv::Rect> boxes;
@@ -184,7 +186,7 @@ std::vector<Object> OutpostPostprocessor::postprocess(
             detections.push_back(objects[valid_index]);
     }
 
-    // 坐标缩放：640 -> 原图
+    // 坐标缩放：模型输入分辨率 -> 原图
     for (auto& obj : detections) {
         obj.rect.x      = obj.rect.x * sx;
         obj.rect.y      = obj.rect.y * sy;

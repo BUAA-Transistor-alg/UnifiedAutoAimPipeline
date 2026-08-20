@@ -141,6 +141,9 @@ outpost:
   inference:
     model_path: "Model/Outpost/0526.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
     device: "GPU"                          # 推理设备（CPU / GPU / ...）
+    resolution:                            # YOLO 推理输入分辨率（像素），须与模型输入一致
+      width: 640                           # 输入图像宽（像素）
+      height: 640                          # 输入图像高（像素）
   observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 ESEKF（秒）
 
   # ── ESEKF 误差状态扩展卡尔曼滤波参数 ──
@@ -165,6 +168,9 @@ power_rune:
   inference:
     model_path: "Model/PowerRune/SECDO-plussmall.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
     device: "CPU"                                       # 推理设备（CPU / GPU / ...）
+    resolution:                                         # YOLO 推理输入分辨率（像素），须与模型输入一致
+      width: 512                                        # 输入图像宽（像素）
+      height: 512                                       # 输入图像高（像素）
     manual_nms: true            # true: 模型为无 NMS 的原始输出，需手动 NMS；false: NMS 已内嵌
     conf_threshold: 0.5         # 置信度阈值
     max_batch: 4                # 推理最大批量
