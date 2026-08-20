@@ -1,6 +1,6 @@
-#include "PowerRunePipeline.h"
-#include "PathResolver.h"
-#include "RobotConfig.h"
+#include "PowerRune/PowerRunePipeline.h"
+#include "common/PathResolver.h"
+#include "common/RobotConfig.h"
 #include <string>
 #include <iostream>
 

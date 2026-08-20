@@ -1,5 +1,5 @@
 // FrameRateCounter.cpp
-#include "FrameRateCounter.h"
+#include "common/FrameRateCounter.h"
 
 FrameRateCounter::FrameRateCounter(size_t window_size)
     : window_size_(window_size) {}

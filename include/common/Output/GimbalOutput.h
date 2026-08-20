@@ -8,8 +8,8 @@
 #ifndef GIMBAL_OUTPUT_H
 #define GIMBAL_OUTPUT_H
 
-#include "Output/IOutputMode.h"
-#include "Ballistic/AimPredictor.h"
+#include "common/Output/IOutputMode.h"
+#include "common/Ballistic/AimPredictor.h"
 
 #include <memory>
 #include <vector>

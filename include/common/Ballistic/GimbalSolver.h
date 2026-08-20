@@ -6,9 +6,9 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "Ballistic/BallisticSolver.h"
-#include "TaskPool.h"
-#include "TransformTree/RobotTfTree.h"
+#include "common/Ballistic/BallisticSolver.h"
+#include "common/TaskPool.h"
+#include "common/TransformTree/RobotTfTree.h"
 
 // 云台角度解算器：将目标点（world 系 3D 坐标）解算为云台 yaw / pitch 角度。
 //

@@ -1,7 +1,7 @@
 // OutpostPipeline.cpp — 前哨站感知流水线实现（5 阶段，输出 PipelineResult）
-#include "OutpostPipeline.h"
-#include "PathResolver.h"
-#include "RobotConfig.h"
+#include "Outpost/OutpostPipeline.h"
+#include "common/PathResolver.h"
+#include "common/RobotConfig.h"
 
 #include <string>
 #include <iostream>

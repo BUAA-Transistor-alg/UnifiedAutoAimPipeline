@@ -22,8 +22,8 @@
 #include <memory>
 #include <string>
 
-#include "Input/IInputMode.h"   // ExtraInputInfo
-#include "MkvWriter.h"
+#include "common/Input/IInputMode.h"   // ExtraInputInfo
+#include "common/Record/MkvWriter.h"
 
 class FrameRecorder {
 public:

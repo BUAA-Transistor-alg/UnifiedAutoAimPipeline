@@ -1,4 +1,4 @@
-#include "Input/InteractiveInputMode.h"
+#include "common/Input/InteractiveInputMode.h"
 #include <iostream>
 #include <string>
 

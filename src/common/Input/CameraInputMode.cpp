@@ -1,6 +1,6 @@
 // CameraInputMode.cpp — 海康相机输入模式实现
-#include "Input/CameraInputMode.h"
-#include "RobotConfig.h"
+#include "common/Input/CameraInputMode.h"
+#include "common/RobotConfig.h"
 
 #include <iostream>
 

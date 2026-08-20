@@ -13,20 +13,20 @@
 //  - 输入模式（相机/视频/交互）与输出模式（无/可视化/云台控制）在启动时
 //    指定，运行时也可通过 API（switchPipeline / toggleOutput）或热键 '1'/'2'、'v'/'g' 切换；
 //  - RobotController（串口 + MPC）仅在需要时构造（相机输入或云台输出）。
-#include "Input/IInputMode.h"
-#include "Input/CameraInputMode.h"
-#include "Input/VideoInputMode.h"
-#include "Input/InteractiveInputMode.h"
-#include "IPipeline.h"
-#include "OutpostPipeline.h"
-#include "PowerRunePipeline.h"
-#include "Output/IOutputMode.h"
-#include "Output/VisualizeOutput.h"
-#include "Output/GimbalOutput.h"
-#include "Ballistic/AimPredictor.h"
-#include "RobotConfig.h"
-#include "FrameRateCounter.h"
-#include "Record/FrameRecorder.h"
+#include "common/Input/IInputMode.h"
+#include "common/Input/CameraInputMode.h"
+#include "common/Input/VideoInputMode.h"
+#include "common/Input/InteractiveInputMode.h"
+#include "common/IPipeline.h"
+#include "Outpost/OutpostPipeline.h"
+#include "PowerRune/PowerRunePipeline.h"
+#include "common/Output/IOutputMode.h"
+#include "common/Output/VisualizeOutput.h"
+#include "common/Output/GimbalOutput.h"
+#include "common/Ballistic/AimPredictor.h"
+#include "common/RobotConfig.h"
+#include "common/FrameRateCounter.h"
+#include "common/Record/FrameRecorder.h"
 
 #include <opencv2/opencv.hpp>
 #include <iostream>

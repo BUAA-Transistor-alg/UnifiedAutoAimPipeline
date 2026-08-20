@@ -44,14 +44,9 @@ if(DW_LIBRARY)
     message(STATUS "found libdw: ${DW_LIBRARY}")
 endif()
 
-# 设置包含目录
+# 设置包含目录（头文件统一使用 include/ 根目录下的相对路径）
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/common
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/common/Record
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/common/TransformTree
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/Outpost
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/PowerRune
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
     /opt/MVS/include
     ${OpenCV_INCLUDE_DIRS}

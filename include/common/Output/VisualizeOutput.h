@@ -8,13 +8,13 @@
 #ifndef VISUALIZE_OUTPUT_H
 #define VISUALIZE_OUTPUT_H
 
-#include "Output/IOutputMode.h"
-#include "Ballistic/AimPredictor.h"
-#include "OutpostVisualizer.h"
-#include "PowerRuneVisualizer.h"
-#include "TransformTree/RobotTfTree.h"
-#include "FrameRateCounter.h"
-#include "IPipeline.h"
+#include "common/Output/IOutputMode.h"
+#include "common/Ballistic/AimPredictor.h"
+#include "Outpost/OutpostVisualizer.h"
+#include "PowerRune/PowerRuneVisualizer.h"
+#include "common/TransformTree/RobotTfTree.h"
+#include "common/FrameRateCounter.h"
+#include "common/IPipeline.h"
 
 #include <opencv2/opencv.hpp>
 #include <memory>

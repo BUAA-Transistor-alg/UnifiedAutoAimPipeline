@@ -10,7 +10,7 @@
 #include <chrono>
 #include <string>
 
-#include "PipelineResult.h"
+#include "common/PipelineResult.h"
 
 enum class PipelineMode { OUTPOST, POWER_RUNE };
 

@@ -15,15 +15,15 @@
 #ifndef OUTPOST_PIPELINE_H
 #define OUTPOST_PIPELINE_H
 
-#include "PipelineStage.h"
-#include "OpenvinoInfer.h"
-#include "ESEKF.h"
-#include "CameraProjection.h"
-#include "TransformTree/RobotTfTree.h"
-#include "OutpostModel.h"
-#include "Input/IInputMode.h"
-#include "IPipeline.h"
-#include "RobotConfig.h"
+#include "common/PipelineStage.h"
+#include "Outpost/OpenvinoInfer.h"
+#include "Outpost/ESEKF.h"
+#include "common/CameraProjection.h"
+#include "common/TransformTree/RobotTfTree.h"
+#include "Outpost/OutpostModel.h"
+#include "common/Input/IInputMode.h"
+#include "common/IPipeline.h"
+#include "common/RobotConfig.h"
 
 #include <opencv2/opencv.hpp>
 #include <chrono>

@@ -8,10 +8,10 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "OpenvinoInfer.h"
+#include "Outpost/OpenvinoInfer.h"
 #include "RobotController.h"
-#include "TransformTree/RobotTfTree.h"
-#include "CameraProjection.h"
+#include "common/TransformTree/RobotTfTree.h"
+#include "common/CameraProjection.h"
 
 /**
  * @brief 可视化所需的数据打包结构体（由 OutpostPipeline 各阶段填充）

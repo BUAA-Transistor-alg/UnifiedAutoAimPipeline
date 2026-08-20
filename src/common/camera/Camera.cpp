@@ -1,4 +1,4 @@
-#include "camera/Camera.h"
+#include "common/camera/Camera.h"
 #include <iostream>
 #include <iomanip>
 #include <cstring>

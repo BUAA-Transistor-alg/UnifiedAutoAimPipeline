@@ -3,8 +3,8 @@
 
 #include <opencv2/opencv.hpp>
 #include <openvino/openvino.hpp>
-#include "TaskPool.h"
-#include "Infer/InferCore.h"
+#include "common/TaskPool.h"
+#include "common/Infer/InferCore.h"
 #include <vector>
 #include <string>
 #include <utility>

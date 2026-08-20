@@ -1,5 +1,5 @@
 // InferCore.cpp — 公共推理核心实现
-#include "Infer/InferCore.h"
+#include "common/Infer/InferCore.h"
 #include <iostream>
 #include <cstdio>
 #include <cstring>

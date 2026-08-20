@@ -1,7 +1,7 @@
 #ifndef VIDEOINPUTMODE_H
 #define VIDEOINPUTMODE_H
 
-#include "IInputMode.h"
+#include "common/Input/IInputMode.h"
 #include <chrono>
 #include <string>
 #include <unordered_map>

@@ -17,7 +17,7 @@
 #include <utility>
 #include <memory>
 
-#include "TaskPool.h"
+#include "common/TaskPool.h"
 
 namespace Infer {
 

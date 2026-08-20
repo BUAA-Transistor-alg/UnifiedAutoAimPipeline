@@ -16,8 +16,8 @@
 #include <utility>
 #include <memory>
 
-#include "TaskPool.h"
-#include "Infer/InferCore.h"
+#include "common/TaskPool.h"
+#include "common/Infer/InferCore.h"
 
 namespace OutpostDetect {
 

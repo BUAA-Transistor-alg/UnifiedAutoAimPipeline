@@ -1,5 +1,5 @@
-#include "PowerRunePoseSolver.h"
-#include "world_keypoints.hpp"
+#include "PowerRune/PowerRunePoseSolver.h"
+#include "PowerRune/world_keypoints.hpp"
 #include <cmath>
 #include <stdexcept>
 #include <algorithm>

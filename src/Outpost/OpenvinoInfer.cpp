@@ -1,5 +1,5 @@
 // OpenvinoInfer.cpp — 前哨站检测推理实现（预处理/推理委托公共 InferCore，后处理为 Outpost 特有）
-#include "OpenvinoInfer.h"
+#include "Outpost/OpenvinoInfer.h"
 #include <iostream>
 #include <cstdio>
 #include <cstring>

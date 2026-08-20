@@ -2,7 +2,7 @@
 #ifndef NONE_OUTPUT_H
 #define NONE_OUTPUT_H
 
-#include "Output/IOutputMode.h"
+#include "common/Output/IOutputMode.h"
 
 class NoneOutput : public IOutputMode {
 public:

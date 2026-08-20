@@ -1,11 +1,11 @@
 // GimbalSolver.cpp — 云台角度解算器实现
-#include "Ballistic/GimbalSolver.h"
+#include "common/Ballistic/GimbalSolver.h"
 
 #include <algorithm>
 #include <cmath>
 #include <vector>
 
-#include "RobotConfig.h"
+#include "common/RobotConfig.h"
 
 GimbalSolver::GimbalSolver() : tree_(std::make_shared<RobotTfTree>()) {
     // 偏移 / 弹丸 / 搜索参数均来自 RobotConfig（config/config.yaml）

@@ -9,7 +9,7 @@
 #include <memory>
 #include <opencv2/opencv.hpp>
 
-#include "TaskPool.h"
+#include "common/TaskPool.h"
 
 /**
  * @brief 基于历史 roll 角数据的预测器，用于预测未来绕物体 Y 轴的旋转角度。

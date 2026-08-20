@@ -1,6 +1,6 @@
 // GimbalOutput.cpp — 云台控制输出模式实现
-#include "Output/GimbalOutput.h"
-#include "RobotConfig.h"
+#include "common/Output/GimbalOutput.h"
+#include "common/RobotConfig.h"
 
 #include <algorithm>
 #include <cmath>

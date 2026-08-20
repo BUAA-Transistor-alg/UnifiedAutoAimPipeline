@@ -10,7 +10,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <opencv2/opencv.hpp>
-#include "MvCameraControl.h"
+#include "common/camera/MvCameraControl.h"
 
 enum CameraType {
     GIGE_CAMERA,

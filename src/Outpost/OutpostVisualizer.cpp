@@ -1,10 +1,10 @@
 // OutpostVisualizer.cpp — 前哨站自瞄可视化实现（全部绘制逻辑从 test/main.cpp 抽取）
-#include "OutpostVisualizer.h"
+#include "Outpost/OutpostVisualizer.h"
 
 #include <iomanip>
 #include <sstream>
 
-#include "TransformTree/CoordinateTransform.h"
+#include "common/TransformTree/CoordinateTransform.h"
 
 void OutpostVisualizer::render(cv::Mat& image,
                                const OutpostVisualizationData& data,

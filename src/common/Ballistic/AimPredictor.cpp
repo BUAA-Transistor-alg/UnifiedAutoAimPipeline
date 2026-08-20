@@ -1,7 +1,7 @@
 // AimPredictor.cpp — 预测瞄准点通用类实现
-#include "Ballistic/AimPredictor.h"
+#include "common/Ballistic/AimPredictor.h"
 
-#include "RobotConfig.h"
+#include "common/RobotConfig.h"
 
 namespace {
 // 每个工作线程领取一个固定的 GimbalSolver 编号（持久线程池 + thread_local →

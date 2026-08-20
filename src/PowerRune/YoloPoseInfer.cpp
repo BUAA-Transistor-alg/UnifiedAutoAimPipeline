@@ -1,4 +1,4 @@
-#include "YoloPoseInfer.h"
+#include "PowerRune/YoloPoseInfer.h"
 #include <iostream>
 #include <cstdio>
 #include <cstring>

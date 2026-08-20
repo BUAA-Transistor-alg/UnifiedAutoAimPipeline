@@ -1,12 +1,12 @@
 // RobotConfig.cpp — 从 yaml 配置文件加载全局参数（common / outpost / power_rune 三结构）
-#include "RobotConfig.h"
+#include "common/RobotConfig.h"
 
 #include <stdexcept>
 #include <vector>
 
 #include <yaml-cpp/yaml.h>
 
-#include "PathResolver.h"
+#include "common/PathResolver.h"
 
 namespace {
 

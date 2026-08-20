@@ -2,8 +2,8 @@
 #ifndef CAMERA_INPUT_MODE_H
 #define CAMERA_INPUT_MODE_H
 
-#include "IInputMode.h"
-#include "camera/Camera.h"
+#include "common/Input/IInputMode.h"
+#include "common/camera/Camera.h"
 #include "RobotController.h"
 
 #include <chrono>

@@ -1,11 +1,11 @@
 // PredictedBallisticSolver.cpp — 预测弹道解算器实现
-#include "Ballistic/PredictedBallisticSolver.h"
+#include "common/Ballistic/PredictedBallisticSolver.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-#include "RobotConfig.h"
+#include "common/RobotConfig.h"
 
 PredictedBallisticSolver::PredictedBallisticSolver(std::shared_ptr<GimbalSolver> gimbal)
     : gimbal_(gimbal),

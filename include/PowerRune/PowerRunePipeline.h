@@ -1,16 +1,16 @@
 #ifndef POWER_RUNE_PIPELINE_H
 #define POWER_RUNE_PIPELINE_H
 
-#include "PipelineStage.h"
-#include "YoloPoseInfer.h"
-#include "PowerRunePoseSolver.h"
-#include "YAxisFilter.h"
-#include "RollPredictor.h"
-#include "TargetPositionCalculator.h"
-#include "TransformTree/RobotTfTree.h"
-#include "Input/IInputMode.h"
-#include "IPipeline.h"
-#include "RobotConfig.h"
+#include "common/PipelineStage.h"
+#include "PowerRune/YoloPoseInfer.h"
+#include "PowerRune/PowerRunePoseSolver.h"
+#include "PowerRune/YAxisFilter.h"
+#include "PowerRune/RollPredictor.h"
+#include "PowerRune/TargetPositionCalculator.h"
+#include "common/TransformTree/RobotTfTree.h"
+#include "common/Input/IInputMode.h"
+#include "common/IPipeline.h"
+#include "common/RobotConfig.h"
 
 #include <opencv2/opencv.hpp>
 #include <chrono>

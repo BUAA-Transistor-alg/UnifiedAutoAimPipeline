@@ -4,8 +4,8 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 #include <memory>
-#include "YoloPoseInfer.h"
-#include "CameraProjection.h"
+#include "PowerRune/YoloPoseInfer.h"
+#include "common/CameraProjection.h"
 
 // 联合位姿解算结果
 struct CombinedPoseResult {

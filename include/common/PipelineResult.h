@@ -15,10 +15,10 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "Input/IInputMode.h"
-#include "OpenvinoInfer.h"
-#include "YoloPoseInfer.h"
-#include "RollPredictor.h"
+#include "common/Input/IInputMode.h"
+#include "Outpost/OpenvinoInfer.h"
+#include "PowerRune/YoloPoseInfer.h"
+#include "PowerRune/RollPredictor.h"
 
 // ============================================================================
 // Outpost 感知结果（Outpost 流水线填充）

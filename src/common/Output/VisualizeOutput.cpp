@@ -1,8 +1,8 @@
 // VisualizeOutput.cpp — 可视化输出模式实现
-#include "Output/VisualizeOutput.h"
-#include "RobotConfig.h"
-#include "OutpostModel.h"
-#include "TargetPositionCalculator.h"
+#include "common/Output/VisualizeOutput.h"
+#include "common/RobotConfig.h"
+#include "Outpost/OutpostModel.h"
+#include "PowerRune/TargetPositionCalculator.h"
 
 #include <cstdio>
 #include <iostream>

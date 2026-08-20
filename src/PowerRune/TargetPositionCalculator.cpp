@@ -1,4 +1,4 @@
-#include "TargetPositionCalculator.h"
+#include "PowerRune/TargetPositionCalculator.h"
 #include <cmath>
 
 std::vector<cv::Vec3f> TargetPositionCalculator::calculate(

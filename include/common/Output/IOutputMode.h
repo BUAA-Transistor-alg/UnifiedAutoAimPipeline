@@ -9,7 +9,7 @@
 
 #include <string>
 
-#include "PipelineResult.h"
+#include "common/PipelineResult.h"
 #include "RobotController.h"
 
 enum class OutputMode { NONE, VISUALIZE, GIMBAL };

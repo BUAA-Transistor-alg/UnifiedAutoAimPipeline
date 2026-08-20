@@ -1,6 +1,6 @@
 // FrameRecorder.cpp — 帧录制器实现
-#include "Record/FrameRecorder.h"
-#include "PathResolver.h"
+#include "common/Record/FrameRecorder.h"
+#include "common/PathResolver.h"
 
 #include <sys/statvfs.h>
 

@@ -1,11 +1,11 @@
 #ifndef POWER_RUNE_VISUALIZER_H
 #define POWER_RUNE_VISUALIZER_H
 
-#include "PowerRunePoseSolver.h"
-#include "TransformTree/RobotTfTree.h"
-#include "CameraProjection.h"
-#include "YoloPoseInfer.h"
-#include "RollPredictor.h"
+#include "PowerRune/PowerRunePoseSolver.h"
+#include "common/TransformTree/RobotTfTree.h"
+#include "common/CameraProjection.h"
+#include "PowerRune/YoloPoseInfer.h"
+#include "PowerRune/RollPredictor.h"
 
 #include <opencv2/opencv.hpp>
 #include <array>

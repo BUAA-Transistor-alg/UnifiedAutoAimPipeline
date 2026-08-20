@@ -27,9 +27,9 @@
 #include <opencv2/opencv.hpp>
 
 #include "RobotController.h"
-#include "TaskPool.h"
-#include "Ballistic/GimbalSolver.h"
-#include "Ballistic/PredictedBallisticSolver.h"
+#include "common/TaskPool.h"
+#include "common/Ballistic/GimbalSolver.h"
+#include "common/Ballistic/PredictedBallisticSolver.h"
 
 class AimPredictor {
 public:

@@ -13,8 +13,8 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
-#include "TransformTree/RobotTfTree.h"
-#include "CameraProjection.h"
+#include "common/TransformTree/RobotTfTree.h"
+#include "common/CameraProjection.h"
 
 class ESEKF {
 public:

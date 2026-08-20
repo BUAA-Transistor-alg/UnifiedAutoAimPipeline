@@ -8,7 +8,7 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "CoordinateTransform.h"
+#include "common/TransformTree/CoordinateTransform.h"
 
 // 坐标系变换树中的一个节点。
 // 每个节点记录自身坐标系相对父节点坐标系的平移（position）与欧拉角（euler）。

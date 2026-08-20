@@ -1,7 +1,7 @@
 // RobotTfTree.cpp
-#include "TransformTree/RobotTfTree.h"
+#include "common/TransformTree/RobotTfTree.h"
 
-#include "RobotConfig.h"
+#include "common/RobotConfig.h"
 
 RobotTfTree::RobotTfTree() {
     // 构造时自动读取项目根目录 config/config.yaml（相对路径经 PathResolver 解析），

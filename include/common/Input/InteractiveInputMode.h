@@ -1,7 +1,7 @@
 #ifndef INTERACTIVEINPUTMODE_H
 #define INTERACTIVEINPUTMODE_H
 
-#include "IInputMode.h"
+#include "common/Input/IInputMode.h"
 #include <chrono>
 #include <string>
 

@@ -1,4 +1,4 @@
-#include "Ballistic/BallisticSolver.h"
+#include "common/Ballistic/BallisticSolver.h"
 #include <algorithm>
 #include <stdexcept>
 

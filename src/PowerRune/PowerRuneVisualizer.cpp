@@ -1,4 +1,4 @@
-#include "PowerRuneVisualizer.h"
+#include "PowerRune/PowerRuneVisualizer.h"
 #include <iostream>
 #include <limits>
 

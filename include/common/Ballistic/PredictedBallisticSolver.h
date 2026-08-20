@@ -8,7 +8,7 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "Ballistic/GimbalSolver.h"
+#include "common/Ballistic/GimbalSolver.h"
 
 // ============================================================================
 // 预测弹道解算器：结合"自身位姿预测函数"与 GimbalSolver，对目标关键点做
