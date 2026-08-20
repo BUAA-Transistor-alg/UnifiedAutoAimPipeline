@@ -80,8 +80,9 @@ struct PowerRunePerception {
     std::vector<std::pair<float, float>> raw_points;
     // 位姿预测函数快照：std::pair<cv::Vec3f, cv::Mat>(float dt)（world 系位置 + 旋转矩阵）
     std::unique_ptr<std::function<std::pair<cv::Vec3f, cv::Mat>(float)>> predictor_lambda;
-    // 靶点预测函数快照：std::vector<cv::Vec3f>(float dt)（world 系）
-    std::unique_ptr<std::function<std::vector<cv::Vec3f>(float)>> target_predictor;
+    // 靶点预测函数快照：std::vector<cv::Point3f>(double dt)（world 系；
+    // 已为 AimPredictor 统一签名，无需外部包装）
+    std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> target_predictor;
 
     size_t detection_count = 0;
 };

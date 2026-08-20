@@ -15,6 +15,40 @@ common:
   # 两个流水线共用的提取帧最大延迟（秒，tryPopFrame 固定延迟返回）
   max_delay_seconds: 0.2
 
+  # ── 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择 ──
+  input_mode:
+    # camera_mode：--input camera（实机相机，含 IP / 曝光 / 增益 / extra_info_delay）
+    camera_mode:
+      # 相机输入模式（CameraInputMode）extra_info 延迟（秒）：
+      # 后台线程持续采样 RobotController::getState() 并维护延迟队列，返回给流水线的
+      # extra_info 为相对当前时刻 extra_info_delay 前的队头数据（0.0 = 最新状态）
+      extra_info_delay: 0.0
+      device_ip: "192.168.10.10"    # 相机设备 IP
+      net_ip: "192.168.10.25"       # 本机网口 IP
+      exposure: 2000.0              # 曝光时间（微秒）
+      gain: 16.0                    # 增益
+      resolution:
+        width: 1440                 # 图像宽（像素）
+        height: 1080                # 图像高（像素）
+      # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
+      camera_matrix: # 相机内参矩阵
+        [1.31280460e+03, 0.00000000e+00, 6.38736364e+02, 
+        0.00000000e+00, 1.31309593e+03, 5.34133502e+02, 
+        0.00000000e+00, 0.00000000e+00, 1.00000000e+00]
+      dist_coeffs: [-0.05392145, -0.02516686, -0.00222499, -0.00149047,  0.43693918] # 畸变系数
+
+    # video_mode：--input video / interactive（录制视频 / 交互图片，无网络/曝光参数）
+    video_mode:
+      resolution:
+        width: 1920                 # 图像宽（像素）
+        height: 1080                # 图像高（像素）
+      # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
+      camera_matrix: [650.0, 0.0, 960.0,
+                      0.0, 650.0, 540.0,
+                      0.0, 0.0, 1.0]
+      # 畸变系数（k1, k2, p1, p2, k3）
+      dist_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
+
   # ── 录制参数（--record 开启录制时生效）──
   recording:
     output_dir: "recordings"        # 录制输出目录（相对项目根目录；以 / 开头为绝对路径）
@@ -45,35 +79,6 @@ common:
     muzzle_offset_x: 0.0          # muzzle 相对 head 的 x 偏移
     muzzle_offset_y: 0.20         # muzzle 相对 head 的 y 偏移
     muzzle_offset_z: 0.02          # muzzle 相对 head 的 z 偏移
-
-  # ── 相机内参（两流水线共用，按输入模式自动选择）──
-  # camera_mode：--input camera（实机相机，含 IP / 曝光 / 增益）
-  camera_mode:
-    device_ip: "192.168.10.10"    # 相机设备 IP
-    net_ip: "192.168.10.25"       # 本机网口 IP
-    exposure: 2000.0              # 曝光时间（微秒）
-    gain: 16.0                    # 增益
-    resolution:
-      width: 1440                 # 图像宽（像素）
-      height: 1080                # 图像高（像素）
-    # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
-    camera_matrix: # 相机内参矩阵
-      [1.31280460e+03, 0.00000000e+00, 6.38736364e+02, 
-      0.00000000e+00, 1.31309593e+03, 5.34133502e+02, 
-      0.00000000e+00, 0.00000000e+00, 1.00000000e+00]
-    dist_coeffs: [-0.05392145, -0.02516686, -0.00222499, -0.00149047,  0.43693918] # 畸变系数
-
-  # video_mode：--input video / interactive（录制视频 / 交互图片，无网络/曝光参数）
-  video_mode:
-    resolution:
-      width: 1920                 # 图像宽（像素）
-      height: 1080                # 图像高（像素）
-    # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
-    camera_matrix: [650.0, 0.0, 960.0,
-                    0.0, 650.0, 540.0,
-                    0.0, 0.0, 1.0]
-    # 畸变系数（k1, k2, p1, p2, k3）
-    dist_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
 
   # ── 云台解算参数 ──
   gimbal:
@@ -126,7 +131,7 @@ common:
     fire_seq_lead: 5                 # o：fire 序列提前数，fire 序列截取第 o 个之后
     pitch_bias: 0.023             # pitch 轴偏置（弧度），输出时叠加
     yaw_bias: 0.012                    # yaw 轴偏置（弧度），输出时叠加
-    fire_angle_lower_limit: 0.0  # 2° # fire 判定角度阈值下限（弧度）
+    fire_angle_lower_limit: 0.0  # 0° # fire 判定角度阈值下限（弧度）
     fire_angle_length: 0.05          # fire 判定弧长（米）：动态阈值 = length / 目标与 yaw 原点 xy 距离
 
 # ════════════════════════════════════════════════════════════

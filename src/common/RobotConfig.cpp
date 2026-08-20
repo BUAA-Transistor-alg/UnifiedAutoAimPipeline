@@ -105,13 +105,20 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.common.tf.muzzleOffsetY     = requireScalar<float>(tf, "muzzle_offset_y", "common.tf");
     cfg.common.tf.muzzleOffsetZ     = requireScalar<float>(tf, "muzzle_offset_z", "common.tf");
 
-    // ── common.camera_mode / common.video_mode（按输入模式自动选择）──
-    const YAML::Node& cam = cm["camera_mode"];
-    if (!cam || !cam.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.camera_mode' 配置段");
-    parseCameraParams(cam, "common.camera_mode", cfg.common.cameraMode);
-    const YAML::Node& vid = cm["video_mode"];
-    if (!vid || !vid.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.video_mode' 配置段");
-    parseCameraParams(vid, "common.video_mode", cfg.common.videoMode);
+    // ── common.input_mode（按输入模式自动选择：camera_mode / video_mode）──
+    const YAML::Node& im = cm["input_mode"];
+    if (!im || !im.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.input_mode' 配置段");
+    const YAML::Node& cam = im["camera_mode"];
+    if (!cam || !cam.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.input_mode.camera_mode' 配置段");
+    parseCameraParams(cam, "common.input_mode.camera_mode", cfg.common.inputMode.cameraMode);
+    const YAML::Node& vid = im["video_mode"];
+    if (!vid || !vid.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.input_mode.video_mode' 配置段");
+    parseCameraParams(vid, "common.input_mode.video_mode", cfg.common.inputMode.videoMode);
+
+    // ── common.input_mode.camera_mode.extra_info_delay（相机输入模式 extra_info
+    //    延迟；必填，无默认值）──
+    cfg.common.inputMode.cameraMode.extraInfoDelay =
+        requireScalar<double>(cam, "extra_info_delay", "common.input_mode.camera_mode");
 
     // ── common.max_delay_seconds（两个流水线共用）──
     cfg.common.maxDelaySeconds = requireScalar<double>(cm, "max_delay_seconds", "common");

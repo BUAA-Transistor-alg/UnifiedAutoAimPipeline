@@ -83,8 +83,9 @@ struct PowerRunePipelineData {
         std::vector<int> filtered_rotation_counts;
         // 位姿预测函数快照（RollPredictor::capturePredictor）
         std::unique_ptr<std::function<std::pair<cv::Vec3f, cv::Mat>(float)>> predictor_lambda;
-        // 靶点预测函数快照：std::vector<cv::Vec3f>(float dt)（world 系）
-        std::unique_ptr<std::function<std::vector<cv::Vec3f>(float)>> target_predictor;
+        // 靶点预测函数快照：std::vector<cv::Point3f>(double dt)（world 系；
+        // 已为 AimPredictor 统一签名，无需外部包装）
+        std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> target_predictor;
     } stage5;
 };
 

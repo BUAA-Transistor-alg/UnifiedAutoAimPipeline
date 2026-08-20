@@ -350,11 +350,13 @@ int main(int argc, char** argv) {
 
     const RobotConfig& cfg = RobotConfig::instance();
 
-    // 相机参数：按输入模式自动选择（camera → camera_mode；video/interactive → video_mode）
+    // 相机参数：按输入模式自动选择（camera → input_mode.camera_mode；video/interactive → input_mode.video_mode）
     const RobotConfig::CameraParams& camera_params =
-        (opt.input == InputKind::CAMERA) ? cfg.common.cameraMode : cfg.common.videoMode;
+        (opt.input == InputKind::CAMERA) ? cfg.common.inputMode.cameraMode : cfg.common.inputMode.videoMode;
 
     // ── RobotController（仅在需要时构造：相机输入需要 strict 数据，云台输出需要控制）──
+    // 相机输入模式下 CameraInputMode 后台线程持续采样 rc_.getState()（延迟队列），
+    // 因此相机输入需要 RobotController（无硬件时串口线程静默失败）。
     std::unique_ptr<RobotController> robot_controller;
     auto ensureRobotController = [&]() {
         if (robot_controller) return;
@@ -579,18 +581,11 @@ int main(int argc, char** argv) {
                     aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
                     aim_predictor.predict(st, *result.outpost.predictor);
                 } else if (result.power_rune.target_predictor) {
-                    // PowerRune：靶点预测函数包装为统一签名（float→double, Vec3f→Point3f）
+                    // PowerRune：靶点预测函数已在流水线内部封装为统一签名
+                    // std::vector<cv::Point3f>(double)（TargetPositionCalculator::compose），
+                    // 直接传入 AimPredictor，无需再包装。
                     aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::LOWEST_Z);
-                    const auto& pr_pred = result.power_rune.target_predictor;
-                    std::function<std::vector<cv::Point3f>(double)> wrapped =
-                        [&pr_pred](double dt) -> std::vector<cv::Point3f> {
-                        const auto pts = (*pr_pred)(static_cast<float>(dt));
-                        std::vector<cv::Point3f> out;
-                        out.reserve(pts.size());
-                        for (const auto& p : pts) out.emplace_back(p[0], p[1], p[2]);
-                        return out;
-                    };
-                    aim_predictor.predict(st, wrapped);
+                    aim_predictor.predict(st, *result.power_rune.target_predictor);
                 } else {
                     aim_predictor.invalidate();
                 }

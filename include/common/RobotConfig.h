@@ -6,9 +6,10 @@
 //   - outpost     ：Outpost 流水线独占参数（推理模型 / 观测丢失超时）
 //   - power_rune  ：PowerRune 流水线独占参数（推理模型 / NMS / 阈值 / 批量）
 //
-// 相机内参与畸变系数两流水线共用，但分为两套按输入模式自动选择：
-//   - camera_mode ：--input camera（实机相机，含 IP/曝光/增益）
-//   - video_mode  ：--input video / interactive（录制视频 / 交互图片）
+// 相机内参与畸变系数两流水线共用，但分为两套按输入模式自动选择
+// （common.input_mode 下）：
+//   - input_mode.camera_mode ：--input camera（实机相机，含 IP/曝光/增益/extra_info_delay）
+//   - input_mode.video_mode  ：--input video / interactive（录制视频 / 交互图片）
 #ifndef ROBOT_CONFIG_H
 #define ROBOT_CONFIG_H
 
@@ -28,7 +29,7 @@ public:
         float muzzleOffsetX, muzzleOffsetY, muzzleOffsetZ;  // muzzle 相对 head
     };
 
-    // 相机参数（分辨率 + 内参 + 畸变；相机模式额外含 IP/曝光/增益）
+    // 相机参数（分辨率 + 内参 + 畸变；相机模式额外含 IP/曝光/增益/extra_info_delay）
     struct CameraParams {
         std::string deviceIp;   // 相机设备 IP（相机模式）
         std::string netIp;      // 本机网口 IP（相机模式）
@@ -37,6 +38,11 @@ public:
         int width = 0, height = 0;  // 图像分辨率（像素）
         cv::Mat cameraMatrix;       // 3x3 CV_64F 内参矩阵
         cv::Mat distCoeffs;         // Nx1 CV_64F 畸变系数
+        // 相机输入模式（CameraInputMode）extra_info 延迟（秒）：
+        // 后台线程持续采样 RobotController::getState()，返回给流水线的 extra_info
+        // 为相对当前时刻 extra_info_delay 前的队头数据（0.0 = 最新状态）。
+        // 无默认值：必须由 config.yaml 的 common.input_mode.camera_mode.extra_info_delay 提供。
+        double extraInfoDelay;
     };
 
     // 云台角度解算参数
@@ -132,8 +138,14 @@ public:
     // 共用参数（两个流水线共享）
     struct CommonParams {
         TfOffsets    tf;                        // 变换树偏移
-        CameraParams cameraMode;                // 相机输入模式（--input camera）
-        CameraParams videoMode;                 // 视频/互动输入模式（--input video/interactive）
+
+        // 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择
+        struct InputModeParams {
+            CameraParams cameraMode;    // 相机输入模式（--input camera，含 IP/曝光/增益/extra_info_delay）
+            CameraParams videoMode;     // 视频/互动输入模式（--input video/interactive）
+        };
+        InputModeParams inputMode;
+
         GimbalParams gimbal;                    // 云台解算参数
         PredictedBallisticParams predictedBallistic;  // 预测弹道解算参数
         RobotControllerParams robotController;         // RobotController 构造参数

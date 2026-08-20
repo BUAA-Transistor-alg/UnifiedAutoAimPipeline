@@ -146,7 +146,14 @@ void VisualizeOutput::renderPowerRune(const PipelineResult& result, RobotControl
         vis.roll_predictor.predictor_prediction = (*p.predictor_lambda)(0.3f);
     }
     if (p.fit_valid && p.target_predictor) {
-        vis.predictor_target_points = (*p.target_predictor)(0.3f);
+        // target_predictor 已为统一签名 std::vector<cv::Point3f>(double)；
+        // 可视化数据仍用 Vec3f，逐个转换
+        const auto pts = (*p.target_predictor)(0.3);
+        vis.predictor_target_points.clear();
+        vis.predictor_target_points.reserve(pts.size());
+        for (const auto& pt : pts) {
+            vis.predictor_target_points.emplace_back(pt.x, pt.y, pt.z);
+        }
     }
 
     cv::Mat display = result.frame.clone();
