@@ -544,7 +544,13 @@ int main(int argc, char** argv) {
                 recorder->recordFrame(frame_for_record, frame_timestamp, extra_info, accepted);
             }
 
-            float delay_s = input_mode->getFrameDelay() -
+            // 测试最大帧率：video_mode.test_max_fps 开启时把 getFrameDelay() 的值替换为 0
+            // （不做按视频帧率的节流），以测得视频输入 + 流水线的最大帧数/FPS。
+            float base_delay = input_mode->getFrameDelay();
+            if (opt.input == InputKind::VIDEO && cfg.common.inputMode.videoMode.testMaxFps) {
+                base_delay = 0.0f;
+            }
+            float delay_s = base_delay -
                 std::chrono::duration<float>(std::chrono::steady_clock::now() - time_for_delay).count();
             int delay_us = static_cast<int>(delay_s * 1e6);
             if (delay_us > 0) {

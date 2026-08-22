@@ -43,6 +43,10 @@ public:
         // 为相对当前时刻 extra_info_delay 前的队头数据（0.0 = 最新状态）。
         // 无默认值：必须由 config.yaml 的 common.input_mode.camera_mode.extra_info_delay 提供。
         double extraInfoDelay;
+        // 测试最大帧率（默认 false，video_mode 段配置）：开启后 main 输入线程把
+        // getFrameDelay() 的值替换为 0（不做按视频帧率的节流），用于测量视频输入 +
+        // 流水线的最大帧数/FPS。
+        bool testMaxFps = false;
     };
 
     // 云台角度解算参数

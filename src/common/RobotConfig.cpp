@@ -69,6 +69,8 @@ void parseCameraParams(const YAML::Node& camNode, const std::string& name,
         out.exposure = camNode["exposure"].as<float>();
     if (camNode["gain"] && camNode["gain"].IsDefined())
         out.gain = camNode["gain"].as<float>();
+    if (camNode["test_max_fps"] && camNode["test_max_fps"].IsDefined())
+        out.testMaxFps = camNode["test_max_fps"].as<bool>();
 }
 
 } // namespace
