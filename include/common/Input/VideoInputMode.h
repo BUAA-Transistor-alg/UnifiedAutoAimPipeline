@@ -35,11 +35,14 @@ public:
      * @param video_path        Path to the video file.
      * @param extra_info_path  Optional path to extra info txt file.
      * @param skip_unaccepted_frames 为 true 时跳过 accepted==0 的帧（仅 v2 格式有效）
+     * @param test_max_fps    为 true 时 getFrameDelay() 返回 0（不做按视频帧率的
+     *                        节流），用于测量视频输入 + 流水线的最大帧数/FPS。
      * @throws std::runtime_error if the video cannot be opened.
      */
     explicit VideoInputMode(const std::string& video_path,
                             const std::string& extra_info_path = "",
-                            bool skip_unaccepted_frames = false);
+                            bool skip_unaccepted_frames = false,
+                            bool test_max_fps = false);
 
     bool getNextFrame(cv::Mat& frame,
                       std::chrono::steady_clock::time_point& timestamp,
@@ -84,6 +87,7 @@ private:
 
     bool skip_unaccepted_frames_ = false;    // 跳过 accepted==0 的帧（v2）
     bool format_v2_ = false;                 // extra-info 文件是否为 v2 格式（首个数据行探测）
+    bool test_max_fps_ = false;              // 测试最大帧率：开启时 getFrameDelay() 返回 0
 
     void reOpenVideoFile();
     void parseExtraInputInfoFile();

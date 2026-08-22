@@ -230,6 +230,11 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (cfg.outpost.inputWidth <= 0 || cfg.outpost.inputHeight <= 0) {
         throw std::runtime_error("RobotConfig: outpost.inference.resolution 宽高必须为正整数");
     }
+    cfg.outpost.maxBatch = requireScalar<int>(oinf, "max_batch", "outpost.inference");
+    if (cfg.outpost.maxBatch < 1) {
+        throw std::runtime_error("RobotConfig: outpost.inference.max_batch 必须 >= 1");
+    }
+    cfg.outpost.shmKey   = requireScalar<int>(oinf, "shm_key", "outpost.inference");
     cfg.outpost.observationLostTimeoutSec = requireScalar<double>(op, "observation_lost_timeout", "outpost");
 
     // ── outpost.esekf（ESEKF 滤波参数）──
@@ -268,6 +273,7 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.powerRune.manualNms     = requireScalar<bool>(prinf, "manual_nms", "power_rune.inference");
     cfg.powerRune.confThreshold = requireScalar<float>(prinf, "conf_threshold", "power_rune.inference");
     cfg.powerRune.maxBatch      = requireScalar<int>(prinf, "max_batch", "power_rune.inference");
+    cfg.powerRune.shmKey        = requireScalar<int>(prinf, "shm_key", "power_rune.inference");
 
     return cfg;
 }

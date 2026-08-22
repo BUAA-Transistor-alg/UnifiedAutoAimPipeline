@@ -1,5 +1,6 @@
 // InferCore.cpp — 公共推理核心实现
 #include "common/Infer/InferCore.h"
+#include "common/PathResolver.h"
 #include <iostream>
 #include <cstdio>
 #include <cstring>
@@ -32,10 +33,12 @@ void InferEngine::init(const std::string& model_path_xml,
                        const std::string& model_path_bin,
                        const std::string& device,
                        int width, int height,
-                       int max_batch) {
+                       int max_batch,
+                       std::shared_ptr<ov::Core> shared_core) {
     width_ = width;
     height_ = height;
     max_batch_ = max_batch;
+    core_ = shared_core ? std::move(shared_core) : std::make_shared<ov::Core>();
     compiled_models_.reserve(max_batch_);
     infer_requests_.reserve(max_batch_);
 
@@ -47,13 +50,21 @@ void InferEngine::init(const std::string& model_path_xml,
     // 因此 AMD GPU 上对 FP32 输入模型直接以 FP32 推理精度编译（FP32 内核不依赖
     // Intel 特有指令，实测可正常编译运行）。FP16 输入模型（如 Outpost 0526）保持
     // 默认路径（FP16 更快）。Intel GPU / CPU 不受影响。
+    // 性能模式用 LATENCY 且不用模型缓存：这是进程内"两套模型都编译在 GPU 上"时
+    // 实测退化最小的配置（2026.3 GPU 插件）——
+    //   * THROUGHPUT 模式：编译过另一模型后必然退化（outpost 3.8ms -> 5.6ms，
+    //     与 core 共享/销毁重建无关；app 实测 outpost 启动 ~175fps -> 切回后 ~100fps）；
+    //   * LATENCY + 磁盘缓存（CACHE_DIR）：同样退化（3.4ms -> 5.3ms）；
+    //   * LATENCY 且不用缓存：退化仍偶发出现（同测试复跑一次 3.5ms、一次 5.8ms），
+    //     无法保证，但已是进程内最好水平。
+    // 因此：LATENCY 模式、不设 CACHE_DIR（切换时重新编译需数秒）。
     ov::AnyMap compile_cfg{
-        ov::hint::performance_mode(ov::hint::PerformanceMode::THROUGHPUT)};
+        ov::hint::performance_mode(ov::hint::PerformanceMode::LATENCY)};
     if (device.find("GPU") != std::string::npos) {
         try {
-            std::string arch = core_.get_property(device, ov::device::architecture);
+            std::string arch = core_->get_property(device, ov::device::architecture);
             if (arch.find("vendor=0x1002") != std::string::npos) {  // AMD PCI vendor ID
-                auto probe = core_.read_model(model_path_xml, model_path_bin);
+                auto probe = core_->read_model(model_path_xml, model_path_bin);
                 if (probe->input().get_element_type() != ov::element::f16) {
                     compile_cfg[ov::hint::inference_precision.name()] = ov::element::f32;
                     std::cerr << "[InferCore] AMD GPU + FP32 输入模型：直接以 FP32 推理精度编译"
@@ -69,7 +80,7 @@ void InferEngine::init(const std::string& model_path_xml,
     // 此时打印警告并回退到已编译的最大 batch（至少 batch=1 可用）。
     for (int bs = 1; bs <= max_batch_; ++bs) {
         try {
-            auto model = core_.read_model(model_path_xml, model_path_bin);
+            auto model = core_->read_model(model_path_xml, model_path_bin);
 
             // reshape 到固定的 batch size（此时模型还是 NCHW）
             model->reshape({{model->input().get_any_name(),
@@ -88,7 +99,7 @@ void InferEngine::init(const std::string& model_path_xml,
             ppp.output().tensor().set_element_type(ov::element::f32);
             model = ppp.build();
 
-            auto compiled = core_.compile_model(model, device, compile_cfg);
+            auto compiled = core_->compile_model(model, device, compile_cfg);
             auto request = compiled.create_infer_request();
 
             compiled_models_.push_back(std::move(compiled));
@@ -127,14 +138,17 @@ InferEngine::InferEngine(const std::string& model_path_xml,
                          const std::string& model_path_bin,
                          const std::string& device,
                          int width, int height,
-                         int max_batch) {
-    init(model_path_xml, model_path_bin, device, width, height, max_batch);
+                         int max_batch,
+                         std::shared_ptr<ov::Core> shared_core) {
+    init(model_path_xml, model_path_bin, device, width, height, max_batch,
+         std::move(shared_core));
 }
 
 InferEngine::InferEngine(const std::string& model_path_onnx,
                          const std::string& device,
                          int width, int height,
-                         int max_batch) {
+                         int max_batch,
+                         std::shared_ptr<ov::Core> shared_core) {
     // 检查 IR 文件是否已存在
     std::string base_path = model_path_onnx;
     size_t dot_pos = base_path.rfind(".onnx");
@@ -159,7 +173,8 @@ InferEngine::InferEngine(const std::string& model_path_onnx,
         bin_path = bin;
     }
 
-    init(xml_path, bin_path, device, width, height, max_batch);
+    init(xml_path, bin_path, device, width, height, max_batch,
+         std::move(shared_core));
 }
 
 std::pair<std::string, std::string> InferEngine::convertOnnxToIR(const std::string& onnx_path) {

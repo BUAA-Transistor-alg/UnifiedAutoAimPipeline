@@ -7,9 +7,14 @@
 //                    [-v <video>] [-e <extra_info.txt>] [--record] [--skip-unaccepted] [-i] [-h]
 //
 // 设计要点：
-//  - 两个流水线在启动时全部构造（模型编译一次），之后不重建；
-//    任意时刻只有一个是"激活"状态（接收帧），运行时可通过 API（switchPipeline）
-//    或热键 '1'/'2' 切换；切换时调用 clear() 清空其队列与滤波状态；
+//  - 两个流水线本体在启动时全部构造、且始终保持构造（阶段线程/调度器常驻）；推理器
+//    （模型编译产物，占用 GPU 显存）提取到两个独立进程（outpost_infer_process /
+//    power_rune_infer_process），各进程只编译一个模型——2026.3 GPU 插件实测跨进程
+//    驻留零影响，而进程内两套模型共存会互相拖慢（详见 InferShm.h 背景说明）；
+//  - 流水线推理阶段经共享内存 + 具名信号量与推理进程通信（InferShmClient），预处理/
+//    后处理仍在主进程；推理进程未启动时推理阶段阻塞等待（协议要求先启动推理进程）；
+//  - 任意时刻只有一个是"激活"状态（接收帧），运行时可通过 API（switchPipeline）
+//    或热键 '1'/'2' 切换；切换只交换指针（两套推理进程始终存在）；
 //  - 输入模式（相机/视频/交互）与输出模式（无/可视化/云台控制）在启动时
 //    指定，运行时也可通过 API（switchPipeline / toggleOutput）或热键 '1'/'2'、'v'/'g' 切换；
 //  - RobotController（串口 + MPC）仅在需要时构造（相机输入或云台输出）。
@@ -392,7 +397,8 @@ int main(int argc, char** argv) {
         }
         case InputKind::VIDEO:
             input_mode = std::make_unique<VideoInputMode>(opt.video_path, opt.extra_info_path,
-                                                          opt.skip_unaccepted);
+                                                          opt.skip_unaccepted,
+                                                          cfg.common.inputMode.videoMode.testMaxFps);
             break;
         case InputKind::INTERACTIVE:
         default:
@@ -414,7 +420,12 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ── 启动时构造两套流水线（模型编译一次，之后不重建）──
+    // ── 流水线生命周期 ──
+    // 两条流水线始终构造、始终持有各自的推理通信器（InferShmClient）。推理器本体
+    // （模型编译产物，占 GPU）提取到两个独立进程（outpost_infer_process /
+    // power_rune_infer_process，各自只编译一个模型——2026.3 GPU 插件实测跨进程驻留
+    // 零影响，而进程内两套模型共存会互相拖慢）。因此本进程不做 GPU 推理，切换模式
+    // 只交换指针，两套推理进程始终存在（先于主程序启动）。
     // max_delay_seconds 共用 config common.max_delay_seconds；相机参数按输入模式选择
     const std::array<int, OutpostPipeline::NUM_QUEUES> queue_sizes = {10, 10, 10, 10, 10, 10};
     OutpostPipeline   outpost_pipeline(queue_sizes, cfg.common.maxDelaySeconds, camera_params);
@@ -469,10 +480,10 @@ int main(int argc, char** argv) {
     };
 
     // ── 运行时切换接口（API；热键在 visualize 窗口内触发）──
+    // 两条流水线始终构造、推理进程始终存在，切换只交换指针 + 清空状态。
     auto switchPipeline = [&](PipelineMode m) {
         if (active_pipeline->mode() == m) return;
-        // 清空旧流水线（队列 + 滤波状态），切换到新流水线开始填充
-        active_pipeline->clear();
+        active_pipeline->clear();   // 清空旧流水线（队列 + 滤波状态）
         active_pipeline = (m == PipelineMode::OUTPOST)
             ? static_cast<IPipeline*>(&outpost_pipeline)
             : static_cast<IPipeline*>(&power_rune_pipeline);
@@ -544,12 +555,9 @@ int main(int argc, char** argv) {
                 recorder->recordFrame(frame_for_record, frame_timestamp, extra_info, accepted);
             }
 
-            // 测试最大帧率：video_mode.test_max_fps 开启时把 getFrameDelay() 的值替换为 0
-            // （不做按视频帧率的节流），以测得视频输入 + 流水线的最大帧数/FPS。
+            // 测试最大帧率：test_max_fps 的作用已移入 VideoInputMode（开启时其
+            // getFrameDelay() 返回 0，不做按视频帧率的节流）。
             float base_delay = input_mode->getFrameDelay();
-            if (opt.input == InputKind::VIDEO && cfg.common.inputMode.videoMode.testMaxFps) {
-                base_delay = 0.0f;
-            }
             float delay_s = base_delay -
                 std::chrono::duration<float>(std::chrono::steady_clock::now() - time_for_delay).count();
             int delay_us = static_cast<int>(delay_s * 1e6);
@@ -595,6 +603,7 @@ int main(int argc, char** argv) {
                 } else {
                     aim_predictor.invalidate();
                 }
+                overlay_fps.tick();
             }
 
             // 更新全部输出模式（visualize 与 gimbal 可同时启用）
@@ -616,7 +625,6 @@ int main(int argc, char** argv) {
             cv::Mat to_show;
             if (vis_active) {
                 to_show = vis->display().clone();
-                if (result.valid) overlay_fps.tick();
             } else if (!last_frame.empty()) {
                 to_show = last_frame.clone();
             }

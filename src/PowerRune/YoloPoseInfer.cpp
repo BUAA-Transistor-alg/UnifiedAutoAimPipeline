@@ -26,16 +26,20 @@ YoloPoseInfer::YoloPoseInfer(const std::string& model_path_xml,
                              const std::string& model_path_bin,
                              const std::string& device,
                              int input_width, int input_height,
-                             int max_batch)
+                             int max_batch,
+                             std::shared_ptr<ov::Core> shared_core)
     : engine_(std::make_unique<Infer::InferEngine>(
-          model_path_xml, model_path_bin, device, input_width, input_height, max_batch)) {}
+          model_path_xml, model_path_bin, device, input_width, input_height,
+          max_batch, std::move(shared_core))) {}
 
 YoloPoseInfer::YoloPoseInfer(const std::string& model_path_onnx,
                              const std::string& device,
                              int input_width, int input_height,
-                             int max_batch)
+                             int max_batch,
+                             std::shared_ptr<ov::Core> shared_core)
     : engine_(std::make_unique<Infer::InferEngine>(
-          model_path_onnx, device, input_width, input_height, max_batch)) {}
+          model_path_onnx, device, input_width, input_height,
+          max_batch, std::move(shared_core))) {}
 
 std::vector<InferenceOutput> YoloPoseInfer::runInference(
     const std::vector<const cv::Mat*>& preprocessed_imgs) {

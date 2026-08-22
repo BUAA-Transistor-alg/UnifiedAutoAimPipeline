@@ -3,7 +3,7 @@
 // config.yaml 顶层分为三个大类：
 //   - common      ：两个流水线共用的参数（tf 偏移 / 相机内参 / 弹道 / MPC / 输入控制器 /
 //                    max_delay_seconds 等）
-//   - outpost     ：Outpost 流水线独占参数（推理模型 / 观测丢失超时）
+//   - outpost     ：Outpost 流水线独占参数（推理模型 / 批量 / 观测丢失超时）
 //   - power_rune  ：PowerRune 流水线独占参数（推理模型 / NMS / 阈值 / 批量）
 //
 // 相机内参与畸变系数两流水线共用，但分为两套按输入模式自动选择
@@ -43,8 +43,8 @@ public:
         // 为相对当前时刻 extra_info_delay 前的队头数据（0.0 = 最新状态）。
         // 无默认值：必须由 config.yaml 的 common.input_mode.camera_mode.extra_info_delay 提供。
         double extraInfoDelay;
-        // 测试最大帧率（默认 false，video_mode 段配置）：开启后 main 输入线程把
-        // getFrameDelay() 的值替换为 0（不做按视频帧率的节流），用于测量视频输入 +
+        // 测试最大帧率（默认 false，video_mode 段配置）：开启后 VideoInputMode 的
+        // getFrameDelay() 返回 0（不做按视频帧率的节流），用于测量视频输入 +
         // 流水线的最大帧数/FPS。
         bool testMaxFps = false;
     };
@@ -112,6 +112,8 @@ public:
         std::string device;                 // 推理设备
         int inputWidth;                     // YOLO 推理输入宽度（像素，须与模型输入一致）
         int inputHeight;                    // YOLO 推理输入高度（像素，须与模型输入一致）
+        int maxBatch;                       // 推理最大批量（动态 batch 1..max_batch）
+        int shmKey;                         // 共享内存 Key（推理进程通信，见 InferShm.h）
         double observationLostTimeoutSec;   // 连续观测丢失多久后重置滤波器（秒）
 
         // ESEKF 误差状态扩展卡尔曼滤波参数
@@ -141,6 +143,7 @@ public:
         bool        manualNms;      // true: 无 NMS 原始输出，需手动 NMS
         float       confThreshold;  // 置信度阈值
         int         maxBatch;       // 推理最大批量
+        int         shmKey;         // 共享内存 Key（推理进程通信，见 InferShm.h）
     };
 
     // 共用参数（两个流水线共享）

@@ -69,6 +69,8 @@ set(COMMON_SOURCES
     src/common/RobotConfig.cpp
     src/common/CameraProjection.cpp
     src/common/Infer/InferCore.cpp
+    src/common/Infer/InferShmClient.cpp
+    src/common/Infer/InferShmServer.cpp
     src/common/Output/VisualizeOutput.cpp
     src/common/Output/GimbalOutput.cpp
     src/common/TransformTree/CoordinateTransform.cpp
@@ -133,3 +135,39 @@ if(DW_LIBRARY)
     target_link_libraries(unified_auto_aim PRIVATE ${DW_LIBRARY})
     target_compile_definitions(unified_auto_aim PRIVATE BACKWARD_HAS_DW=1)
 endif()
+
+# ── 推理进程（共享内存 + 信号量通信；各进程只编译一个模型，见 InferShm.h）──
+# 启动方式（先于主程序）：
+#   ./bin/outpost_infer_process    （读 config outpost.inference 段 + shm_key）
+#   ./bin/power_rune_infer_process （读 config power_rune.inference 段 + shm_key）
+set(INFER_PROCESS_LIBS
+    ${OpenCV_LIBS}
+    openvino::runtime
+    Threads::Threads
+    ${YAMLCPP_LIBRARIES}
+    ${CMAKE_DL_LIBS}
+)
+
+add_executable(outpost_infer_process
+    src/Infer/outpost_infer_process_main.cpp
+    src/common/RobotConfig.cpp
+    src/common/PathResolver.cpp
+    src/common/TaskPool.cpp
+    src/common/Infer/InferCore.cpp
+    src/common/Infer/InferShmClient.cpp
+    src/common/Infer/InferShmServer.cpp
+    src/Outpost/OpenvinoInfer.cpp
+)
+target_link_libraries(outpost_infer_process PRIVATE ${INFER_PROCESS_LIBS})
+
+add_executable(power_rune_infer_process
+    src/Infer/power_rune_infer_process_main.cpp
+    src/common/RobotConfig.cpp
+    src/common/PathResolver.cpp
+    src/common/TaskPool.cpp
+    src/common/Infer/InferCore.cpp
+    src/common/Infer/InferShmClient.cpp
+    src/common/Infer/InferShmServer.cpp
+    src/PowerRune/YoloPoseInfer.cpp
+)
+target_link_libraries(power_rune_infer_process PRIVATE ${INFER_PROCESS_LIBS})

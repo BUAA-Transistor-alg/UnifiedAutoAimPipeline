@@ -11,6 +11,7 @@
 #include "common/Input/IInputMode.h"
 #include "common/IPipeline.h"
 #include "common/RobotConfig.h"
+#include "common/Infer/InferShmClient.h"
 
 #include <opencv2/opencv.hpp>
 #include <chrono>
@@ -118,6 +119,10 @@ public:
                       const RobotConfig::CameraParams& camera);
     ~PowerRunePipeline();
 
+    /// 构造本流水线所用的推理器（模型编译 + 预热；由独立推理进程
+    /// power_rune_infer_process 的 main 调用，见 InferShmServer）
+    static std::unique_ptr<YoloPose::YoloPoseInfer> createInfer();
+
     // ---- IPipeline ----
     PipelineMode mode() const override { return PipelineMode::POWER_RUNE; }
     std::string name() const override { return "PowerRune"; }
@@ -162,9 +167,10 @@ private:
             : preprocessor(input_width, input_height) {}
     } s1_;
 
-    /// 阶段2上下文：推理
+    /// 阶段2上下文：推理（推理器在独立进程 power_rune_infer_process 中，
+    /// 本阶段经 InferShmClient 通信调用；推理进程未启动时此处阻塞等待）
     struct Stage2Ctx {
-        std::unique_ptr<YoloPose::YoloPoseInfer> infer_p;
+        std::unique_ptr<Infer::InferShmClient> client;
     } s2_;
 
     /// 阶段3上下文：后处理

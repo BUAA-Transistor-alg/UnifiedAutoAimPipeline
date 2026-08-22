@@ -6,6 +6,19 @@
 
 // ==================== 构造 ====================
 
+// 构造本流水线所用的推理器（模型编译 + 预热；由 power_rune_infer_process 的 main 调用）
+std::unique_ptr<YoloPose::YoloPoseInfer> PowerRunePipeline::createInfer()
+{
+    const RobotConfig& cfg = RobotConfig::instance();
+    // 模型路径（相对项目根目录，经 PathResolver 解析；以 / 开头为绝对路径）
+    std::string model_path = (!cfg.powerRune.modelPath.empty() && cfg.powerRune.modelPath[0] == '/')
+        ? cfg.powerRune.modelPath
+        : PathResolver::resolvePath(cfg.powerRune.modelPath);
+    return std::make_unique<YoloPose::YoloPoseInfer>(
+        model_path, cfg.powerRune.device,
+        cfg.powerRune.inputWidth, cfg.powerRune.inputHeight, cfg.powerRune.maxBatch);
+}
+
 PowerRunePipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)
     : tree(std::make_shared<RobotTfTree>()),
       camera_proj(std::make_shared<CameraProjection>(
@@ -24,18 +37,18 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
 {
     const RobotConfig& cfg = RobotConfig::instance();
 
-    // 模型路径（相对项目根目录，经 PathResolver 解析；以 / 开头为绝对路径）
-    std::string model_path = (!cfg.powerRune.modelPath.empty() && cfg.powerRune.modelPath[0] == '/')
-        ? cfg.powerRune.modelPath
-        : PathResolver::resolvePath(cfg.powerRune.modelPath);
-
     conf_threshold_ = cfg.powerRune.confThreshold;
     s3_.postprocessor = std::make_unique<YoloPose::YoloPosePostprocessor>(
         cfg.powerRune.manualNms,
         cfg.powerRune.inputWidth, cfg.powerRune.inputHeight);
-    s2_.infer_p = std::make_unique<YoloPose::YoloPoseInfer>(
-        model_path, cfg.powerRune.device,
-        cfg.powerRune.inputWidth, cfg.powerRune.inputHeight, cfg.powerRune.maxBatch);
+    // 推理器在独立进程 power_rune_infer_process 中（仅推理一步；预处理/后处理在本
+    // 进程），本阶段经共享内存通信调用，推理进程未启动时阻塞等待。
+    s2_.client = std::make_unique<Infer::InferShmClient>(cfg.powerRune.shmKey);
+
+    // 模型路径（仅用于打印 banner；推理器构造见 createInfer，由 main 调用）
+    std::string model_path = (!cfg.powerRune.modelPath.empty() && cfg.powerRune.modelPath[0] == '/')
+        ? cfg.powerRune.modelPath
+        : PathResolver::resolvePath(cfg.powerRune.modelPath);
 
     std::cout << "========================================" << std::endl;
     std::cout << "PowerRune Pipeline (5 stages)" << std::endl;
@@ -165,7 +178,10 @@ void PowerRunePipeline::processStage2(DataDeque& data)
     for (auto* d : ptrs)
         preprocessed_ptrs.push_back(&d->stage1.frame);
 
-    auto outputs = s2_.infer_p->runInference(preprocessed_ptrs);
+    // 推理器在独立进程（power_rune_infer_process）中：经共享内存通信调用，
+    // 推理进程未启动时此处阻塞等待
+    auto outputs = s2_.client->runInference(preprocessed_ptrs);
+    if (outputs.size() != ptrs.size()) return;   // 通信失败：丢弃本批
     for (size_t i = 0; i < ptrs.size(); ++i) {
         ptrs[i]->stage2.output_tensor = outputs[i].first;
         ptrs[i]->stage2.batch_index   = outputs[i].second;

@@ -94,16 +94,20 @@ private:
 // ==========================================================================
 class YoloPoseInfer {
 public:
+    /// @param shared_core 可选的共享 ov::Core（多流水线共用同一 GPU context，避免
+    ///                    同进程多 Core 对彼此推理的显著拖慢），为空则自建
     YoloPoseInfer(const std::string& model_path_xml,
                   const std::string& model_path_bin,
                   const std::string& device,
                   int input_width, int input_height,
-                  int max_batch = 4);
+                  int max_batch = 4,
+                  std::shared_ptr<ov::Core> shared_core = nullptr);
 
     YoloPoseInfer(const std::string& model_path_onnx,
                   const std::string& device,
                   int input_width, int input_height,
-                  int max_batch = 4);
+                  int max_batch = 4,
+                  std::shared_ptr<ov::Core> shared_core = nullptr);
 
     /// 主推理接口：接收已预处理（resize 到 input_width×input_height）的图像指针向量
     /// @return 每个输入图对应一个 InferenceOutput（同一 batch 共享同一张量）

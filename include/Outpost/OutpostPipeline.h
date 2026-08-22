@@ -24,6 +24,7 @@
 #include "common/Input/IInputMode.h"
 #include "common/IPipeline.h"
 #include "common/RobotConfig.h"
+#include "common/Infer/InferShmClient.h"
 
 #include <opencv2/opencv.hpp>
 #include <chrono>
@@ -96,7 +97,8 @@ public:
     static constexpr int NUM_STAGES = 5;
     static constexpr int NUM_QUEUES = NUM_STAGES + 1;  // 6 个缓冲队列
     static constexpr int MAX_PREPROCESS_BATCH = 4;
-    static constexpr int MAX_INFERENCE_BATCH  = 4;
+    // 推理批量由 config outpost.inference.max_batch 配置（动态 batch 1..max_batch，
+    // 由 InferCore 编译 + 预热）
     static constexpr int MAX_POSTPROCESS_BATCH = 4;
 
     using DataDeque = std::deque<std::unique_ptr<OutpostPipelineData>>;
@@ -110,6 +112,10 @@ public:
                     float max_delay_seconds,
                     const RobotConfig::CameraParams& camera);
     ~OutpostPipeline();
+
+    /// 构造本流水线所用的推理器（模型编译 + 预热；由独立推理进程
+    /// outpost_infer_process 的 main 调用，见 InferShmServer）
+    static std::unique_ptr<OutpostDetect::OutpostInfer> createInfer();
 
     // ---- IPipeline ----
     PipelineMode mode() const override { return PipelineMode::OUTPOST; }
@@ -156,9 +162,10 @@ private:
             : preprocessor(input_width, input_height) {}
     } s1_;
 
-    /// 阶段2上下文：推理
+    /// 阶段2上下文：推理（推理器在独立进程 outpost_infer_process 中，
+    /// 本阶段经 InferShmClient 通信调用；推理进程未启动时此处阻塞等待）
     struct Stage2Ctx {
-        std::unique_ptr<OutpostDetect::OutpostInfer> infer_p;
+        std::unique_ptr<Infer::InferShmClient> client;
     } s2_;
 
     /// 阶段3上下文：后处理

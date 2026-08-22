@@ -9,9 +9,11 @@ using namespace std;
 
 VideoInputMode::VideoInputMode(const string& video_path,
                                const string& extra_info_path,
-                               bool skip_unaccepted_frames)
+                               bool skip_unaccepted_frames,
+                               bool test_max_fps)
     : video_path_(video_path), extra_info_path_(extra_info_path),
-      skip_unaccepted_frames_(skip_unaccepted_frames) {
+      skip_unaccepted_frames_(skip_unaccepted_frames),
+      test_max_fps_(test_max_fps) {
     cap_.open(video_path);
     if (!cap_.isOpened()) {
         throw runtime_error("Failed to open video file: " + video_path);
@@ -19,7 +21,11 @@ VideoInputMode::VideoInputMode(const string& video_path,
     fps_ = cap_.get(cv::CAP_PROP_FPS);
     if (fps_ <= 0.0) fps_ = 30.0;
     cout << "[VideoInputMode] Opened: " << video_path
-         << " | FPS: " << fps_ << endl;
+         << " | FPS: " << fps_;
+    if (test_max_fps_) {
+        cout << " | test_max_fps: ON (no frame-rate throttling)";
+    }
+    cout << endl;
 
     // Initialize default dt from fps
     next_dt_ = 1.0f / static_cast<float>(fps_);
@@ -145,6 +151,9 @@ void VideoInputMode::parseExtraInputInfoFile() {
 }
 
 float VideoInputMode::getFrameDelay() const {
+    // 测试最大帧率：test_max_fps 开启时返回 0（不做按视频帧率的节流），
+    // 以测得视频输入 + 流水线的最大帧数/FPS。
+    if (test_max_fps_) return 0.0f;
     return next_dt_;
 }
 

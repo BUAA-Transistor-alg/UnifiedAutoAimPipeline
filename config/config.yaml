@@ -39,7 +39,7 @@ common:
 
     # video_mode：--input video / interactive（录制视频 / 交互图片，无网络/曝光参数）
     video_mode:
-      # 测试最大帧率（默认 false）：开启后 main 输入线程把 getFrameDelay() 的值替换为 0
+      # 测试最大帧率（默认 false）：开启后 VideoInputMode 的 getFrameDelay() 返回 0
       # （不做按视频帧率的节流），以测得视频输入 + 流水线的最大帧数/FPS。
       test_max_fps: false
       resolution:
@@ -144,6 +144,8 @@ outpost:
   inference:
     model_path: "Model/Outpost/0526.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
     device: "GPU"                          # 推理设备（CPU / GPU / ...）
+    max_batch: 1                           # 推理最大批量（动态 batch 1..max_batch；值越大编译/预热越多，须 ≤ 模型可支持上限）
+    shm_key: 23301                         # 共享内存 Key（与 outpost_infer_process 通信，两进程须一致）
     resolution:                            # YOLO 推理输入分辨率（像素），须与模型输入一致
       width: 640                           # 输入图像宽（像素）
       height: 640                          # 输入图像高（像素）
@@ -171,9 +173,10 @@ power_rune:
   inference:
     model_path: "Model/PowerRune/power_rune.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
     device: "GPU"                                       # 推理设备（CPU / GPU / ...）
+    max_batch: 4                # 推理最大批量
+    shm_key: 23302              # 共享内存 Key（与 power_rune_infer_process 通信，两进程须一致）
     resolution:                                         # YOLO 推理输入分辨率（像素），须与模型输入一致
       width: 512                                        # 输入图像宽（像素）
       height: 512                                       # 输入图像高（像素）
     manual_nms: false            # true: 模型为无 NMS 的原始输出，需手动 NMS；false: NMS 已内嵌
     conf_threshold: 0.5         # 置信度阈值
-    max_batch: 4                # 推理最大批量

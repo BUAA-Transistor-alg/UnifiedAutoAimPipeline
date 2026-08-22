@@ -31,6 +31,19 @@ ESEKF::Params makeEsekfParams(const RobotConfig::OutpostParams::EsekfParams& p) 
 
 // ==================== 阶段上下文构造 ====================
 
+// 构造本流水线所用的推理器（模型编译 + 预热；由 outpost_infer_process 的 main 调用）
+std::unique_ptr<OutpostDetect::OutpostInfer> OutpostPipeline::createInfer()
+{
+    const RobotConfig& cfg = RobotConfig::instance();
+    // 模型路径（相对项目根目录，经 PathResolver 解析；以 / 开头为绝对路径）
+    std::string model_path = (!cfg.outpost.modelPath.empty() && cfg.outpost.modelPath[0] == '/')
+        ? cfg.outpost.modelPath
+        : PathResolver::resolvePath(cfg.outpost.modelPath);
+    return std::make_unique<OutpostDetect::OutpostInfer>(
+        model_path, cfg.outpost.device,
+        cfg.outpost.inputWidth, cfg.outpost.inputHeight, cfg.outpost.maxBatch);
+}
+
 OutpostPipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)
     : camera_proj(std::make_shared<CameraProjection>(
           camera.cameraMatrix, camera.distCoeffs,
@@ -60,17 +73,18 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
     , s5_(camera, RobotConfig::instance().outpost.esekf)
 {
     const RobotConfig& cfg = RobotConfig::instance();
+    const int max_infer_batch = cfg.outpost.maxBatch;
 
-    // 模型路径（相对项目根目录，经 PathResolver 解析；以 / 开头为绝对路径）
+    // 推理器在独立进程 outpost_infer_process 中（仅推理一步；预处理/后处理在本
+    // 进程），本阶段经共享内存通信调用，推理进程未启动时阻塞等待。
+    s2_.client = std::make_unique<Infer::InferShmClient>(cfg.outpost.shmKey);
+    s3_.postprocessor = std::make_unique<OutpostDetect::OutpostPostprocessor>(
+        cfg.outpost.inputWidth, cfg.outpost.inputHeight);
+
+    // 模型路径（仅用于打印 banner；推理器构造见 createInfer，由 main 调用）
     std::string model_path = (!cfg.outpost.modelPath.empty() && cfg.outpost.modelPath[0] == '/')
         ? cfg.outpost.modelPath
         : PathResolver::resolvePath(cfg.outpost.modelPath);
-
-    s2_.infer_p = std::make_unique<OutpostDetect::OutpostInfer>(
-        model_path, cfg.outpost.device,
-        cfg.outpost.inputWidth, cfg.outpost.inputHeight, MAX_INFERENCE_BATCH);
-    s3_.postprocessor = std::make_unique<OutpostDetect::OutpostPostprocessor>(
-        cfg.outpost.inputWidth, cfg.outpost.inputHeight);
 
     std::cout << "========================================" << std::endl;
     std::cout << "Outpost Pipeline (5 stages)" << std::endl;
@@ -78,6 +92,7 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
     std::cout << "    Model: " << model_path << std::endl;
     std::cout << "    Device: " << cfg.outpost.device << std::endl;
     std::cout << "    Input resolution: " << cfg.outpost.inputWidth << "x" << cfg.outpost.inputHeight << std::endl;
+    std::cout << "    Max inference batch: " << max_infer_batch << std::endl;
     std::cout << "    Confidence threshold: " << conf_threshold_ << std::endl;
     std::cout << "    NMS threshold: " << nms_threshold_ << std::endl;
     std::cout << "    Max delay: " << max_delay_seconds_ << "s" << std::endl;
@@ -102,7 +117,7 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
         PipelineStage<DataDeque>::Config cfg;
         cfg.input_queue  = &inter_queues_[0];
         cfg.output_queue = &inter_queues_[1];
-        cfg.max_batch    = MAX_INFERENCE_BATCH;
+        cfg.max_batch    = max_infer_batch;
         cfg.output_max   = queue_max_sizes_[2];
         cfg.process_fn   = [this](DataDeque& data) { processStage2(data); };
         cfg.on_done      = [this]() { wakeScheduler(); };
@@ -200,7 +215,10 @@ void OutpostPipeline::processStage2(DataDeque& data)
     for (auto* d : ptrs)
         preprocessed_ptrs.push_back(&d->stage1.frame);
 
-    auto outputs = s2_.infer_p->runInference(preprocessed_ptrs);
+    // 推理器在独立进程（outpost_infer_process）中：经共享内存通信调用，
+    // 推理进程未启动时此处阻塞等待
+    auto outputs = s2_.client->runInference(preprocessed_ptrs);
+    if (outputs.size() != ptrs.size()) return;   // 通信失败：丢弃本批
     for (size_t i = 0; i < ptrs.size(); ++i) {
         ptrs[i]->stage2.output_tensor = outputs[i].first;
         ptrs[i]->stage2.batch_index   = outputs[i].second;

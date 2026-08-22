@@ -51,17 +51,24 @@ private:
 class InferEngine {
 public:
     /// 直接使用 IR 模型（xml + bin）
+    /// @param shared_core 可选的共享 ov::Core：多条流水线共用同一 Core（同一 GPU
+    ///                    context），避免同进程多 Core 共存对彼此推理的显著拖慢
+    ///                    （2026.3 GPU 插件实测：同进程两套推理器各建 Core 时，
+    ///                    outpost 帧率被拖到 ~62；共享一个 Core 后无此问题）。
+    ///                    为空时自建一个。
     InferEngine(const std::string& model_path_xml,
                 const std::string& model_path_bin,
                 const std::string& device,
                 int width, int height,
-                int max_batch = 4);
+                int max_batch = 4,
+                std::shared_ptr<ov::Core> shared_core = nullptr);
 
     /// 使用 ONNX 模型（若同目录 IR 不存在则先转换）
     InferEngine(const std::string& model_path_onnx,
                 const std::string& device,
                 int width, int height,
-                int max_batch = 4);
+                int max_batch = 4,
+                std::shared_ptr<ov::Core> shared_core = nullptr);
 
     /// 主推理接口：接收已预处理（resize 到 width×height）的图像指针向量
     /// @return 每个输入图对应一个 InferenceOutput（同一 batch 共享同一张量）
@@ -78,7 +85,8 @@ private:
     void init(const std::string& model_path_xml,
               const std::string& model_path_bin,
               const std::string& device,
-              int width, int height, int max_batch);
+              int width, int height, int max_batch,
+              std::shared_ptr<ov::Core> shared_core);
 
     static std::pair<std::string, std::string> convertOnnxToIR(const std::string& onnx_path);
 
@@ -87,7 +95,7 @@ private:
         const std::vector<const cv::Mat*>& preprocessed_imgs,
         int batch_idx);
 
-    ov::Core core_;
+    std::shared_ptr<ov::Core> core_;
     int width_;
     int height_;
     int max_batch_;
