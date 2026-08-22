@@ -2,3 +2,4 @@ build/
 bin/
 recordings/
 __pycache__
+.dsh
