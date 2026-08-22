@@ -3,6 +3,8 @@
 #include <iostream>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
+#include <chrono>
 #include <algorithm>
 
 namespace Infer {
@@ -37,6 +39,31 @@ void InferEngine::init(const std::string& model_path_xml,
     compiled_models_.reserve(max_batch_);
     infer_requests_.reserve(max_batch_);
 
+    // ── AMD GPU（OpenCL 后端）兼容性：FP32 直编 ──
+    // OpenVINO GPU 插件默认按 FP16 精度运行模型，但部分 FP16 内核（如 1x1 卷积的
+    // convolution_gpu_bfyx_1x1_hgemm_*）使用 Intel 特有 block-read 指令
+    // （intel_sub_group_block_read_us8 等），AMD OpenCL 编译器不支持；混合精度
+    // 模型（FP32 输入 + FP16 权重）甚至触发 AMD 驱动 GPU 内存错误直接崩溃。
+    // 因此 AMD GPU 上对 FP32 输入模型直接以 FP32 推理精度编译（FP32 内核不依赖
+    // Intel 特有指令，实测可正常编译运行）。FP16 输入模型（如 Outpost 0526）保持
+    // 默认路径（FP16 更快）。Intel GPU / CPU 不受影响。
+    ov::AnyMap compile_cfg{
+        ov::hint::performance_mode(ov::hint::PerformanceMode::THROUGHPUT)};
+    if (device.find("GPU") != std::string::npos) {
+        try {
+            std::string arch = core_.get_property(device, ov::device::architecture);
+            if (arch.find("vendor=0x1002") != std::string::npos) {  // AMD PCI vendor ID
+                auto probe = core_.read_model(model_path_xml, model_path_bin);
+                if (probe->input().get_element_type() != ov::element::f16) {
+                    compile_cfg[ov::hint::inference_precision.name()] = ov::element::f32;
+                    std::cerr << "[InferCore] AMD GPU + FP32 输入模型：直接以 FP32 推理精度编译"
+                              << "（规避 AMD OpenCL 对 FP16 内核/驱动的兼容性问题）..." << std::endl;
+                }
+            }
+        } catch (const std::exception&) {
+        }
+    }
+
     // 为每种 batch_size (1..max_batch_) 编译一个静态模型。
     // 模型内部若写死 batch（如 Reshape 目标 shape 含 1），较高 batch 编译会失败：
     // 此时打印警告并回退到已编译的最大 batch（至少 batch=1 可用）。
@@ -61,8 +88,7 @@ void InferEngine::init(const std::string& model_path_xml,
             ppp.output().tensor().set_element_type(ov::element::f32);
             model = ppp.build();
 
-            auto compiled = core_.compile_model(model, device,
-                ov::hint::performance_mode(ov::hint::PerformanceMode::THROUGHPUT));
+            auto compiled = core_.compile_model(model, device, compile_cfg);
             auto request = compiled.create_infer_request();
 
             compiled_models_.push_back(std::move(compiled));
@@ -198,6 +224,12 @@ std::vector<InferenceOutput> InferEngine::runInference(
 
     results.reserve(total);
 
+    // 调试：UAP_DEBUG_INFER=1 时打印每次推理的 batch / 耗时 / 输出形状
+    static const bool dbg = [] {
+        const char* e = std::getenv("UAP_DEBUG_INFER");
+        return e && std::string(e) == "1";
+    }();
+
     // 实际可用的最大 batch（init 时若高 batch 编译失败已回退）
     const size_t max_usable_batch = compiled_models_.size();
 
@@ -212,7 +244,21 @@ std::vector<InferenceOutput> InferEngine::runInference(
         for (int i = 0; i < take; ++i)
             batch.push_back(preprocessed_imgs[cursor + i]);
 
+        auto t0 = std::chrono::steady_clock::now();
         auto tensor = inferBatch(batch, take - 1);
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>(
+                      std::chrono::steady_clock::now() - t0).count();
+        if (dbg) {
+            std::cout << "[InferDebug] batch=" << take << " infer_us=" << us;
+            if (tensor) {
+                auto shp = tensor->get_shape();
+                std::cout << " out_shape=[";
+                for (size_t i = 0; i < shp.size(); ++i)
+                    std::cout << shp[i] << (i + 1 < shp.size() ? "," : "");
+                std::cout << "]";
+            }
+            std::cout << std::endl;
+        }
         for (int i = 0; i < take; ++i)
             results.emplace_back(tensor, i);
 
