@@ -54,6 +54,8 @@ void InferShmClient::openSemaphores() {
 
 std::vector<InferenceOutput> InferShmClient::runInference(
     const std::vector<const cv::Mat*>& preprocessed_imgs) {
+    // 与 reconnect 互斥：避免关闭/重开信号量时本函数仍在使用旧句柄
+    std::lock_guard<std::mutex> lock(io_mtx_);
     std::vector<InferenceOutput> results;
     size_t total = preprocessed_imgs.size();
     if (total == 0 || total > InferShm::MAX_IMAGES)
@@ -117,6 +119,17 @@ std::vector<InferenceOutput> InferShmClient::runInference(
             results.emplace_back(sp, k);
     }
     return results;
+}
+
+void InferShmClient::reconnect() {
+    // 与 runInference 互斥：等其在途调用结束（最多 2s 响应超时）后再重开信号量
+    std::lock_guard<std::mutex> lock(io_mtx_);
+    if (req_sem_)  { sem_close(req_sem_);  req_sem_  = nullptr; }
+    if (resp_sem_) { sem_close(resp_sem_); resp_sem_ = nullptr; }
+    openSemaphores();
+    if (shm_) shm_->result_batches = 0;   // 清理残留响应计数
+    std::cout << "[InferShmClient] semaphores reconnected, shm key=" << shm_key_
+              << std::endl;
 }
 
 } // namespace Infer

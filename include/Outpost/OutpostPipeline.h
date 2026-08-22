@@ -117,6 +117,11 @@ public:
     /// outpost_infer_process 的 main 调用，见 InferShmServer）
     static std::unique_ptr<OutpostDetect::OutpostInfer> createInfer();
 
+    /// 推理进程（重新）启动后重连 InferShmClient 信号量。
+    /// lazy 模式（common.infer_process_lazy=true）下推理进程按需启停，服务端启动时
+    /// 会 sem_unlink 重建信号量，本客户端先于服务端附加则需重连（见 InferShmClient::reconnect）。
+    void reconnectInferClient() { s2_.client->reconnect(); }
+
     // ---- IPipeline ----
     PipelineMode mode() const override { return PipelineMode::OUTPOST; }
     std::string name() const override { return "Outpost"; }

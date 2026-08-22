@@ -125,6 +125,14 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     // ── common.max_delay_seconds（两个流水线共用）──
     cfg.common.maxDelaySeconds = requireScalar<double>(cm, "max_delay_seconds", "common");
 
+    // ── common.infer_process_lazy（可选，默认 false）──
+    //   false（默认）：启动时启动全部推理进程并后台闲置（launch_all.py 预启动）；
+    //   true：仅启动当前流水线所需推理进程，切换时立即关闭不需要的进程（主程序管理）
+    cfg.common.inferProcessLazy = false;
+    if (cm["infer_process_lazy"] && cm["infer_process_lazy"].IsDefined()) {
+        cfg.common.inferProcessLazy = cm["infer_process_lazy"].as<bool>();
+    }
+
     // ── common.recording（可选：录制参数；缺失时使用默认值）──
     //   output_dir        ：录制输出目录（相对项目根目录或以 / 开头为绝对路径）
     //   min_free_space_mb ：剩余空间低于该值（MB）时停止写入

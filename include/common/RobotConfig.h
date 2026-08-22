@@ -157,6 +157,10 @@ public:
         };
         InputModeParams inputMode;
 
+        // true: 仅启动当前流水线所需推理进程（按需启停，见 InferProcessManager）；
+        // false（默认，与之前一致）: 启动时启动全部推理进程并后台闲置
+        bool inferProcessLazy = false;
+
         GimbalParams gimbal;                    // 云台解算参数
         PredictedBallisticParams predictedBallistic;  // 预测弹道解算参数
         RobotControllerParams robotController;         // RobotController 构造参数

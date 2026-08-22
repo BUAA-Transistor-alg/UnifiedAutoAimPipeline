@@ -9,6 +9,7 @@
 
 #include <vector>
 #include <memory>
+#include <mutex>
 #include <opencv2/opencv.hpp>
 #include <semaphore.h>
 
@@ -32,12 +33,21 @@ public:
     std::vector<InferenceOutput> runInference(
         const std::vector<const cv::Mat*>& preprocessed_imgs);
 
+    /// 推理进程（重新）启动后重新打开信号量。
+    /// lazy 模式下推理进程按需启停，服务端启动时会 sem_unlink 重建信号量，
+    /// 本客户端若先于服务端附加（构造时创建了同名信号量），旧句柄即与新的
+    /// 服务端信号量断开，需调用本方法重连（在服务端就绪后调用）。
+    void reconnect();
+
 private:
     int  shm_key_;
     int  shm_id_ = -1;
     InferShm::ShmLayout* shm_ = nullptr;   // 附加后的共享内存基址
     sem_t* req_sem_  = nullptr;
     sem_t* resp_sem_ = nullptr;
+    // 串行化 runInference 与 reconnect：reconnect 关闭/重开信号量时，
+    // 等待在途 runInference 结束（最多 2s 响应超时），避免关闭被阻塞中的信号量。
+    std::mutex io_mtx_;
 
     void attachSharedMemory();
     void openSemaphores();

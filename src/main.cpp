@@ -13,8 +13,12 @@
 //    驻留零影响，而进程内两套模型共存会互相拖慢（详见 InferShm.h 背景说明）；
 //  - 流水线推理阶段经共享内存 + 具名信号量与推理进程通信（InferShmClient），预处理/
 //    后处理仍在主进程；推理进程未启动时推理阶段阻塞等待（协议要求先启动推理进程）；
+//  - 推理进程启动策略由 config common.infer_process_lazy 决定：
+//      false（默认）：由 launch_all.py 启动全部推理进程并常驻，无任务时后台闲置；
+//      true：由本进程按需启动/停止（InferProcessManager）——仅启动当前流水线所需
+//            推理进程，切换流水线时立即关闭不再需要的进程（释放 GPU 显存）；
 //  - 任意时刻只有一个是"激活"状态（接收帧），运行时可通过 API（switchPipeline）
-//    或热键 '1'/'2' 切换；切换只交换指针（两套推理进程始终存在）；
+//    或热键 '1'/'2' 切换；切换只交换指针（推理进程按上述策略常驻或按需切换）；
 //  - 输入模式（相机/视频/交互）与输出模式（无/可视化/云台控制）在启动时
 //    指定，运行时也可通过 API（switchPipeline / toggleOutput）或热键 '1'/'2'、'v'/'g' 切换；
 //  - RobotController（串口 + MPC）仅在需要时构造（相机输入或云台输出）。
@@ -32,6 +36,7 @@
 #include "common/RobotConfig.h"
 #include "common/FrameRateCounter.h"
 #include "common/Record/FrameRecorder.h"
+#include "common/Infer/InferProcessManager.h"
 
 #include <opencv2/opencv.hpp>
 #include <iostream>
@@ -425,7 +430,9 @@ int main(int argc, char** argv) {
     // （模型编译产物，占 GPU）提取到两个独立进程（outpost_infer_process /
     // power_rune_infer_process，各自只编译一个模型——2026.3 GPU 插件实测跨进程驻留
     // 零影响，而进程内两套模型共存会互相拖慢）。因此本进程不做 GPU 推理，切换模式
-    // 只交换指针，两套推理进程始终存在（先于主程序启动）。
+    // 只交换指针；推理进程的启停策略见 config common.infer_process_lazy：
+    //   false（默认）：由 launch_all.py 启动全部推理进程并常驻（先于主程序启动）；
+    //   true：由下方 InferProcessManager 按需启停（仅启动当前流水线所需进程）。
     // max_delay_seconds 共用 config common.max_delay_seconds；相机参数按输入模式选择
     const std::array<int, OutpostPipeline::NUM_QUEUES> queue_sizes = {10, 10, 10, 10, 10, 10};
     OutpostPipeline   outpost_pipeline(queue_sizes, cfg.common.maxDelaySeconds, camera_params);
@@ -433,6 +440,33 @@ int main(int argc, char** argv) {
     IPipeline* active_pipeline =
         (opt.pipeline == PipelineMode::OUTPOST) ? static_cast<IPipeline*>(&outpost_pipeline)
                                                 : static_cast<IPipeline*>(&power_rune_pipeline);
+
+    // ── lazy 模式（common.infer_process_lazy=true）：推理进程按需启停 ──
+    // 仅启动当前流水线所需推理进程；切换流水线时立即关闭不再需要的进程（释放 GPU
+    // 显存），再启动新流水线所需进程。推理进程就绪后需重连该流水线的 InferShmClient
+    // （客户端先于服务端附加，服务端 sem_unlink 重建信号量后旧句柄失效）。
+    // 非 lazy 模式（默认）：推理进程由 launch_all.py 启动并常驻，本段不生效。
+    std::unique_ptr<Infer::InferProcessManager> infer_manager;
+    if (cfg.common.inferProcessLazy) {
+        auto reconnectFor = [&](Infer::InferProcessManager::Kind k) {
+            if (k == Infer::InferProcessManager::Kind::OUTPOST)
+                outpost_pipeline.reconnectInferClient();
+            else
+                power_rune_pipeline.reconnectInferClient();
+        };
+        infer_manager = std::make_unique<Infer::InferProcessManager>(reconnectFor);
+        const Infer::InferProcessManager::Kind initial_kind =
+            (opt.pipeline == PipelineMode::OUTPOST)
+                ? Infer::InferProcessManager::Kind::OUTPOST
+                : Infer::InferProcessManager::Kind::POWER_RUNE;
+        std::cout << "[main] lazy 模式（infer_process_lazy=true）：仅启动当前流水线所需推理进程"
+                  << "，切换时立即关闭不再需要的进程。" << std::endl;
+        if (!infer_manager->startAndWait(initial_kind)) {
+            std::cerr << "[main] 启动初始推理进程失败（lazy 模式），退出。"
+                      << "请检查模型路径/config 后重试。" << std::endl;
+            return 1;
+        }
+    }
 
     // ── 输出模式组合（visualize 与 gimbal 独立开关，可同时启用；随时可切换）──
     std::vector<std::unique_ptr<IOutputMode>> output_modes;
@@ -480,7 +514,9 @@ int main(int argc, char** argv) {
     };
 
     // ── 运行时切换接口（API；热键在 visualize 窗口内触发）──
-    // 两条流水线始终构造、推理进程始终存在，切换只交换指针 + 清空状态。
+    // 两条流水线始终构造，切换只交换指针 + 清空状态；推理进程按启动策略处理：
+    // 非 lazy 模式推理进程始终存在；lazy 模式（infer_process_lazy=true）由
+    // InferProcessManager 按需切换（立即停止不需要的进程，后台启动需要的进程）。
     auto switchPipeline = [&](PipelineMode m) {
         if (active_pipeline->mode() == m) return;
         active_pipeline->clear();   // 清空旧流水线（队列 + 滤波状态）
@@ -490,6 +526,11 @@ int main(int argc, char** argv) {
         active_pipeline->clear();
         if (VisualizeOutput* vis = findVisualize()) {
             vis->setMode(m);
+        }
+        if (infer_manager) {
+            infer_manager->switchTo(m == PipelineMode::OUTPOST
+                ? Infer::InferProcessManager::Kind::OUTPOST
+                : Infer::InferProcessManager::Kind::POWER_RUNE);
         }
         std::cout << "[main] Pipeline -> " << active_pipeline->name() << std::endl;
     };
@@ -678,6 +719,8 @@ int main(int argc, char** argv) {
         }
     }
     if (camera) camera->stop();
+    // lazy 模式：停止全部推理进程并等待后台切换线程结束
+    if (infer_manager) infer_manager->shutdown();
     // robot_controller 析构时自动停止串口线程与 MPC 后台发送线程
     cv::destroyAllWindows();
     return 0;

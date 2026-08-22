@@ -71,6 +71,7 @@ set(COMMON_SOURCES
     src/common/Infer/InferCore.cpp
     src/common/Infer/InferShmClient.cpp
     src/common/Infer/InferShmServer.cpp
+    src/common/Infer/InferProcessManager.cpp
     src/common/Output/VisualizeOutput.cpp
     src/common/Output/GimbalOutput.cpp
     src/common/TransformTree/CoordinateTransform.cpp

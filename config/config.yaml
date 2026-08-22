@@ -15,6 +15,15 @@ common:
   # 两个流水线共用的提取帧最大延迟（秒，tryPopFrame 固定延迟返回）
   max_delay_seconds: 0.2
 
+  # ── 推理进程启动策略（bool）──
+  #   false（默认，与之前一致）：启动时由 launch_all.py 启动全部推理进程
+  #     （outpost_infer_process / power_rune_infer_process），无推理任务时在后台
+  #     闲置（阻塞等待共享内存请求，不占 CPU）；
+  #   true：仅启动当前流水线所需的推理进程（由主程序按需启动），切换流水线时
+  #     立即关闭所有不再需要的进程（释放其 GPU 显存），再启动新流水线所需进程
+  #     （新进程需重新编译模型，就绪前该流水线推理返回空结果，界面保持响应）。
+  infer_process_lazy: false
+
   # ── 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择 ──
   input_mode:
     # camera_mode：--input camera（实机相机，含 IP / 曝光 / 增益 / extra_info_delay）
