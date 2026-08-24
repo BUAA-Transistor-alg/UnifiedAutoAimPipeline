@@ -180,7 +180,7 @@ common:
 # ════════════════════════════════════════════════════════════
 outpost:
   inference:
-    model_path: "Model/Outpost/0526.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
+    model_path: "Model/Outpost/0526_dynamic.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
     device: "GPU"                          # 推理设备（CPU / GPU / ...）
     max_batch: 1                           # 推理最大批量（动态 batch 1..max_batch；值越大编译/预热越多，须 ≤ 模型可支持上限）
     shm_key: 23301                         # 共享内存 Key（与 outpost_infer_process 通信，两进程须一致）
