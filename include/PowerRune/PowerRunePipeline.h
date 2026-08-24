@@ -103,14 +103,17 @@ class PowerRunePipeline : public IPipeline {
 public:
     static constexpr int NUM_STAGES = 5;
     static constexpr int NUM_QUEUES = NUM_STAGES + 1;  // 6 个缓冲队列
-    static constexpr int MAX_PREPROCESS_BATCH = 4;
-    static constexpr int MAX_INFERENCE_BATCH = 4;
-    static constexpr int MAX_POSTPROCESS_BATCH = 4;
+    // 各阶段批量不再在此硬编码，改由 config 提供：
+    //   power_rune.pipeline.preprocess_batch   阶段1 预处理最大批量
+    //   power_rune.pipeline.inference_batch    阶段2 推理最大批量（≤ inference.max_batch）
+    //   power_rune.pipeline.postprocess_batch  阶段3 后处理最大批量
+    // 阶段4/5（位姿解算 / 滤波+预测）为单帧处理，批量固定 1。
 
     using DataDeque = std::deque<std::unique_ptr<PowerRunePipelineData>>;
 
     /**
      * @param queue_max_sizes  各缓冲队列最大长度数组 [input, inter0..inter3, output]
+     *                         （取自 config power_rune.pipeline.queue_max_sizes）
      * @param max_delay_seconds 提取帧的最大延迟秒数（由 config common.max_delay_seconds 提供）
      * @param camera           相机参数（内参/畸变/分辨率，由输入模式选择后传入）
      */

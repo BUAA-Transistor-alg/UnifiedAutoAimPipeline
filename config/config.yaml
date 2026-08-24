@@ -160,6 +160,17 @@ outpost:
       height: 640                          # 输入图像高（像素）
   observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 ESEKF（秒）
 
+  # ── 流水线缓冲队列与批量参数（outpost.pipeline）──
+  # 缓冲队列长度 + 可批处理阶段（1 预处理 / 2 推理 / 3 后处理）的最大批量。
+  # 阶段4（PnP）/ 阶段5（ESEKF）为单帧处理，批量固定为 1。
+  pipeline:
+    # 6 个缓冲队列最大长度（[输入, 阶段间×4, 输出]）；队列满时新帧直接丢弃。
+    queue_max_sizes: [10, 10, 10, 10, 10, 10]
+    preprocess_batch: 4    # 阶段1 预处理最大批量
+    inference_batch: 1     # 阶段2 推理最大批量（动态批量 1..inference_batch；
+                           #   须 ≤ inference.max_batch，且 ≤ 共享内存容量 4）
+    postprocess_batch: 4   # 阶段3 后处理最大批量
+
   # ── ESEKF 误差状态扩展卡尔曼滤波参数 ──
   esekf:
     position_noise: 100.0         # 位置过程噪声（Q 位置块）
@@ -189,3 +200,14 @@ power_rune:
       height: 512                                       # 输入图像高（像素）
     manual_nms: false            # true: 模型为无 NMS 的原始输出，需手动 NMS；false: NMS 已内嵌
     conf_threshold: 0.5         # 置信度阈值
+
+  # ── 流水线缓冲队列与批量参数（power_rune.pipeline）──
+  # 缓冲队列长度 + 可批处理阶段（1 预处理 / 2 推理 / 3 后处理）的最大批量。
+  # 阶段4（位姿解算）/ 阶段5（滤波+预测）为单帧处理，批量固定为 1。
+  pipeline:
+    # 6 个缓冲队列最大长度（[输入, 阶段间×4, 输出]）；队列满时新帧直接丢弃。
+    queue_max_sizes: [10, 10, 10, 10, 10, 10]
+    preprocess_batch: 4    # 阶段1 预处理最大批量
+    inference_batch: 4     # 阶段2 推理最大批量（动态批量 1..inference_batch；
+                           #   须 ≤ inference.max_batch，且 ≤ 共享内存容量 4）
+    postprocess_batch: 4   # 阶段3 后处理最大批量

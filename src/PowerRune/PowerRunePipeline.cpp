@@ -36,6 +36,7 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
     , s4_(camera)
 {
     const RobotConfig& cfg = RobotConfig::instance();
+    const RobotConfig::PipelineParams& pipe = cfg.powerRune.pipeline;
 
     conf_threshold_ = cfg.powerRune.confThreshold;
     s3_.postprocessor = std::make_unique<YoloPose::YoloPosePostprocessor>(
@@ -56,6 +57,13 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
     std::cout << "    Model: " << model_path << std::endl;
     std::cout << "    Device: " << cfg.powerRune.device << std::endl;
     std::cout << "    Input resolution: " << cfg.powerRune.inputWidth << "x" << cfg.powerRune.inputHeight << std::endl;
+    std::cout << "    Inference model max batch: " << cfg.powerRune.maxBatch << std::endl;
+    std::cout << "    Stage batch (preprocess/infer/postprocess): "
+              << pipe.preprocessBatch << "/" << pipe.inferenceBatch << "/"
+              << pipe.postprocessBatch << std::endl;
+    std::cout << "    Queue sizes (input/inter0..3/output):";
+    for (int q : pipe.queueMaxSizes) std::cout << " " << q;
+    std::cout << std::endl;
     std::cout << "    Manual NMS: " << (cfg.powerRune.manualNms ? "true" : "false") << std::endl;
     std::cout << "    Confidence threshold: " << conf_threshold_ << std::endl;
     std::cout << "    Max delay: " << max_delay_seconds_ << "s" << std::endl;
@@ -68,7 +76,7 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
         cfg.output_queue = &inter_queues_[0];
         cfg.input_mtx    = &input_mtx_;
         cfg.input_cv     = &input_cv_;
-        cfg.max_batch    = MAX_PREPROCESS_BATCH;
+        cfg.max_batch    = pipe.preprocessBatch;
         cfg.output_max   = queue_max_sizes_[1];
         cfg.process_fn   = [this](DataDeque& data) { processStage1(data); };
         cfg.on_done      = [this]() { wakeScheduler(); };
@@ -80,7 +88,7 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
         PipelineStage<DataDeque>::Config cfg;
         cfg.input_queue  = &inter_queues_[0];
         cfg.output_queue = &inter_queues_[1];
-        cfg.max_batch    = MAX_INFERENCE_BATCH;
+        cfg.max_batch    = pipe.inferenceBatch;
         cfg.output_max   = queue_max_sizes_[2];
         cfg.process_fn   = [this](DataDeque& data) { processStage2(data); };
         cfg.on_done      = [this]() { wakeScheduler(); };
@@ -92,7 +100,7 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
         PipelineStage<DataDeque>::Config cfg;
         cfg.input_queue  = &inter_queues_[1];
         cfg.output_queue = &inter_queues_[2];
-        cfg.max_batch    = MAX_POSTPROCESS_BATCH;
+        cfg.max_batch    = pipe.postprocessBatch;
         cfg.output_max   = queue_max_sizes_[3];
         cfg.process_fn   = [this](DataDeque& data) { processStage3(data); };
         cfg.on_done      = [this]() { wakeScheduler(); };

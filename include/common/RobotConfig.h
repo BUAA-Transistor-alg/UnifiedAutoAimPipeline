@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <string>
+#include <array>
 
 #include <opencv2/opencv.hpp>
 
@@ -106,6 +107,17 @@ public:
         double fireAngleLength;     // fire 判定弧长（米）
     };
 
+    // 流水线缓冲队列与批量参数（config 各流水线段的 pipeline 子段）
+    // 两条流水线结构相同（5 阶段 / 6 队列），各用各的一份配置。
+    struct PipelineParams {
+        // 6 个缓冲队列最大长度（[输入, 阶段间×4, 输出]）；队列满时新帧直接丢弃。
+        // 须与流水线 NUM_QUEUES（=6）一致。
+        std::array<int, 6> queueMaxSizes;
+        int preprocessBatch;    // 阶段1 预处理最大批量
+        int inferenceBatch;     // 阶段2 推理最大批量（须 ≤ inference.max_batch 与共享内存容量）
+        int postprocessBatch;   // 阶段3 后处理最大批量
+    };
+
     // Outpost 流水线独占参数
     struct OutpostParams {
         std::string modelPath;              // 推理模型路径
@@ -115,6 +127,7 @@ public:
         int maxBatch;                       // 推理最大批量（动态 batch 1..max_batch）
         int shmKey;                         // 共享内存 Key（推理进程通信，见 InferShm.h）
         double observationLostTimeoutSec;   // 连续观测丢失多久后重置滤波器（秒）
+        PipelineParams pipeline;            // 缓冲队列长度 + 可批处理阶段批量
 
         // ESEKF 误差状态扩展卡尔曼滤波参数
         struct EsekfParams {
@@ -144,6 +157,7 @@ public:
         float       confThreshold;  // 置信度阈值
         int         maxBatch;       // 推理最大批量
         int         shmKey;         // 共享内存 Key（推理进程通信，见 InferShm.h）
+        PipelineParams pipeline;    // 缓冲队列长度 + 可批处理阶段批量
     };
 
     // 共用参数（两个流水线共享）

@@ -73,7 +73,7 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
     , s5_(camera, RobotConfig::instance().outpost.esekf)
 {
     const RobotConfig& cfg = RobotConfig::instance();
-    const int max_infer_batch = cfg.outpost.maxBatch;
+    const RobotConfig::PipelineParams& pipe = cfg.outpost.pipeline;
 
     // 推理器在独立进程 outpost_infer_process 中（仅推理一步；预处理/后处理在本
     // 进程），本阶段经共享内存通信调用，推理进程未启动时阻塞等待。
@@ -92,7 +92,13 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
     std::cout << "    Model: " << model_path << std::endl;
     std::cout << "    Device: " << cfg.outpost.device << std::endl;
     std::cout << "    Input resolution: " << cfg.outpost.inputWidth << "x" << cfg.outpost.inputHeight << std::endl;
-    std::cout << "    Max inference batch: " << max_infer_batch << std::endl;
+    std::cout << "    Inference model max batch: " << cfg.outpost.maxBatch << std::endl;
+    std::cout << "    Stage batch (preprocess/infer/postprocess): "
+              << pipe.preprocessBatch << "/" << pipe.inferenceBatch << "/"
+              << pipe.postprocessBatch << std::endl;
+    std::cout << "    Queue sizes (input/inter0..3/output):";
+    for (int q : pipe.queueMaxSizes) std::cout << " " << q;
+    std::cout << std::endl;
     std::cout << "    Confidence threshold: " << conf_threshold_ << std::endl;
     std::cout << "    NMS threshold: " << nms_threshold_ << std::endl;
     std::cout << "    Max delay: " << max_delay_seconds_ << "s" << std::endl;
@@ -105,7 +111,7 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
         cfg.output_queue = &inter_queues_[0];
         cfg.input_mtx    = &input_mtx_;
         cfg.input_cv     = &input_cv_;
-        cfg.max_batch    = MAX_PREPROCESS_BATCH;
+        cfg.max_batch    = pipe.preprocessBatch;
         cfg.output_max   = queue_max_sizes_[1];
         cfg.process_fn   = [this](DataDeque& data) { processStage1(data); };
         cfg.on_done      = [this]() { wakeScheduler(); };
@@ -117,7 +123,7 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
         PipelineStage<DataDeque>::Config cfg;
         cfg.input_queue  = &inter_queues_[0];
         cfg.output_queue = &inter_queues_[1];
-        cfg.max_batch    = max_infer_batch;
+        cfg.max_batch    = pipe.inferenceBatch;
         cfg.output_max   = queue_max_sizes_[2];
         cfg.process_fn   = [this](DataDeque& data) { processStage2(data); };
         cfg.on_done      = [this]() { wakeScheduler(); };
@@ -129,7 +135,7 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
         PipelineStage<DataDeque>::Config cfg;
         cfg.input_queue  = &inter_queues_[1];
         cfg.output_queue = &inter_queues_[2];
-        cfg.max_batch    = MAX_POSTPROCESS_BATCH;
+        cfg.max_batch    = pipe.postprocessBatch;
         cfg.output_max   = queue_max_sizes_[3];
         cfg.process_fn   = [this](DataDeque& data) { processStage3(data); };
         cfg.on_done      = [this]() { wakeScheduler(); };

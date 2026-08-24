@@ -25,7 +25,8 @@
 
 namespace InferShm {
 
-// 每批最多图像数（与流水线 MAX_INFERENCE_BATCH 一致）
+// 每批最多图像数（共享内存容量上限；config 中各流水线的
+// pipeline.inference_batch 须 ≤ 该值，且 ≤ 其 inference.max_batch）
 constexpr int    MAX_IMAGES    = 4;
 // 响应中最多 batch 数（贪心拆分，最多 MAX_IMAGES 个 batch=1）
 constexpr int    MAX_BATCHES   = MAX_IMAGES;

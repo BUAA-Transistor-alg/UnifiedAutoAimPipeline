@@ -96,15 +96,17 @@ class OutpostPipeline : public IPipeline {
 public:
     static constexpr int NUM_STAGES = 5;
     static constexpr int NUM_QUEUES = NUM_STAGES + 1;  // 6 个缓冲队列
-    static constexpr int MAX_PREPROCESS_BATCH = 4;
-    // 推理批量由 config outpost.inference.max_batch 配置（动态 batch 1..max_batch，
-    // 由 InferCore 编译 + 预热）
-    static constexpr int MAX_POSTPROCESS_BATCH = 4;
+    // 各阶段批量不再在此硬编码，改由 config 提供：
+    //   outpost.pipeline.preprocess_batch   阶段1 预处理最大批量
+    //   outpost.pipeline.inference_batch    阶段2 推理最大批量（≤ inference.max_batch）
+    //   outpost.pipeline.postprocess_batch  阶段3 后处理最大批量
+    // 阶段4/5（PnP / ESEKF）为单帧处理，批量固定 1。
 
     using DataDeque = std::deque<std::unique_ptr<OutpostPipelineData>>;
 
     /**
      * @param queue_max_sizes  各缓冲队列最大长度数组 [input, inter0..inter3, output]
+     *                         （取自 config outpost.pipeline.queue_max_sizes）
      * @param max_delay_seconds 提取帧的最大延迟秒数（由 config common.max_delay_seconds 提供）
      * @param camera           相机参数（内参/畸变/分辨率，由输入模式选择后传入）
      */

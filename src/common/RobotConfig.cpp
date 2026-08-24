@@ -73,6 +73,48 @@ void parseCameraParams(const YAML::Node& camNode, const std::string& name,
         out.testMaxFps = camNode["test_max_fps"].as<bool>();
 }
 
+// 解析流水线缓冲队列与批量参数段（outpost.pipeline / power_rune.pipeline）：
+// queue_max_sizes 必为 6 个正整数（[输入, 阶段间×4, 输出]）；preprocess_batch /
+// inference_batch / postprocess_batch 必为正整数，且 inference_batch 不得超过
+// 该流水线 inference.max_batch（模型编译的动态批量上限，maxBatch 参数传入）。
+void parsePipelineParams(const YAML::Node& node, const std::string& name,
+                         int maxBatch, RobotConfig::PipelineParams& out) {
+    const YAML::Node& qs = node["queue_max_sizes"];
+    if (!qs || !qs.IsDefined())
+        throw std::runtime_error("RobotConfig: 配置段 '" + name + "' 缺少配置项 'queue_max_sizes'");
+    std::vector<int> qv;
+    try {
+        qv = qs.as<std::vector<int>>();
+    } catch (const YAML::Exception& e) {
+        throw std::runtime_error("RobotConfig: 配置项 '" + name + ".queue_max_sizes' 类型错误: " + e.what());
+    }
+    if (qv.size() != 6) {
+        throw std::runtime_error("RobotConfig: 配置项 '" + name + ".queue_max_sizes' 需要 6 个元素"
+                                 "（输入 + 阶段间×4 + 输出），实际 " + std::to_string(qv.size()));
+    }
+    for (size_t i = 0; i < 6; ++i) {
+        if (qv[i] < 1) {
+            throw std::runtime_error("RobotConfig: 配置项 '" + name + ".queue_max_sizes[" +
+                                     std::to_string(i) + "]' 必须 >= 1");
+        }
+        out.queueMaxSizes[i] = qv[i];
+    }
+    out.preprocessBatch  = requireScalar<int>(node, "preprocess_batch", name);
+    out.inferenceBatch   = requireScalar<int>(node, "inference_batch", name);
+    out.postprocessBatch = requireScalar<int>(node, "postprocess_batch", name);
+    if (out.preprocessBatch < 1)
+        throw std::runtime_error("RobotConfig: 配置项 '" + name + ".preprocess_batch' 必须 >= 1");
+    if (out.inferenceBatch < 1)
+        throw std::runtime_error("RobotConfig: 配置项 '" + name + ".inference_batch' 必须 >= 1");
+    if (out.postprocessBatch < 1)
+        throw std::runtime_error("RobotConfig: 配置项 '" + name + ".postprocess_batch' 必须 >= 1");
+    if (out.inferenceBatch > maxBatch) {
+        throw std::runtime_error("RobotConfig: 配置项 '" + name + ".inference_batch' (" +
+                                 std::to_string(out.inferenceBatch) + ") 不能超过该流水线 "
+                                 "inference.max_batch (" + std::to_string(maxBatch) + ")");
+    }
+}
+
 } // namespace
 
 RobotConfig RobotConfig::load(const std::string& yamlPath) {
@@ -245,6 +287,11 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.outpost.shmKey   = requireScalar<int>(oinf, "shm_key", "outpost.inference");
     cfg.outpost.observationLostTimeoutSec = requireScalar<double>(op, "observation_lost_timeout", "outpost");
 
+    // ── outpost.pipeline（缓冲队列长度 + 可批处理阶段批量）──
+    const YAML::Node& opipe = op["pipeline"];
+    if (!opipe || !opipe.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'outpost.pipeline' 配置段");
+    parsePipelineParams(opipe, "outpost.pipeline", cfg.outpost.maxBatch, cfg.outpost.pipeline);
+
     // ── outpost.esekf（ESEKF 滤波参数）──
     const YAML::Node& ek = op["esekf"];
     if (!ek || !ek.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'outpost.esekf' 配置段");
@@ -282,6 +329,11 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.powerRune.confThreshold = requireScalar<float>(prinf, "conf_threshold", "power_rune.inference");
     cfg.powerRune.maxBatch      = requireScalar<int>(prinf, "max_batch", "power_rune.inference");
     cfg.powerRune.shmKey        = requireScalar<int>(prinf, "shm_key", "power_rune.inference");
+
+    // ── power_rune.pipeline（缓冲队列长度 + 可批处理阶段批量）──
+    const YAML::Node& prpipe = pr["pipeline"];
+    if (!prpipe || !prpipe.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'power_rune.pipeline' 配置段");
+    parsePipelineParams(prpipe, "power_rune.pipeline", cfg.powerRune.maxBatch, cfg.powerRune.pipeline);
 
     return cfg;
 }

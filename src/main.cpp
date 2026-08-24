@@ -433,10 +433,12 @@ int main(int argc, char** argv) {
     // 只交换指针；推理进程的启停策略见 config common.infer_process_lazy：
     //   false（默认）：由 launch_all.py 启动全部推理进程并常驻（先于主程序启动）；
     //   true：由下方 InferProcessManager 按需启停（仅启动当前流水线所需进程）。
-    // max_delay_seconds 共用 config common.max_delay_seconds；相机参数按输入模式选择
-    const std::array<int, OutpostPipeline::NUM_QUEUES> queue_sizes = {10, 10, 10, 10, 10, 10};
-    OutpostPipeline   outpost_pipeline(queue_sizes, cfg.common.maxDelaySeconds, camera_params);
-    PowerRunePipeline power_rune_pipeline(queue_sizes, cfg.common.maxDelaySeconds, camera_params);
+    // max_delay_seconds 共用 config common.max_delay_seconds；相机参数按输入模式选择；
+    // 各流水线缓冲队列长度取自 config outpost.pipeline / power_rune.pipeline
+    OutpostPipeline   outpost_pipeline(cfg.outpost.pipeline.queueMaxSizes,
+                                       cfg.common.maxDelaySeconds, camera_params);
+    PowerRunePipeline power_rune_pipeline(cfg.powerRune.pipeline.queueMaxSizes,
+                                          cfg.common.maxDelaySeconds, camera_params);
     IPipeline* active_pipeline =
         (opt.pipeline == PipelineMode::OUTPOST) ? static_cast<IPipeline*>(&outpost_pipeline)
                                                 : static_cast<IPipeline*>(&power_rune_pipeline);
