@@ -56,19 +56,27 @@ public:
     ///                    （2026.3 GPU 插件实测：同进程两套推理器各建 Core 时，
     ///                    outpost 帧率被拖到 ~62；共享一个 Core 后无此问题）。
     ///                    为空时自建一个。
+    /// @param cache_dir 可选的模型缓存目录（不存在时自动创建）：
+    ///                   - 作为 OpenVINO 编译缓存（ov::cache_dir），编译好的模型
+    ///                     写入该目录，下次启动直接命中，省去重新编译；
+    ///                   - ONNX→IR 转换产物（xml/bin）也写入该目录，避免生成的
+    ///                     IR 污染 Model 目录。
+    ///                  为空时保持旧行为（不设编译缓存，IR 写在 ONNX 同目录）。
     InferEngine(const std::string& model_path_xml,
                 const std::string& model_path_bin,
                 const std::string& device,
                 int width, int height,
                 int max_batch = 4,
-                std::shared_ptr<ov::Core> shared_core = nullptr);
+                std::shared_ptr<ov::Core> shared_core = nullptr,
+                const std::string& cache_dir = "");
 
-    /// 使用 ONNX 模型（若同目录 IR 不存在则先转换）
+    /// 使用 ONNX 模型（若 cache_dir 或同目录 IR 不存在则先转换）
     InferEngine(const std::string& model_path_onnx,
                 const std::string& device,
                 int width, int height,
                 int max_batch = 4,
-                std::shared_ptr<ov::Core> shared_core = nullptr);
+                std::shared_ptr<ov::Core> shared_core = nullptr,
+                const std::string& cache_dir = "");
 
     /// 主推理接口：接收已预处理（resize 到 width×height）的图像指针向量
     /// @return 每个输入图对应一个 InferenceOutput（同一 batch 共享同一张量）
@@ -86,9 +94,13 @@ private:
               const std::string& model_path_bin,
               const std::string& device,
               int width, int height, int max_batch,
-              std::shared_ptr<ov::Core> shared_core);
+              std::shared_ptr<ov::Core> shared_core,
+              const std::string& cache_dir = "");
 
-    static std::pair<std::string, std::string> convertOnnxToIR(const std::string& onnx_path);
+    /// 将 ONNX 模型转换为 IR（xml + bin）。cache_dir 非空时产物写入该目录
+    /// （不存在则自动创建），为空时写在 ONNX 同目录。
+    static std::pair<std::string, std::string> convertOnnxToIR(
+        const std::string& onnx_path, const std::string& cache_dir = "");
 
     /// 执行单次确定 batch 的推理，返回该 batch 的输出张量
     std::shared_ptr<ov::Tensor> inferBatch(
@@ -96,6 +108,7 @@ private:
         int batch_idx);
 
     std::shared_ptr<ov::Core> core_;
+    std::string cache_dir_;
     int width_;
     int height_;
     int max_batch_;

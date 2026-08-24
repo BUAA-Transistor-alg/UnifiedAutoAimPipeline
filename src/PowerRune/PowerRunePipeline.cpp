@@ -14,9 +14,12 @@ std::unique_ptr<YoloPose::YoloPoseInfer> PowerRunePipeline::createInfer()
     std::string model_path = (!cfg.powerRune.modelPath.empty() && cfg.powerRune.modelPath[0] == '/')
         ? cfg.powerRune.modelPath
         : PathResolver::resolvePath(cfg.powerRune.modelPath);
+    // 本进程专属模型缓存目录（ONNX→IR 转换产物存放处，不存在时自动创建）
+    std::string cache_dir = PathResolver::resolvePath("cache/power_rune");
     return std::make_unique<YoloPose::YoloPoseInfer>(
         model_path, cfg.powerRune.device,
-        cfg.powerRune.inputWidth, cfg.powerRune.inputHeight, cfg.powerRune.maxBatch);
+        cfg.powerRune.inputWidth, cfg.powerRune.inputHeight, cfg.powerRune.maxBatch,
+        nullptr, cache_dir);
 }
 
 PowerRunePipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)

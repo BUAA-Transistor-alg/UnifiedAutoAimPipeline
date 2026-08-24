@@ -27,6 +27,10 @@ int main() {
         ? cfg.outpost.modelPath
         : PathResolver::resolvePath(cfg.outpost.modelPath);
 
+    // 本进程专属模型缓存目录（OpenVINO 编译缓存 + ONNX→IR 转换产物存放处）：
+    // <项目根>/cache/outpost，不存在时自动创建（InferEngine::init 中创建）
+    std::string cache_dir = PathResolver::resolvePath("cache/outpost");
+
     std::cout << "========================================" << std::endl;
     std::cout << "Outpost Infer Process" << std::endl;
     std::cout << "    Model:   " << model_path << std::endl;
@@ -34,11 +38,13 @@ int main() {
     std::cout << "    Input:   " << cfg.outpost.inputWidth << "x" << cfg.outpost.inputHeight
               << "  max_batch=" << cfg.outpost.maxBatch << std::endl;
     std::cout << "    Shm key: " << cfg.outpost.shmKey << std::endl;
+    std::cout << "    缓存目录: " << cache_dir << std::endl;
     std::cout << "========================================" << std::endl;
 
     auto engine = std::make_unique<OutpostDetect::OutpostInfer>(
         model_path, cfg.outpost.device,
-        cfg.outpost.inputWidth, cfg.outpost.inputHeight, cfg.outpost.maxBatch);
+        cfg.outpost.inputWidth, cfg.outpost.inputHeight, cfg.outpost.maxBatch,
+        nullptr, cache_dir);
 
     Infer::InferShmServer server(cfg.outpost.shmKey,
         [&](const std::vector<const cv::Mat*>& imgs) {

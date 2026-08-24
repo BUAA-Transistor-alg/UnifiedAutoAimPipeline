@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <algorithm>
+#include <filesystem>
 
 namespace Infer {
 
@@ -34,11 +35,20 @@ void InferEngine::init(const std::string& model_path_xml,
                        const std::string& device,
                        int width, int height,
                        int max_batch,
-                       std::shared_ptr<ov::Core> shared_core) {
+                       std::shared_ptr<ov::Core> shared_core,
+                       const std::string& cache_dir) {
     width_ = width;
     height_ = height;
     max_batch_ = max_batch;
+    cache_dir_ = cache_dir;
+    // 缓存目录不存在时自动创建（OpenVINO 编译缓存 + ONNX→IR 转换产物存放处）
+    if (!cache_dir_.empty())
+        std::filesystem::create_directories(cache_dir_);
     core_ = shared_core ? std::move(shared_core) : std::make_shared<ov::Core>();
+    // OpenVINO 编译缓存：编译好的模型（含各 batch 变体）写入 cache_dir，下次启动
+    // 直接命中缓存，省去重新编译（各推理进程用各自目录，互不干扰）
+    if (!cache_dir_.empty())
+        core_->set_property(ov::cache_dir(cache_dir_));
     compiled_models_.reserve(max_batch_);
     infer_requests_.reserve(max_batch_);
 
@@ -50,16 +60,8 @@ void InferEngine::init(const std::string& model_path_xml,
     // 因此 AMD GPU 上对 FP32 输入模型直接以 FP32 推理精度编译（FP32 内核不依赖
     // Intel 特有指令，实测可正常编译运行）。FP16 输入模型（如 Outpost 0526）保持
     // 默认路径（FP16 更快）。Intel GPU / CPU 不受影响。
-    // 性能模式用 LATENCY 且不用模型缓存：这是进程内"两套模型都编译在 GPU 上"时
-    // 实测退化最小的配置（2026.3 GPU 插件）——
-    //   * THROUGHPUT 模式：编译过另一模型后必然退化（outpost 3.8ms -> 5.6ms，
-    //     与 core 共享/销毁重建无关；app 实测 outpost 启动 ~175fps -> 切回后 ~100fps）；
-    //   * LATENCY + 磁盘缓存（CACHE_DIR）：同样退化（3.4ms -> 5.3ms）；
-    //   * LATENCY 且不用缓存：退化仍偶发出现（同测试复跑一次 3.5ms、一次 5.8ms），
-    //     无法保证，但已是进程内最好水平。
-    // 因此：LATENCY 模式、不设 CACHE_DIR（切换时重新编译需数秒）。
     ov::AnyMap compile_cfg{
-        ov::hint::performance_mode(ov::hint::PerformanceMode::LATENCY)};
+        ov::hint::performance_mode(ov::hint::PerformanceMode::CUMULATIVE_THROUGHPUT)};
     if (device.find("GPU") != std::string::npos) {
         try {
             std::string arch = core_->get_property(device, ov::device::architecture);
@@ -139,23 +141,37 @@ InferEngine::InferEngine(const std::string& model_path_xml,
                          const std::string& device,
                          int width, int height,
                          int max_batch,
-                         std::shared_ptr<ov::Core> shared_core) {
+                         std::shared_ptr<ov::Core> shared_core,
+                         const std::string& cache_dir) {
     init(model_path_xml, model_path_bin, device, width, height, max_batch,
-         std::move(shared_core));
+         std::move(shared_core), cache_dir);
 }
 
 InferEngine::InferEngine(const std::string& model_path_onnx,
                          const std::string& device,
                          int width, int height,
                          int max_batch,
-                         std::shared_ptr<ov::Core> shared_core) {
-    // 检查 IR 文件是否已存在
+                         std::shared_ptr<ov::Core> shared_core,
+                         const std::string& cache_dir) {
+    // 检查 IR 文件是否已存在：优先在 cache_dir 中查找（不存在时自动创建目录），
+    // 否则回退到 ONNX 同目录
     std::string base_path = model_path_onnx;
     size_t dot_pos = base_path.rfind(".onnx");
     if (dot_pos != std::string::npos)
         base_path = base_path.substr(0, dot_pos);
-    std::string xml_path = base_path + ".xml";
-    std::string bin_path = base_path + ".bin";
+
+    std::string xml_path, bin_path;
+    if (!cache_dir.empty()) {
+        std::filesystem::create_directories(cache_dir);
+        // IR 文件名与 ONNX 同名（去掉扩展名），放在缓存目录下
+        std::filesystem::path onnx_fs(model_path_onnx);
+        std::string stem = onnx_fs.stem().string();
+        xml_path = (std::filesystem::path(cache_dir) / (stem + ".xml")).string();
+        bin_path = (std::filesystem::path(cache_dir) / (stem + ".bin")).string();
+    } else {
+        xml_path = base_path + ".xml";
+        bin_path = base_path + ".bin";
+    }
 
     bool need_convert = true;
     FILE* f_xml = fopen(xml_path.c_str(), "r");
@@ -168,16 +184,17 @@ InferEngine::InferEngine(const std::string& model_path_onnx,
     if (f_bin) fclose(f_bin);
 
     if (need_convert) {
-        auto [xml, bin] = convertOnnxToIR(model_path_onnx);
+        auto [xml, bin] = convertOnnxToIR(model_path_onnx, cache_dir);
         xml_path = xml;
         bin_path = bin;
     }
 
     init(xml_path, bin_path, device, width, height, max_batch,
-         std::move(shared_core));
+         std::move(shared_core), cache_dir);
 }
 
-std::pair<std::string, std::string> InferEngine::convertOnnxToIR(const std::string& onnx_path) {
+std::pair<std::string, std::string> InferEngine::convertOnnxToIR(
+    const std::string& onnx_path, const std::string& cache_dir) {
     ov::Core core;
     std::cout << "[INFO] Loading ONNX model: " << onnx_path << std::endl;
     auto model = core.read_model(onnx_path);
@@ -186,8 +203,19 @@ std::pair<std::string, std::string> InferEngine::convertOnnxToIR(const std::stri
     size_t dot_pos = base_path.rfind(".onnx");
     if (dot_pos != std::string::npos)
         base_path = base_path.substr(0, dot_pos);
-    std::string xml_path = base_path + ".xml";
-    std::string bin_path = base_path + ".bin";
+
+    std::string xml_path, bin_path;
+    if (!cache_dir.empty()) {
+        // 转换产物写入缓存目录（不存在时自动创建）
+        std::filesystem::create_directories(cache_dir);
+        std::filesystem::path onnx_fs(onnx_path);
+        std::string stem = onnx_fs.stem().string();
+        xml_path = (std::filesystem::path(cache_dir) / (stem + ".xml")).string();
+        bin_path = (std::filesystem::path(cache_dir) / (stem + ".bin")).string();
+    } else {
+        xml_path = base_path + ".xml";
+        bin_path = base_path + ".bin";
+    }
 
     std::cout << "[INFO] Serializing model to IR format..." << std::endl;
     ov::serialize(model, xml_path, bin_path);

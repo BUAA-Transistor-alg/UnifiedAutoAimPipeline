@@ -53,7 +53,7 @@ common:
     target_backlog: 3            # 目标积压（设定点，建议 3）
     max_extra_delay_seconds: 0.05 # 额外延迟上限（秒）
     gain_p: 0.001             # PI 比例增益（秒/单位积压，即 8µs/单位）
-    gain_i: 0.001             # PI 积分增益（秒/单位积压/秒，即 3µs/单位/秒）
+    gain_i: 0.01             # PI 积分增益（秒/单位积压/秒，即 3µs/单位/秒）
 
   # ── 推理进程启动策略（bool）──
   #   false：启动时由 launch_all.py 启动全部推理进程

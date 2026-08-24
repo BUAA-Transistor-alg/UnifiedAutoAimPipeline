@@ -29,19 +29,21 @@ OutpostInfer::OutpostInfer(const std::string& model_path_xml,
                            const std::string& device,
                            int input_width, int input_height,
                            int max_batch,
-                           std::shared_ptr<ov::Core> shared_core)
+                           std::shared_ptr<ov::Core> shared_core,
+                           const std::string& cache_dir)
     : engine_(std::make_unique<Infer::InferEngine>(
           model_path_xml, model_path_bin, device, input_width, input_height,
-          max_batch, std::move(shared_core))) {}
+          max_batch, std::move(shared_core), cache_dir)) {}
 
 OutpostInfer::OutpostInfer(const std::string& model_path_onnx,
                            const std::string& device,
                            int input_width, int input_height,
                            int max_batch,
-                           std::shared_ptr<ov::Core> shared_core)
+                           std::shared_ptr<ov::Core> shared_core,
+                           const std::string& cache_dir)
     : engine_(std::make_unique<Infer::InferEngine>(
           model_path_onnx, device, input_width, input_height,
-          max_batch, std::move(shared_core))) {}
+          max_batch, std::move(shared_core), cache_dir)) {}
 
 std::vector<InferenceOutput> OutpostInfer::runInference(
     const std::vector<const cv::Mat*>& preprocessed_imgs) {

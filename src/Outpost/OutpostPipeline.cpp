@@ -39,9 +39,12 @@ std::unique_ptr<OutpostDetect::OutpostInfer> OutpostPipeline::createInfer()
     std::string model_path = (!cfg.outpost.modelPath.empty() && cfg.outpost.modelPath[0] == '/')
         ? cfg.outpost.modelPath
         : PathResolver::resolvePath(cfg.outpost.modelPath);
+    // 本进程专属模型缓存目录（ONNX→IR 转换产物存放处，不存在时自动创建）
+    std::string cache_dir = PathResolver::resolvePath("cache/outpost");
     return std::make_unique<OutpostDetect::OutpostInfer>(
         model_path, cfg.outpost.device,
-        cfg.outpost.inputWidth, cfg.outpost.inputHeight, cfg.outpost.maxBatch);
+        cfg.outpost.inputWidth, cfg.outpost.inputHeight, cfg.outpost.maxBatch,
+        nullptr, cache_dir);
 }
 
 OutpostPipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)
