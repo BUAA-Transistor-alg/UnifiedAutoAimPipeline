@@ -187,6 +187,11 @@ static void drawOverlay(cv::Mat& img,
                         const std::chrono::steady_clock::time_point& frame_ts,
                         const PipelineResult::QueueSizes& queue_sizes,
                         double extra_delay_s) {
+    // 提前获取 RobotController 状态：帧率行需显示 MPC 后台循环帧率（可用时），
+    // 第 4 块串口信息区同样使用该状态（此处统一获取一次，避免重复加锁）
+    const RobotController::State st =
+        (rc != nullptr) ? rc->getState() : RobotController::State{};
+
     // 1. 热键提醒（顶部）
     cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
                 cv::Point(10, 20), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
@@ -206,6 +211,11 @@ static void drawOverlay(cv::Mat& img,
     using namespace std::chrono;
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(1) << "FPS: " << fps;
+    // 新增：同时显示 MPC 后台循环线程真实帧率（可用时——RobotController 已构造
+    // 且 loop 已跑出帧率统计，即 loop_fps > 0）
+    if (rc != nullptr && st.mpc.loop_fps > 0.0) {
+        oss << "  MPC: " << st.mpc.loop_fps;
+    }
     int baseline = 0;
     cv::Size sz = cv::getTextSize(oss.str(), cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
     cv::putText(img, oss.str(), cv::Point(img.cols - sz.width - 10, 30),
@@ -230,7 +240,6 @@ static void drawOverlay(cv::Mat& img,
         put("Serial: N/A (RobotController not constructed)");
         return;
     }
-    const RobotController::State st = rc->getState();
 
     // ── MCU ──
     put("--- MCU ---");
@@ -397,6 +406,7 @@ int main(int argc, char** argv) {
             rp.dtControl, rp.mpcPredN, rp.J, rp.tauC, rp.b, rp.tauD,
             rp.maxTorque, rp.maxTorqueRate, rp.Q, rp.R, rp.Rd, rp.maxIter,
             rp.integralGain,
+            /*mpc_loop_period=*/rp.dtControl,   // MPC 后台循环周期与 dt_control 相同
             McuDataPreprocessor::LinearParams{
                 rp.sendPitchScale, rp.sendPitchOffset,
                 rp.recvPitchScale, rp.recvPitchOffset},
