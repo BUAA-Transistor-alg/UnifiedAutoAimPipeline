@@ -178,11 +178,12 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     //   true：仅启动当前流水线所需推理进程，切换时立即关闭不需要的进程（主程序管理）
     cfg.common.inferProcessLazy = requireScalar<bool>(cm, "infer_process_lazy", "common");
 
-    // ── common.backlog_adaptive_delay（队列积压自适应额外延迟）──
-    // 开启后：
-    //   - 除输出缓冲队列外各队列积压总数 > increase_threshold → 每帧额外延迟
-    //     增加 step_seconds（上限 max_extra_delay_seconds）；
-    //   - 积压总数 < decrease_threshold → 每帧减少 step_seconds（下限 0）。
+    // ── common.backlog_adaptive_delay（队列积压自适应额外延迟，v3 限速比例积分）──
+    // 开启后（见 BacklogAdaptiveDelay）：
+    //   - 除输出缓冲队列外各队列积压总数先做 EMA 平滑（smoothing_alpha）；
+    //   - 以滞回带中点 (increase+decrease)/2 为设定点做限速比例积分：变化速率
+    //     与误差成正比但封顶 max_rate_s_s（秒/秒），延迟封顶
+    //     max_extra_delay_seconds（抗饱和）。
     //   若要在 config.yaml 中新增本功能的参数，需同步修改
     //   RobotConfig::BacklogAdaptiveDelayParams 与本段解析。
     const YAML::Node& bad = cm["backlog_adaptive_delay"];
@@ -196,8 +197,10 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
         requireScalar<int>(bad, "decrease_threshold", "common.backlog_adaptive_delay");
     cfg.common.backlogAdaptiveDelay.maxExtraDelaySeconds =
         requireScalar<double>(bad, "max_extra_delay_seconds", "common.backlog_adaptive_delay");
-    cfg.common.backlogAdaptiveDelay.stepSeconds =
-        requireScalar<double>(bad, "step_seconds", "common.backlog_adaptive_delay");
+    cfg.common.backlogAdaptiveDelay.smoothingAlpha =
+        requireScalar<double>(bad, "smoothing_alpha", "common.backlog_adaptive_delay");
+    cfg.common.backlogAdaptiveDelay.maxRateSecPerSec =
+        requireScalar<double>(bad, "max_rate_s_s", "common.backlog_adaptive_delay");
     // 取值校验：阈值关系与非法值同样在此处报错（不静默修正）
     if (cfg.common.backlogAdaptiveDelay.increaseThreshold <=
         cfg.common.backlogAdaptiveDelay.decreaseThreshold) {
@@ -207,10 +210,14 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (cfg.common.backlogAdaptiveDelay.increaseThreshold < 0 ||
         cfg.common.backlogAdaptiveDelay.decreaseThreshold < 0 ||
         cfg.common.backlogAdaptiveDelay.maxExtraDelaySeconds < 0.0 ||
-        cfg.common.backlogAdaptiveDelay.stepSeconds < 0.0) {
+        cfg.common.backlogAdaptiveDelay.smoothingAlpha <= 0.0 ||
+        cfg.common.backlogAdaptiveDelay.smoothingAlpha > 1.0 ||
+        cfg.common.backlogAdaptiveDelay.maxRateSecPerSec <= 0.0) {
         throw std::runtime_error("RobotConfig: common.backlog_adaptive_delay."
                                  "increase_threshold / decrease_threshold / "
-                                 "max_extra_delay_seconds / step_seconds 必须 >= 0");
+                                 "max_extra_delay_seconds 必须 >= 0，"
+                                 "smoothing_alpha 必须在 (0,1]，"
+                                 "max_rate_s_s 必须 > 0");
     }
 
     // ── common.recording ──

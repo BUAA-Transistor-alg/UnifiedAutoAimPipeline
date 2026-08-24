@@ -189,18 +189,21 @@ public:
         // false: 启动时启动全部推理进程并后台闲置（launch_all.py 预启动）
         bool inferProcessLazy;
 
-        // 队列积压自适应额外延迟（可选功能，见 BacklogAdaptiveDelay）：
+        // 队列积压自适应额外延迟（可选功能，见 BacklogAdaptiveDelay，v3 限速比例积分）：
         // 开启后处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列
-        // 积压总数，按其与两阈值的关系自适应增减取帧线程的额外延迟。
+        // 积压总数，先做 EMA 平滑（smoothingAlpha），再以滞回带中点为设定点做
+        // 限速比例积分（变化速率封顶 maxRateSecPerSec，抗饱和），得到取帧线程的
+        // 额外延迟。速率上限远小于回环延迟允许的调整量，无极限环震荡。
         // ⚠ 给后续修改者：本结构体所有字段均无默认值，必须由 config.yaml 的
         //   common.backlog_adaptive_delay 段提供（缺段/缺字段时 RobotConfig::load
         //   直接抛异常退出），解析见 src/common/RobotConfig.cpp，取值校验也在那里。
         struct BacklogAdaptiveDelayParams {
             bool   enabled;             // 功能总开关（config: enabled）
-            int    increaseThreshold;   // 积压总数 > 该值 → 增加额外延迟（config: increase_threshold）
-            int    decreaseThreshold;   // 积压总数 < 该值 → 减少额外延迟（config: decrease_threshold）
+            int    increaseThreshold;   // 滞回带上沿（设定点上方，config: increase_threshold）
+            int    decreaseThreshold;   // 滞回带下沿（设定点下方，config: decrease_threshold）
             double maxExtraDelaySeconds; // 额外延迟上限（秒，config: max_extra_delay_seconds）
-            double stepSeconds;         // 每帧额外延迟增减步长（秒，config: step_seconds）
+            double smoothingAlpha;      // 积压 EMA 平滑系数 (0,1]（config: smoothing_alpha）
+            double maxRateSecPerSec;    // 延迟变化速率上限，秒/秒 > 0（config: max_rate_s_s）
         };
         BacklogAdaptiveDelayParams backlogAdaptiveDelay;
 
