@@ -67,6 +67,7 @@ set(COMMON_SOURCES
     src/common/TaskPool.cpp
     src/common/FrameRateCounter.cpp
     src/common/RobotConfig.cpp
+    src/common/BacklogAdaptiveDelay.cpp
     src/common/CameraProjection.cpp
     src/common/Infer/InferCore.cpp
     src/common/Infer/InferShmClient.cpp

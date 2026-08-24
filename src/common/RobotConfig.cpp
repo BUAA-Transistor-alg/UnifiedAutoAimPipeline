@@ -45,10 +45,11 @@ std::vector<double> requireList(const YAML::Node& section, const std::string& ke
     return v;
 }
 
-// 解析一套相机参数：resolution / camera_matrix / dist_coeffs 必填；
-// device_ip / net_ip / exposure / gain 可选（视频模式无）。
+// 解析一套相机参数（common.input_mode.camera_mode / video_mode）。
+// ⚠ 不设任何默认值：每个模式段中的所有参数都必须显式出现在 config.yaml，
+//   缺字段即抛异常。
 void parseCameraParams(const YAML::Node& camNode, const std::string& name,
-                       RobotConfig::CameraParams& out) {
+                       RobotConfig::CameraParams& out, bool cameraMode) {
     const YAML::Node& res = camNode["resolution"];
     if (!res || !res.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + name + ".resolution' 配置段");
     out.width  = requireScalar<int>(res, "width", name + ".resolution");
@@ -61,16 +62,16 @@ void parseCameraParams(const YAML::Node& camNode, const std::string& name,
     for (size_t i = 0; i < dc.size(); ++i) {
         out.distCoeffs.at<double>((int)i, 0) = dc[i];
     }
-    if (camNode["device_ip"] && camNode["device_ip"].IsDefined())
-        out.deviceIp = camNode["device_ip"].as<std::string>();
-    if (camNode["net_ip"] && camNode["net_ip"].IsDefined())
-        out.netIp = camNode["net_ip"].as<std::string>();
-    if (camNode["exposure"] && camNode["exposure"].IsDefined())
-        out.exposure = camNode["exposure"].as<float>();
-    if (camNode["gain"] && camNode["gain"].IsDefined())
-        out.gain = camNode["gain"].as<float>();
-    if (camNode["test_max_fps"] && camNode["test_max_fps"].IsDefined())
-        out.testMaxFps = camNode["test_max_fps"].as<bool>();
+    if (cameraMode) {
+        // 相机模式（实机相机：IP / 曝光 / 增益）
+        out.deviceIp  = requireScalar<std::string>(camNode, "device_ip", name);
+        out.netIp     = requireScalar<std::string>(camNode, "net_ip", name);
+        out.exposure  = requireScalar<float>(camNode, "exposure", name);
+        out.gain      = requireScalar<float>(camNode, "gain", name);
+    } else {
+        // 视频/交互模式（测试最大帧率开关）
+        out.testMaxFps = requireScalar<bool>(camNode, "test_max_fps", name);
+    }
 }
 
 // 解析流水线缓冲队列与批量参数段（outpost.pipeline / power_rune.pipeline）：
@@ -117,6 +118,9 @@ void parsePipelineParams(const YAML::Node& node, const std::string& name,
 
 } // namespace
 
+
+// ⚠ 给后续修改者：所有参数均无代码默认值，必须由 config.yaml 提供；
+//   缺段或缺字段直接抛异常（不静默采用默认值）。
 RobotConfig RobotConfig::load(const std::string& yamlPath) {
     YAML::Node root;
     try {
@@ -154,40 +158,71 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (!im || !im.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.input_mode' 配置段");
     const YAML::Node& cam = im["camera_mode"];
     if (!cam || !cam.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.input_mode.camera_mode' 配置段");
-    parseCameraParams(cam, "common.input_mode.camera_mode", cfg.common.inputMode.cameraMode);
+    parseCameraParams(cam, "common.input_mode.camera_mode", cfg.common.inputMode.cameraMode,
+                      /*cameraMode=*/true);
     const YAML::Node& vid = im["video_mode"];
     if (!vid || !vid.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.input_mode.video_mode' 配置段");
-    parseCameraParams(vid, "common.input_mode.video_mode", cfg.common.inputMode.videoMode);
+    parseCameraParams(vid, "common.input_mode.video_mode", cfg.common.inputMode.videoMode,
+                      /*cameraMode=*/false);
 
     // ── common.input_mode.camera_mode.extra_info_delay（相机输入模式 extra_info
-    //    延迟；必填，无默认值）──
+    //    延迟；相机模式，无默认值）──
     cfg.common.inputMode.cameraMode.extraInfoDelay =
         requireScalar<double>(cam, "extra_info_delay", "common.input_mode.camera_mode");
 
     // ── common.max_delay_seconds（两个流水线共用）──
     cfg.common.maxDelaySeconds = requireScalar<double>(cm, "max_delay_seconds", "common");
 
-    // ── common.infer_process_lazy（可选，默认 false）──
-    //   false（默认）：启动时启动全部推理进程并后台闲置（launch_all.py 预启动）；
+    // ── common.infer_process_lazy──
+    //   false：启动时启动全部推理进程并后台闲置（launch_all.py 预启动）；
     //   true：仅启动当前流水线所需推理进程，切换时立即关闭不需要的进程（主程序管理）
-    cfg.common.inferProcessLazy = false;
-    if (cm["infer_process_lazy"] && cm["infer_process_lazy"].IsDefined()) {
-        cfg.common.inferProcessLazy = cm["infer_process_lazy"].as<bool>();
+    cfg.common.inferProcessLazy = requireScalar<bool>(cm, "infer_process_lazy", "common");
+
+    // ── common.backlog_adaptive_delay（队列积压自适应额外延迟）──
+    // 开启后：
+    //   - 除输出缓冲队列外各队列积压总数 > increase_threshold → 每帧额外延迟
+    //     增加 step_seconds（上限 max_extra_delay_seconds）；
+    //   - 积压总数 < decrease_threshold → 每帧减少 step_seconds（下限 0）。
+    //   若要在 config.yaml 中新增本功能的参数，需同步修改
+    //   RobotConfig::BacklogAdaptiveDelayParams 与本段解析。
+    const YAML::Node& bad = cm["backlog_adaptive_delay"];
+    if (!bad || !bad.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'common.backlog_adaptive_delay' 配置段");
+    cfg.common.backlogAdaptiveDelay.enabled =
+        requireScalar<bool>(bad, "enabled", "common.backlog_adaptive_delay");
+    cfg.common.backlogAdaptiveDelay.increaseThreshold =
+        requireScalar<int>(bad, "increase_threshold", "common.backlog_adaptive_delay");
+    cfg.common.backlogAdaptiveDelay.decreaseThreshold =
+        requireScalar<int>(bad, "decrease_threshold", "common.backlog_adaptive_delay");
+    cfg.common.backlogAdaptiveDelay.maxExtraDelaySeconds =
+        requireScalar<double>(bad, "max_extra_delay_seconds", "common.backlog_adaptive_delay");
+    cfg.common.backlogAdaptiveDelay.stepSeconds =
+        requireScalar<double>(bad, "step_seconds", "common.backlog_adaptive_delay");
+    // 取值校验：阈值关系与非法值同样在此处报错（不静默修正）
+    if (cfg.common.backlogAdaptiveDelay.increaseThreshold <=
+        cfg.common.backlogAdaptiveDelay.decreaseThreshold) {
+        throw std::runtime_error("RobotConfig: common.backlog_adaptive_delay."
+                                 "increase_threshold 必须大于 decrease_threshold");
+    }
+    if (cfg.common.backlogAdaptiveDelay.increaseThreshold < 0 ||
+        cfg.common.backlogAdaptiveDelay.decreaseThreshold < 0 ||
+        cfg.common.backlogAdaptiveDelay.maxExtraDelaySeconds < 0.0 ||
+        cfg.common.backlogAdaptiveDelay.stepSeconds < 0.0) {
+        throw std::runtime_error("RobotConfig: common.backlog_adaptive_delay."
+                                 "increase_threshold / decrease_threshold / "
+                                 "max_extra_delay_seconds / step_seconds 必须 >= 0");
     }
 
-    // ── common.recording（可选：录制参数；缺失时使用默认值）──
+    // ── common.recording ──
     //   output_dir        ：录制输出目录（相对项目根目录或以 / 开头为绝对路径）
-    //   min_free_space_mb ：剩余空间低于该值（MB）时停止写入
-    cfg.common.recording.outputDir = "recordings";
-    cfg.common.recording.minFreeSpaceBytes = 1024LL * 1024 * 1024;   // 默认 1 GiB
+    //   min_free_space_mb ：剩余空间低于该值（MB）时停止写入（0 = 不检查；
+    //                       加载时换算为字节存入 minFreeSpaceBytes）
     const YAML::Node& rec = cm["recording"];
-    if (rec && rec.IsMap()) {
-        if (rec["output_dir"] && rec["output_dir"].IsDefined())
-            cfg.common.recording.outputDir = rec["output_dir"].as<std::string>();
-        if (rec["min_free_space_mb"] && rec["min_free_space_mb"].IsDefined())
-            cfg.common.recording.minFreeSpaceBytes = static_cast<int64_t>(
-                rec["min_free_space_mb"].as<double>() * 1024.0 * 1024.0);
-    }
+    if (!rec || !rec.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.recording' 配置段");
+    cfg.common.recording.outputDir =
+        requireScalar<std::string>(rec, "output_dir", "common.recording");
+    cfg.common.recording.minFreeSpaceBytes = static_cast<int64_t>(
+        requireScalar<double>(rec, "min_free_space_mb", "common.recording") * 1024.0 * 1024.0);
 
     // ── common.gimbal ──
     const YAML::Node& gim = cm["gimbal"];

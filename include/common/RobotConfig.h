@@ -1,5 +1,12 @@
 // RobotConfig.h — 全局参数配置（从项目根目录 config/config.yaml 读取）
 //
+// ⚠ 重要约定（给后续修改者）：config.yaml 中的所有参数均为必填，本文件及
+//   RobotConfig.cpp 中不设任何默认值/回退值——缺段或缺字段时 RobotConfig::load
+//   直接抛异常退出，绝不静默采用默认值。新增配置项时必须同步：
+//   1) 在 config/config.yaml 对应段中添加字段并写明含义；
+//   2) 在 RobotConfig.h 对应结构体中添加成员（无默认初始化）；
+//   3) 在 src/common/RobotConfig.cpp 中通过 requireScalar 等读取。
+//
 // config.yaml 顶层分为三个大类：
 //   - common      ：两个流水线共用的参数（tf 偏移 / 相机内参 / 弹道 / MPC / 输入控制器 /
 //                    max_delay_seconds 等）
@@ -31,23 +38,29 @@ public:
     };
 
     // 相机参数（分辨率 + 内参 + 畸变；相机模式额外含 IP/曝光/增益/extra_info_delay）
+    // ⚠ 给后续修改者：本结构体所有字段均无默认值，必须由 config.yaml 提供：
+    //   - 相机模式（common.input_mode.camera_mode）必填 device_ip / net_ip /
+    //     exposure / gain / extra_info_delay；
+    //   - 视频/交互模式（common.input_mode.video_mode）必填 test_max_fps；
+    //   - 两模式均必填 resolution / camera_matrix / dist_coeffs。
+    //   缺任一字段 RobotConfig::load 直接抛异常退出，解析见 src/common/RobotConfig.cpp。
     struct CameraParams {
-        std::string deviceIp;   // 相机设备 IP（相机模式）
-        std::string netIp;      // 本机网口 IP（相机模式）
-        float exposure = 5000.0f;   // 曝光时间（微秒，相机模式）
-        float gain = 16.0f;         // 增益（相机模式）
-        int width = 0, height = 0;  // 图像分辨率（像素）
+        std::string deviceIp;   // 相机设备 IP（相机模式必填）
+        std::string netIp;      // 本机网口 IP（相机模式必填）
+        float exposure;         // 曝光时间（微秒，相机模式必填）
+        float gain;             // 增益（相机模式必填）
+        int width, height;      // 图像分辨率（像素）
         cv::Mat cameraMatrix;       // 3x3 CV_64F 内参矩阵
         cv::Mat distCoeffs;         // Nx1 CV_64F 畸变系数
         // 相机输入模式（CameraInputMode）extra_info 延迟（秒）：
         // 后台线程持续采样 RobotController::getState()，返回给流水线的 extra_info
         // 为相对当前时刻 extra_info_delay 前的队头数据（0.0 = 最新状态）。
-        // 无默认值：必须由 config.yaml 的 common.input_mode.camera_mode.extra_info_delay 提供。
+        // 相机模式必填（config: extra_info_delay）。
         double extraInfoDelay;
-        // 测试最大帧率（默认 false，video_mode 段配置）：开启后 VideoInputMode 的
-        // getFrameDelay() 返回 0（不做按视频帧率的节流），用于测量视频输入 +
-        // 流水线的最大帧数/FPS。
-        bool testMaxFps = false;
+        // 测试最大帧率（视频/交互模式必填，config: test_max_fps）：开启后
+        // VideoInputMode 的 getFrameDelay() 返回 0（不做按视频帧率的节流），
+        // 用于测量视频输入 + 流水线的最大帧数/FPS。
+        bool testMaxFps;
     };
 
     // 云台角度解算参数
@@ -171,9 +184,25 @@ public:
         };
         InputModeParams inputMode;
 
+        // 推理进程启动策略（必填，config: common.infer_process_lazy）：
         // true: 仅启动当前流水线所需推理进程（按需启停，见 InferProcessManager）；
-        // false（默认，与之前一致）: 启动时启动全部推理进程并后台闲置
-        bool inferProcessLazy = false;
+        // false: 启动时启动全部推理进程并后台闲置（launch_all.py 预启动）
+        bool inferProcessLazy;
+
+        // 队列积压自适应额外延迟（可选功能，见 BacklogAdaptiveDelay）：
+        // 开启后处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列
+        // 积压总数，按其与两阈值的关系自适应增减取帧线程的额外延迟。
+        // ⚠ 给后续修改者：本结构体所有字段均无默认值，必须由 config.yaml 的
+        //   common.backlog_adaptive_delay 段提供（缺段/缺字段时 RobotConfig::load
+        //   直接抛异常退出），解析见 src/common/RobotConfig.cpp，取值校验也在那里。
+        struct BacklogAdaptiveDelayParams {
+            bool   enabled;             // 功能总开关（config: enabled）
+            int    increaseThreshold;   // 积压总数 > 该值 → 增加额外延迟（config: increase_threshold）
+            int    decreaseThreshold;   // 积压总数 < 该值 → 减少额外延迟（config: decrease_threshold）
+            double maxExtraDelaySeconds; // 额外延迟上限（秒，config: max_extra_delay_seconds）
+            double stepSeconds;         // 每帧额外延迟增减步长（秒，config: step_seconds）
+        };
+        BacklogAdaptiveDelayParams backlogAdaptiveDelay;
 
         GimbalParams gimbal;                    // 云台解算参数
         PredictedBallisticParams predictedBallistic;  // 预测弹道解算参数
@@ -181,10 +210,12 @@ public:
         InputControllerParams inputController;         // 云台输入控制器参数
         double       maxDelaySeconds;           // 两个流水线共用的提取帧最大延迟（秒）
 
-        // 录制参数（--record 开启录制时生效）
+        // 录制参数（必填段，config: common.recording；--record 开启录制时生效）
+        // ⚠ 无默认值：output_dir / min_free_space_mb 必须由 config.yaml 提供。
         struct RecordingParams {
-            std::string outputDir = "recordings";           // 录制输出目录（相对项目根目录或以 / 开头为绝对路径）
-            int64_t minFreeSpaceBytes = 1024LL * 1024 * 1024; // 剩余空间阈值（字节），低于该值停止写入
+            std::string outputDir;      // 录制输出目录（相对项目根目录或以 / 开头为绝对路径）
+            int64_t minFreeSpaceBytes;  // 剩余空间阈值（字节，低于该值停止写入；
+                                        // config 中为 MB，加载时换算）
         };
         RecordingParams recording;
     };

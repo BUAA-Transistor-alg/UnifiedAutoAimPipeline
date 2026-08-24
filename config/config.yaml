@@ -6,6 +6,11 @@
 #   - power_rune  ：PowerRune 流水线独占参数
 # 相对路径（model_path 等）以项目根目录为基准，经 PathResolver 解析。
 # 修改后无需重新编译，重启程序即生效。
+#
+# ⚠ 重要约定（给后续修改者）：本文件所有参数均为必填，C++ 代码（RobotConfig.h /
+#   RobotConfig.cpp）中不设任何默认值——缺段或缺字段时程序启动直接报错退出，
+#   绝不静默采用默认值。新增/删除配置项时必须同步修改 include/common/RobotConfig.h
+#   与 src/common/RobotConfig.cpp。
 # =============================================================
 
 # ════════════════════════════════════════════════════════════
@@ -15,8 +20,32 @@ common:
   # 两个流水线共用的提取帧最大延迟（秒，tryPopFrame 固定延迟返回）
   max_delay_seconds: 0.2
 
+  # ── 队列积压自适应额外延迟（可选功能，BacklogAdaptiveDelay）──
+  # 开启后：处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列的积压
+  # 总数（input + inter0..inter3），记为 non_output_backlog，据此自适应调整取帧
+  # 线程（输入线程）的额外延迟，缓解流水线积压/丢帧：
+  #   - non_output_backlog > increase_threshold 时，每帧将额外延迟增加
+  #     step_seconds，最多增加到 max_extra_delay_seconds；
+  #   - non_output_backlog < decrease_threshold 时，每帧减少 step_seconds，
+  #     最少减到 0；
+  #   - 介于两阈值之间（滞回带）时保持不变。
+  # 各字段含义（给后续修改者，改动后仅需重启程序，无需重新编译）：
+  #   enabled                ：功能总开关（true 开启 / false 关闭）
+  #   increase_threshold     ：积压总数大于该值 → 增加额外延迟（须严格大于
+  #                            decrease_threshold，否则启动报错）
+  #   decrease_threshold     ：积压总数小于该值 → 减少额外延迟（须严格小于
+  #                            increase_threshold）
+  #   max_extra_delay_seconds：额外延迟上限（秒，须 >= 0）
+  #   step_seconds           ：每帧额外延迟增减步长（秒，须 >= 0）
+  backlog_adaptive_delay:
+    enabled: true                # 功能总开关
+    increase_threshold: 4         # 积压总数大于该值 → 增加额外延迟
+    decrease_threshold: 2         # 积压总数小于该值 → 减少额外延迟
+    max_extra_delay_seconds: 0.05 # 额外延迟上限（秒）
+    step_seconds: 0.00005           # 每帧额外延迟增减步长（秒）
+
   # ── 推理进程启动策略（bool）──
-  #   false（默认，与之前一致）：启动时由 launch_all.py 启动全部推理进程
+  #   false：启动时由 launch_all.py 启动全部推理进程
   #     （outpost_infer_process / power_rune_infer_process），无推理任务时在后台
   #     闲置（阻塞等待共享内存请求，不占 CPU）；
   #   true：仅启动当前流水线所需的推理进程（由主程序按需启动），切换流水线时
@@ -26,7 +55,7 @@ common:
 
   # ── 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择 ──
   input_mode:
-    # camera_mode：--input camera（实机相机，含 IP / 曝光 / 增益 / extra_info_delay）
+    # camera_mode：--input camera（实机相机）。
     camera_mode:
       # 相机输入模式（CameraInputMode）extra_info 延迟（秒）：
       # 后台线程持续采样 RobotController::getState() 并维护延迟队列，返回给流水线的
@@ -46,9 +75,9 @@ common:
         0.00000000e+00, 0.00000000e+00, 1.00000000e+00]
       dist_coeffs: [-0.05392145, -0.02516686, -0.00222499, -0.00149047,  0.43693918] # 畸变系数
 
-    # video_mode：--input video / interactive（录制视频 / 交互图片，无网络/曝光参数）
+    # video_mode：--input video / interactive（录制视频 / 交互图片，无网络/曝光参数）。
     video_mode:
-      # 测试最大帧率（默认 false）：开启后 VideoInputMode 的 getFrameDelay() 返回 0
+      # 测试最大帧率：true 时 VideoInputMode 的 getFrameDelay() 返回 0
       # （不做按视频帧率的节流），以测得视频输入 + 流水线的最大帧数/FPS。
       test_max_fps: false
       resolution:

@@ -26,6 +26,7 @@
 #include "common/Input/CameraInputMode.h"
 #include "common/Input/VideoInputMode.h"
 #include "common/Input/InteractiveInputMode.h"
+#include "common/BacklogAdaptiveDelay.h"
 #include "common/IPipeline.h"
 #include "Outpost/OutpostPipeline.h"
 #include "PowerRune/PowerRunePipeline.h"
@@ -184,16 +185,20 @@ static void drawOverlay(cv::Mat& img,
                         double fps,
                         RobotController* rc,
                         const std::chrono::steady_clock::time_point& frame_ts,
-                        const PipelineResult::QueueSizes& queue_sizes) {
+                        const PipelineResult::QueueSizes& queue_sizes,
+                        double extra_delay_s) {
     // 1. 热键提醒（顶部）
     cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
                 cv::Point(10, 20), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
 
-    // 2. 当前流水线各缓存积压长度（与原来 main info 的 Q[...] 格式一致）
-    char qbuf[160];
-    std::snprintf(qbuf, sizeof(qbuf), "Q[in:%d i0:%d i1:%d i2:%d i3:%d out:%d]",
+    // 2. 当前流水线各缓存积压长度（与原来 main info 的 Q[...] 格式一致）；
+    //    行尾追加队列积压自适应额外延迟 extra_delay_s（BacklogAdaptiveDelay，
+    //    功能关闭时为 0，单位秒）
+    char qbuf[192];
+    std::snprintf(qbuf, sizeof(qbuf), "Q[in:%d i0:%d i1:%d i2:%d i3:%d out:%d] extra:%6.3fs",
                   queue_sizes.input, queue_sizes.inter0, queue_sizes.inter1,
-                  queue_sizes.inter2, queue_sizes.inter3, queue_sizes.output);
+                  queue_sizes.inter2, queue_sizes.inter3, queue_sizes.output,
+                  extra_delay_s);
     cv::putText(img, qbuf, cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.6,
                 cv::Scalar(0, 255, 0), 2);
 
@@ -359,6 +364,23 @@ int main(int argc, char** argv) {
     std::cout << "========================================" << std::endl;
 
     const RobotConfig& cfg = RobotConfig::instance();
+
+    // ── 队列积压自适应额外延迟（可选功能，config common.backlog_adaptive_delay）──
+    // 开启后：处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列积压
+    // 总数，按阈值自适应增减额外延迟；取帧线程每帧叠加该延迟（缓解积压/丢帧）。
+    // 全部可调参数均来自 config，此处仅组装并调用其接口。
+    const RobotConfig::CommonParams::BacklogAdaptiveDelayParams& bad_cfg =
+        cfg.common.backlogAdaptiveDelay;
+    BacklogAdaptiveDelay backlog_delay(BacklogAdaptiveDelay::Config{
+        bad_cfg.enabled, bad_cfg.increaseThreshold, bad_cfg.decreaseThreshold,
+        bad_cfg.maxExtraDelaySeconds, bad_cfg.stepSeconds});
+    if (backlog_delay.enabled()) {
+        std::cout << "[main] Backlog adaptive delay: ON (increase > "
+                  << bad_cfg.increaseThreshold << ", decrease < "
+                  << bad_cfg.decreaseThreshold << ", max "
+                  << bad_cfg.maxExtraDelaySeconds << " s, step "
+                  << bad_cfg.stepSeconds << " s)" << std::endl;
+    }
 
     // 相机参数：按输入模式自动选择（camera → input_mode.camera_mode；video/interactive → input_mode.video_mode）
     const RobotConfig::CameraParams& camera_params =
@@ -601,7 +623,10 @@ int main(int argc, char** argv) {
             // 测试最大帧率：test_max_fps 的作用已移入 VideoInputMode（开启时其
             // getFrameDelay() 返回 0，不做按视频帧率的节流）。
             float base_delay = input_mode->getFrameDelay();
-            float delay_s = base_delay -
+            // 队列积压自适应额外延迟（可选功能，BacklogAdaptiveDelay；关闭时为 0）：
+            // 叠加在基础帧间隔之上，流水线积压严重时放慢取帧节奏、给流水线消化时间
+            float extra_delay_s = backlog_delay.extraDelaySeconds();
+            float delay_s = base_delay + extra_delay_s -
                 std::chrono::duration<float>(std::chrono::steady_clock::now() - time_for_delay).count();
             int delay_us = static_cast<int>(delay_s * 1e6);
             if (delay_us > 0) {
@@ -627,6 +652,17 @@ int main(int argc, char** argv) {
             }
 
             PipelineResult result = active_pipeline->tryPopFrame(timestamp);
+
+            // ── 队列积压自适应额外延迟：tryPopFrame 返回各缓冲队列积压个数，
+            // 除输出缓冲队列外的积压总数（input + inter0..inter3）交给
+            // BacklogAdaptiveDelay 调整取帧线程的额外延迟（功能关闭时跳过）──
+            if (backlog_delay.enabled()) {
+                const int non_output_backlog =
+                    result.queue_sizes.input + result.queue_sizes.inter0 +
+                    result.queue_sizes.inter1 + result.queue_sizes.inter2 +
+                    result.queue_sizes.inter3;
+                backlog_delay.update(non_output_backlog);
+            }
 
             // ── 统一预测瞄准点（任何情况下都调用，与输出模式无关）──
             // 生成预测云台控制序列 + 瞄准点序列；GimbalOutput 消费控制序列，
@@ -684,7 +720,7 @@ int main(int argc, char** argv) {
             if (vis_active) {
                 drawOverlay(to_show, active_pipeline->name(), outputNames(),
                             overlay_fps.fps(), robot_controller.get(), last_valid_ts,
-                            result.queue_sizes);
+                            result.queue_sizes, backlog_delay.extraDelaySeconds());
             }
 
             cv::imshow("Unified Auto-Aim", to_show);
