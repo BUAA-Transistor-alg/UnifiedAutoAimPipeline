@@ -672,13 +672,15 @@ int main(int argc, char** argv) {
                     robot_controller ? robot_controller->getState() : RobotController::State{};
                 if (result.outpost.esekf_initialized && result.outpost.predictor) {
                     aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
-                    aim_predictor.predict(st, *result.outpost.predictor);
+                    aim_predictor.predict(st, *result.outpost.predictor, timestamp,
+                                          result.outpost.predictor_timestamp);
                 } else if (result.power_rune.target_predictor) {
                     // PowerRune：靶点预测函数已在流水线内部封装为统一签名
                     // std::vector<cv::Point3f>(double)（TargetPositionCalculator::compose），
                     // 直接传入 AimPredictor，无需再包装。
                     aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::LOWEST_Z);
-                    aim_predictor.predict(st, *result.power_rune.target_predictor);
+                    aim_predictor.predict(st, *result.power_rune.target_predictor, timestamp,
+                                          result.power_rune.predictor_timestamp);
                 } else {
                     aim_predictor.invalidate();
                 }

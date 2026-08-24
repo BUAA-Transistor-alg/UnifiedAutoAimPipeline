@@ -336,6 +336,7 @@ void PowerRunePipeline::processStage5(DataDeque& data)
             auto pred2 = s5_.roll_predictor.capturePredictor();
             d->stage5.target_predictor = TargetPositionCalculator::compose(
                 std::move(pred2), d->stage5.filtered_rotation_counts);
+            d->stage5.predictor_timestamp = d->initial.frame_timestamp;  // 快照的 dt 零点 = 本帧时间戳
         }
     }
 
@@ -447,6 +448,7 @@ void PowerRunePipeline::fillPerception(PowerRunePipelineData* d, PowerRunePercep
     if (d->stage5.target_predictor) {
         out.target_predictor = std::move(d->stage5.target_predictor);
     }
+    out.predictor_timestamp = d->stage5.predictor_timestamp;
     out.detection_count = d->stage3.detections.size();
     out.valid = true;
 }

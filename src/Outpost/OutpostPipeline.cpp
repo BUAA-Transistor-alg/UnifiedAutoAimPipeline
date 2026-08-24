@@ -386,6 +386,7 @@ void OutpostPipeline::processStage5(DataDeque& data)
         d->stage5.ekf_pos = s5_.esekf->getPosition();
         d->stage5.ekf_R64 = s5_.esekf->getRotationMatrix();
         d->stage5.predictor = s5_.esekf->capturePosePredictor();
+        d->stage5.predictor_timestamp = ts;   // 快照的 dt 零点 = 本帧时间戳
         d->stage5.pred_center_points = (*d->stage5.predictor)(0.0);
     }
 }
@@ -477,6 +478,7 @@ void OutpostPipeline::fillPerception(OutpostPipelineData* d, OutpostPerception& 
     if (d->stage5.predictor) {
         out.predictor = std::move(d->stage5.predictor);
     }
+    out.predictor_timestamp = d->stage5.predictor_timestamp;
     out.detection_count = d->stage3.objects.size();
     out.valid = true;
 }

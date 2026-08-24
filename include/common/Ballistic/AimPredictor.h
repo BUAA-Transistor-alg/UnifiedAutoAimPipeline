@@ -19,6 +19,7 @@
 #ifndef AIM_PREDICTOR_H
 #define AIM_PREDICTOR_H
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -68,7 +69,14 @@ public:
     /// 实际计算点（solve）经内部线程池并行执行；每个工作线程通过 thread_local
     /// 绑定一个独立的 GimbalSolver（内部 pitch 粗搜索保持并行且互不竞争），
     /// 结果同时写入最新槽（线程安全）。
-    Result predict(const RobotController::State& st, const Predictor& predictor);
+    ///
+    /// @param timestamp          调用时刻（当前帧时间戳）
+    /// @param predictor_timestamp 产生 predictor 快照的那一帧的时间戳（dt 的零点）；
+    ///                            额外预测时间自动加上 (timestamp - predictor_timestamp)，
+    ///                            补偿快照生成到消费之间的延迟
+    Result predict(const RobotController::State& st, const Predictor& predictor,
+                   const std::chrono::steady_clock::time_point& timestamp,
+                   const std::chrono::steady_clock::time_point& predictor_timestamp);
 
     /// 预测器不可用：使最新结果失效
     void invalidate();

@@ -136,7 +136,7 @@ common:
 
   # ── 预测弹道解算参数 ──
   predicted_ballistic:
-    extra_predict_time: 0.27      # 额外预测时间（秒），叠加在弹道飞行时间之上 # 待调
+    extra_predict_time: 0.07      # 额外预测时间（秒），叠加在弹道飞行时间之上 # 待调
     max_iterations: 5             # 飞行时间迭代上限
     time_error_tolerance: 0.005    # 迭代提前停止的时间误差容差（秒）
 

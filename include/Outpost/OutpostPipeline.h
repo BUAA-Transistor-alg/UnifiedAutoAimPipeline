@@ -86,6 +86,7 @@ struct OutpostPipelineData {
         cv::Mat   ekf_R64;                            // CV_64F
         std::vector<cv::Point3f> pred_center_points; // 预测目标中心关键点 t+0（world）
         std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> predictor;  // 快照
+        std::chrono::steady_clock::time_point predictor_timestamp;  // 快照对应帧的时间戳（dt 零点）
     } stage5;
 };
 

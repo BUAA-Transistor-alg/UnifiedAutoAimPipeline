@@ -42,6 +42,8 @@ struct OutpostPerception {
     std::vector<cv::Point3f> pred_center_points;                 // 预测目标中心 t+0（world）
     // 目标中心点预测函数快照：std::vector<cv::Point3f>(double dt)（world 系）
     std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> predictor;
+    // 产生上述 predictor 快照的那一帧的时间戳（dt 的零点，即该帧的 frame_timestamp）
+    std::chrono::steady_clock::time_point predictor_timestamp;
 
     size_t detection_count = 0;
 };
@@ -83,6 +85,8 @@ struct PowerRunePerception {
     // 靶点预测函数快照：std::vector<cv::Point3f>(double dt)（world 系；
     // 已为 AimPredictor 统一签名，无需外部包装）
     std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> target_predictor;
+    // 产生上述 target_predictor 快照的那一帧的时间戳（dt 的零点，即该帧的 frame_timestamp）
+    std::chrono::steady_clock::time_point predictor_timestamp;
 
     size_t detection_count = 0;
 };

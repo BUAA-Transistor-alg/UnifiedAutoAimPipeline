@@ -58,8 +58,15 @@ AimPredictor::Item AimPredictor::extrapItem(const Item& A, const Item& P, double
 }
 
 AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
-                                           const Predictor& predictor)
+                                           const Predictor& predictor,
+                                           const std::chrono::steady_clock::time_point& timestamp,
+                                           const std::chrono::steady_clock::time_point& predictor_timestamp)
 {
+    // 快照生成到本次消费之间的延迟：额外预测时间叠加该延迟，补偿 dt 零点（快照帧）
+    // 与当前时刻的差值
+    const double predictor_age = std::chrono::duration<double>(
+        timestamp - predictor_timestamp).count();
+    const double extra_predict_time = extra_predict_time_ + predictor_age;
     // ── 同步所有线程的独立 GimbalSolver 树（预测弹道解算依赖当前 muzzle 原点与弹速）──
     for (auto& g : gimbals_) {
         g->setChassisPosition(0.0f, 0.0f, 0.0f);
@@ -83,7 +90,7 @@ AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
         const int j = idx + 1;
         const int ret_idx = (j - 1) * K;   // 该实际计算点在返回点序列中的索引
         solved[idx] = solvers_[(size_t)(wid % T)].solve(
-            predictor, extra_predict_time_ + (ret_idx + 1) * dt_control_);
+            predictor, extra_predict_time + (ret_idx + 1) * dt_control_);
     });
 
     // ── 2. 组装返回点序列（实际计算点 + 插值/外推/复制点）──
