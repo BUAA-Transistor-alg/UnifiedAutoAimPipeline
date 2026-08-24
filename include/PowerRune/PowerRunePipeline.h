@@ -114,11 +114,12 @@ public:
     /**
      * @param queue_max_sizes  各缓冲队列最大长度数组 [input, inter0..inter3, output]
      *                         （取自 config power_rune.pipeline.queue_max_sizes）
-     * @param max_delay_seconds 提取帧的最大延迟秒数（由 config common.max_delay_seconds 提供）
+     * @param min_delay_seconds 提取帧的最小延迟秒数（输出队列帧龄须达到该值后
+     *                          tryPopFrame 才返回；由 config common.min_delay_seconds 提供）
      * @param camera           相机参数（内参/畸变/分辨率，由输入模式选择后传入）
      */
     PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
-                      float max_delay_seconds,
+                      float min_delay_seconds,
                       const RobotConfig::CameraParams& camera);
     ~PowerRunePipeline();
 
@@ -151,7 +152,7 @@ private:
 
     // ==================== 配置 ====================
     std::array<int, NUM_QUEUES> queue_max_sizes_;
-    float max_delay_seconds_;
+    float min_delay_seconds_;
     float conf_threshold_ = 0.5f;
 
     // ==================== 缓冲队列 ====================

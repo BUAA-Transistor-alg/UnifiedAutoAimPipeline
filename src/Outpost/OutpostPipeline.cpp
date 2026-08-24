@@ -63,10 +63,10 @@ OutpostPipeline::Stage5Ctx::Stage5Ctx(const RobotConfig::CameraParams& camera,
 // ==================== 构造 ====================
 
 OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
-                                 float max_delay_seconds,
+                                 float min_delay_seconds,
                                  const RobotConfig::CameraParams& camera)
     : queue_max_sizes_(queue_max_sizes)
-    , max_delay_seconds_(max_delay_seconds)
+    , min_delay_seconds_(min_delay_seconds)
     , s1_(RobotConfig::instance().outpost.inputWidth,
           RobotConfig::instance().outpost.inputHeight)
     , s4_(camera)
@@ -101,7 +101,7 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
     std::cout << std::endl;
     std::cout << "    Confidence threshold: " << conf_threshold_ << std::endl;
     std::cout << "    NMS threshold: " << nms_threshold_ << std::endl;
-    std::cout << "    Max delay: " << max_delay_seconds_ << "s" << std::endl;
+    std::cout << "    Min delay: " << min_delay_seconds_ << "s" << std::endl;
     std::cout << "========================================" << std::endl;
 
     // ---- 阶段1：预处理 ----
@@ -498,7 +498,7 @@ PipelineResult OutpostPipeline::tryPopFrame(const std::chrono::steady_clock::tim
     auto& front = output_queue_.front();
     float diff = std::chrono::duration<float>(
         timestamp - front->initial.frame_timestamp).count();
-    if (diff >= max_delay_seconds_) {
+    if (diff >= min_delay_seconds_) {
         result.frame_timestamp = front->initial.frame_timestamp;
         result.extra_info = front->initial.extra_info;
         result.frame = std::move(front->initial.frame);

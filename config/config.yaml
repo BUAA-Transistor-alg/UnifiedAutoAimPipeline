@@ -17,8 +17,8 @@
 # common — 两个流水线共用参数
 # ════════════════════════════════════════════════════════════
 common:
-  # 两个流水线共用的提取帧最大延迟（秒，tryPopFrame 固定延迟返回）
-  max_delay_seconds: 0.2
+  # 两个流水线共用的提取帧最小延迟（秒，输出队列帧龄须达到该值后 tryPopFrame 才返回）
+  min_delay_seconds: 0.2
 
   # ── 队列积压自适应额外延迟（可选功能，BacklogAdaptiveDelay）──
   # 开启后：处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列的积压

@@ -170,8 +170,8 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.common.inputMode.cameraMode.extraInfoDelay =
         requireScalar<double>(cam, "extra_info_delay", "common.input_mode.camera_mode");
 
-    // ── common.max_delay_seconds（两个流水线共用）──
-    cfg.common.maxDelaySeconds = requireScalar<double>(cm, "max_delay_seconds", "common");
+    // ── common.min_delay_seconds（两个流水线共用）──
+    cfg.common.minDelaySeconds = requireScalar<double>(cm, "min_delay_seconds", "common");
 
     // ── common.infer_process_lazy──
     //   false：启动时启动全部推理进程并后台闲置（launch_all.py 预启动）；

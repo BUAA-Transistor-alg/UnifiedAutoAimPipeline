@@ -9,7 +9,7 @@
 //
 // config.yaml 顶层分为三个大类：
 //   - common      ：两个流水线共用的参数（tf 偏移 / 相机内参 / 弹道 / MPC / 输入控制器 /
-//                    max_delay_seconds 等）
+//                    min_delay_seconds 等）
 //   - outpost     ：Outpost 流水线独占参数（推理模型 / 批量 / 观测丢失超时）
 //   - power_rune  ：PowerRune 流水线独占参数（推理模型 / NMS / 阈值 / 批量）
 //
@@ -208,7 +208,7 @@ public:
         PredictedBallisticParams predictedBallistic;  // 预测弹道解算参数
         RobotControllerParams robotController;         // RobotController 构造参数
         InputControllerParams inputController;         // 云台输入控制器参数
-        double       maxDelaySeconds;           // 两个流水线共用的提取帧最大延迟（秒）
+        double       minDelaySeconds;           // 两个流水线共用的提取帧最小延迟（秒）
 
         // 录制参数（必填段，config: common.recording；--record 开启录制时生效）
         // ⚠ 无默认值：output_dir / min_free_space_mb 必须由 config.yaml 提供。
