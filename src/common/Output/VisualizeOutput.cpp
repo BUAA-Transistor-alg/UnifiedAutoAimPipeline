@@ -37,11 +37,6 @@ VisualizeOutput::VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj,
     : camera_proj_(std::move(camera_proj)),
       aim_(aim) {}
 
-void VisualizeOutput::setMode(PipelineMode mode)
-{
-    mode_ = mode;   // 相机投影与输入模式绑定，不随流水线切换
-}
-
 void VisualizeOutput::syncTree(const ExtraInputInfo& info)
 {
     RobotTfTree& tree = tree_;
@@ -60,14 +55,16 @@ void VisualizeOutput::update(const PipelineResult& result, RobotController* rc)
     syncTree(result.extra_info);
     fps_.tick();
 
-    if (mode_ == PipelineMode::OUTPOST) {
-        renderOutpost(result, rc);
-    } else {
-        renderPowerRune(result, rc);
-    }
+    // 渲染当前流水线模式的画面（display_ 的写入统一在下方加锁进行）
+    const PipelineMode mode = mode_.load(std::memory_order_relaxed);
+    cv::Mat display = (mode == PipelineMode::OUTPOST)
+                          ? renderOutpost(result, rc)
+                          : renderPowerRune(result, rc);
 
     // 预测瞄准点：取自 AimPredictor 瞄准点序列的第一个值（两种模式统一绘制；
-    // 无有效瞄准点时不画）
+    // 无有效瞄准点时不画）。display_ 由可视化线程写入、主线程读取，加锁保护。
+    std::lock_guard<std::mutex> lock(display_mtx_);
+    display_ = std::move(display);
     if (!display_.empty()) {
         const AimPredictor::Result seq = aim_.latest();
         if (seq.valid) {
@@ -77,7 +74,13 @@ void VisualizeOutput::update(const PipelineResult& result, RobotController* rc)
     }
 }
 
-void VisualizeOutput::renderOutpost(const PipelineResult& result, RobotController* rc)
+cv::Mat VisualizeOutput::display() const
+{
+    std::lock_guard<std::mutex> lock(display_mtx_);
+    return display_;   // 浅拷贝：共享像素数据（引用计数原子安全）
+}
+
+cv::Mat VisualizeOutput::renderOutpost(const PipelineResult& result, RobotController* rc)
 {
     const OutpostPerception& p = result.outpost;
 
@@ -105,10 +108,10 @@ void VisualizeOutput::renderOutpost(const PipelineResult& result, RobotControlle
 
     cv::Mat display = result.frame.clone();
     outpost_vis_.render(display, vis, tree_, *camera_proj_);
-    display_ = std::move(display);
+    return display;
 }
 
-void VisualizeOutput::renderPowerRune(const PipelineResult& result, RobotController* rc)
+cv::Mat VisualizeOutput::renderPowerRune(const PipelineResult& result, RobotController* rc)
 {
     const PowerRunePerception& p = result.power_rune;
 
@@ -158,5 +161,5 @@ void VisualizeOutput::renderPowerRune(const PipelineResult& result, RobotControl
 
     cv::Mat display = result.frame.clone();
     power_rune_vis_.render(display, vis, tree_, *camera_proj_);
-    display_ = std::move(display);
+    return display;
 }

@@ -78,6 +78,9 @@ AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
         }
     }
     const double chassis_yaw = st.strict.imu_euler_yaw - st.strict.yaw_pos;  // 底盘 yaw 修正
+    // ── yaw 系原点（world 系）：树已同步，同一线程内计算并加锁缓存，
+    //    供输出模式跨线程读取（弹道线程化后不能直接读 GimbalSolver）──
+    const cv::Vec3f yaw_origin = gimbals_.front()->yawWorldOrigin();
 
     // ── 1. 只精确解算 M 个实际计算点（索引 (j-1)*K，j=1..M），solve 之间并行 ──
     const int M = prediction_points_;
@@ -153,6 +156,7 @@ AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
     {
         std::lock_guard<std::mutex> lock(mtx_);
         latest_ = res;
+        yaw_origin_ = yaw_origin;
     }
     return res;
 }
@@ -167,4 +171,10 @@ AimPredictor::Result AimPredictor::latest() const
 {
     std::lock_guard<std::mutex> lock(mtx_);
     return latest_;
+}
+
+cv::Vec3f AimPredictor::yawWorldOrigin() const
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    return yaw_origin_;
 }

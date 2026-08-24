@@ -34,6 +34,7 @@
 #include "common/Output/VisualizeOutput.h"
 #include "common/Output/GimbalOutput.h"
 #include "common/Ballistic/AimPredictor.h"
+#include "common/LatestSlot.h"
 #include "common/RobotConfig.h"
 #include "common/FrameRateCounter.h"
 #include "common/Record/FrameRecorder.h"
@@ -43,6 +44,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <functional>
 #include <memory>
 #include <thread>
 #include <atomic>
@@ -175,19 +177,41 @@ static Options parseArgs(int argc, char** argv) {
 // 可视化开启时，无论 Outpost 还是 PowerRune 流水线，都在画面上叠加：
 //   1. 热键提醒  — 顶部 (10,20)，0.6 号粗 2 绿
 //   2. 队列积压  — 原 main info 位置 (10,60)，Q[in i0 i1 i2 i3 out] 格式
-//   3. 帧数统计  — 原 drawFps 样式：右上角 "FPS: xx" 0.7 粗 2 黄 + "TS: .." 0.45 粗 1 黄
+//   3. 帧数统计  — 原 drawFps 样式：右上角
+//      "Pipeline: xx  Ballistic: xx  Gimbal: xx  Visual: xx  MPC: xx" 0.7 粗 2 黄
+//      （无统计/不可用时对应项显示 N/A）+ "TS: .." 0.45 粗 1 黄
+//      Pipeline=流水线输出提取帧率；Ballistic=弹道解算循环线程帧率；
+//      Gimbal=云台输出循环线程帧率（未开启时 N/A）；
+//      Visual=可视化绘制循环线程帧率（未开启时 N/A）；
+//      MPC=McuMpcController 后台循环帧率（无 RobotController 时 N/A）
 //   4. 串口输入信息 — 原 drawCommInfo 样式：(8,80) 起 0.45 粗 1 绿，按来源分块显示
 //      （--- MCU --- / --- IMU --- / --- FUSED --- / --- STRICT --- / --- MPC ---），
 //      MCU 块含温度行（按温度区间变色）
+
+// 帧率显示：无统计（fps <= 0，尚无帧或不可用）时显示 N/A
+static std::string fpsText(double fps) {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(1);
+    if (fps > 0.0) {
+        oss << fps;
+    } else {
+        oss << "N/A";
+    }
+    return oss.str();
+}
+
 static void drawOverlay(cv::Mat& img,
                         const std::string& pipeline_name,
                         const std::string& output_names,
-                        double fps,
+                        double pipeline_fps,
+                        double ballistic_fps,
+                        double gimbal_fps,
+                        double visualize_fps,
                         RobotController* rc,
                         const std::chrono::steady_clock::time_point& frame_ts,
                         const PipelineResult::QueueSizes& queue_sizes,
                         double extra_delay_s) {
-    // 提前获取 RobotController 状态：帧率行需显示 MPC 后台循环帧率（可用时），
+    // 提前获取 RobotController 状态：帧率行需显示 MPC 后台循环帧率（无统计时为 N/A），
     // 第 4 块串口信息区同样使用该状态（此处统一获取一次，避免重复加锁）
     const RobotController::State st =
         (rc != nullptr) ? rc->getState() : RobotController::State{};
@@ -210,12 +234,15 @@ static void drawOverlay(cv::Mat& img,
     // 3. 帧数统计（原 drawFps 样式，右上角）
     using namespace std::chrono;
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(1) << "FPS: " << fps;
-    // 新增：同时显示 MPC 后台循环线程真实帧率（可用时——RobotController 已构造
-    // 且 loop 已跑出帧率统计，即 loop_fps > 0）
-    if (rc != nullptr && st.mpc.loop_fps > 0.0) {
-        oss << "  MPC: " << st.mpc.loop_fps;
-    }
+    // Pipeline=流水线输出提取帧率（原 FPS 统计，已重命名）；
+    // Ballistic=弹道解算循环线程帧率；Gimbal=云台输出循环线程帧率；
+    // Visual=可视化绘制循环线程帧率；MPC=McuMpcController 后台循环帧率。
+    // 各帧率无统计/不可用时显示 N/A。
+    oss << "Pipeline: " << fpsText(pipeline_fps)
+        << "  Ballistic: " << fpsText(ballistic_fps)
+        << "  Gimbal: " << fpsText(gimbal_fps)
+        << "  Visual: " << fpsText(visualize_fps)
+        << "  MPC: " << fpsText(st.mpc.loop_fps);
     int baseline = 0;
     cv::Size sz = cv::getTextSize(oss.str(), cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
     cv::putText(img, oss.str(), cv::Point(img.cols - sz.width - 10, 30),
@@ -398,8 +425,12 @@ int main(int argc, char** argv) {
     // ── RobotController（仅在需要时构造：相机输入需要 strict 数据，云台输出需要控制）──
     // 相机输入模式下 CameraInputMode 后台线程持续采样 rc_.getState()（延迟队列），
     // 因此相机输入需要 RobotController（无硬件时串口线程静默失败）。
+    // 线程化后构造可能发生在窗口线程（运行时开启云台），读取发生在处理/弹道/
+    // 窗口线程，用 rc_mtx 保护指针的按需构造与读取。
+    std::mutex rc_mtx;
     std::unique_ptr<RobotController> robot_controller;
     auto ensureRobotController = [&]() {
+        std::lock_guard<std::mutex> lock(rc_mtx);
         if (robot_controller) return;
         const auto& rp = cfg.common.robotController;
         robot_controller = std::make_unique<RobotController>(
@@ -412,6 +443,11 @@ int main(int argc, char** argv) {
                 rp.recvPitchScale, rp.recvPitchOffset},
             rp.sequenceMode);
         std::cout << "[main] RobotController constructed (serial threads may fail silently without hardware)." << std::endl;
+    };
+    // 线程安全读取当前 RobotController 指针（未构造时为 nullptr）
+    auto robotControllerPtr = [&]() -> RobotController* {
+        std::lock_guard<std::mutex> lock(rc_mtx);
+        return robot_controller.get();
     };
     if (opt.input == InputKind::CAMERA || opt.output.gimbal) {
         ensureRobotController();
@@ -502,8 +538,14 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ── 输出模式组合（visualize 与 gimbal 独立开关，可同时启用；随时可切换）──
-    std::vector<std::unique_ptr<IOutputMode>> output_modes;
+    // ── 共享状态与输出模式注册表 ──
+    // 处理阶段线程化后，以下共享状态由多个线程访问，用互斥锁保护：
+    //   pipeline_mtx —— active_pipeline（输入/处理线程读取，窗口线程切换时写）
+    //   rc_mtx       —— robot_controller 的按需构造与读取
+    //   output_mtx   —— output_modes（弹道线程读快照，窗口线程切换时写）
+    std::mutex pipeline_mtx;
+    std::mutex output_mtx;
+    std::vector<std::shared_ptr<IOutputMode>> output_modes;   // shared_ptr：输出请求跨线程持有对象
     // 预测瞄准点通用类：任何情况下（无论输出模式）每帧调用，生成预测云台控制
     // 序列 + 瞄准点序列；GimbalOutput 消费控制序列，VisualizeOutput 消费首个瞄准点
     AimPredictor aim_predictor;
@@ -511,34 +553,67 @@ int main(int argc, char** argv) {
     auto camera_proj = std::make_shared<CameraProjection>(
         camera_params.cameraMatrix, camera_params.distCoeffs,
         ImageResolution{camera_params.width, camera_params.height});
-    auto makeOutputs = [&](const OutputConfig& oc) {
-        output_modes.clear();
-        if (oc.visualize) {
-            auto vis = std::make_unique<VisualizeOutput>(camera_proj, aim_predictor);
-            vis->setMode(active_pipeline->mode());
-            output_modes.push_back(std::move(vis));
-        }
-        if (oc.gimbal) {
-            ensureRobotController();
-            output_modes.push_back(std::make_unique<GimbalOutput>(aim_predictor, *robot_controller));
-        }
-        std::cout << "[main] Output modes:";
-        if (output_modes.empty()) std::cout << " None";
-        for (auto& m : output_modes) std::cout << " " << m->getName();
-        std::cout << std::endl;
-    };
-    makeOutputs(opt.output);
 
-    // 查找当前 visualize 输出（若存在）
-    auto findVisualize = [&]() -> VisualizeOutput* {
+    // ── 各处理阶段：缓冲位（LatestSlot，单槽最新覆盖）+ 循环线程（数据流顺序见下）──
+    // 数据流：input_thread → 流水线 → process_thread（只填充弹道缓冲位）
+    //   → ballistic_thread（弹道解算；给每一个输出模式的缓冲位填入）
+    //   → gimbal_thread / visualize_thread（各自的输出循环线程，
+    //      模式首次开启时创建，随后不销毁）
+    // 各处理阶段所需时间戳直接取最新 shared_frame_timestamp（见各线程体）。
+    struct BallisticRequest {
+        RobotController::State st;      // 弹道解算所需云台/串口状态快照
+        RobotController* rc = nullptr;  // 转发给可视化线程
+        std::unique_ptr<PipelineResult> result;  // 流水线结果（移动转发，含 predictor 快照）
+    };
+    struct GimbalRequest {
+        std::shared_ptr<GimbalOutput> gimbal;  // 当前云台输出（模式关闭时为空 → 线程跳过）
+    };
+    struct VisualizeRequest {
+        std::shared_ptr<VisualizeOutput> vis;  // 当前可视化输出（模式关闭时为空 → 仅更新原始帧）
+        std::unique_ptr<PipelineResult> result;
+        RobotController* rc = nullptr;
+    };
+    // 输出模式阶段：输入缓冲 + 循环线程（首次开启时创建，随后不销毁）+ 循环帧率
+    struct GimbalStage {
+        LatestSlot<GimbalRequest> slot;
+        std::unique_ptr<std::thread> thread;
+        std::atomic<double> fps{0.0};
+    };
+    struct VisualizeStage {
+        LatestSlot<VisualizeRequest> slot;
+        std::unique_ptr<std::thread> thread;
+        std::atomic<double> fps{0.0};
+    };
+    LatestSlot<BallisticRequest> ballistic_slot;
+    GimbalStage     gimbal_stage;
+    VisualizeStage  visualize_stage;
+    std::atomic<double> pipeline_fps{0.0};   // 流水线输出提取帧率（原 FPS 统计，已重命名）
+    std::atomic<double> ballistic_fps{0.0};  // 弹道解算循环线程帧率
+
+    // 阶段回调（std::function：线程体与切换回调互相引用，先声明后赋值）
+    std::function<void(PipelineMode)> switchPipeline;
+    std::function<void(OutputMode)>  toggleOutput;
+    std::function<void()>            ensureGimbalThread;
+    std::function<void()>            ensureVisualizeThread;
+
+    // 输出模式查询（线程安全：加锁读 output_modes 快照）
+    auto findVisualize = [&]() -> std::shared_ptr<VisualizeOutput> {
+        std::lock_guard<std::mutex> lock(output_mtx);
         for (auto& m : output_modes)
             if (m->type() == OutputMode::VISUALIZE)
-                return static_cast<VisualizeOutput*>(m.get());
+                return std::static_pointer_cast<VisualizeOutput>(m);
         return nullptr;
     };
-
+    auto findGimbal = [&]() -> std::shared_ptr<GimbalOutput> {
+        std::lock_guard<std::mutex> lock(output_mtx);
+        for (auto& m : output_modes)
+            if (m->type() == OutputMode::GIMBAL)
+                return std::static_pointer_cast<GimbalOutput>(m);
+        return nullptr;
+    };
     // 当前输出模式组合名（覆盖层显示用，如 "Visualize+Gimbal" / "None"）
     auto outputNames = [&]() -> std::string {
+        std::lock_guard<std::mutex> lock(output_mtx);
         std::string s;
         for (auto& m : output_modes) {
             if (!s.empty()) s += "+";
@@ -547,18 +622,47 @@ int main(int argc, char** argv) {
         return s.empty() ? "None" : s;
     };
 
-    // ── 运行时切换接口（API；热键在 visualize 窗口内触发）──
+    // 初始输出模式（在 ensureGimbalThread/ensureVisualizeThread 赋值后调用，
+    // 见下方"启动"处；首次开启某模式时会创建对应循环线程）
+    auto makeOutputs = [&](const OutputConfig& oc) {
+        {
+            std::lock_guard<std::mutex> lock(output_mtx);
+            output_modes.clear();
+        }
+        if (oc.visualize) {
+            ensureVisualizeThread();   // 首次开启时创建可视化循环线程（随后不销毁）
+            auto vis = std::make_shared<VisualizeOutput>(camera_proj, aim_predictor);
+            vis->setMode(active_pipeline->mode());
+            std::lock_guard<std::mutex> lock(output_mtx);
+            output_modes.push_back(vis);
+        }
+        if (oc.gimbal) {
+            ensureRobotController();
+            ensureGimbalThread();      // 首次开启时创建云台循环线程（随后不销毁）
+            auto gimbal = std::make_shared<GimbalOutput>(aim_predictor, *robot_controller);
+            std::lock_guard<std::mutex> lock(output_mtx);
+            output_modes.push_back(gimbal);
+        }
+        std::cout << "[main] Output modes: " << outputNames() << std::endl;
+    };
+
+    // ── 运行时切换接口（API；热键在 visualize 线程的窗口内触发）──
     // 两条流水线始终构造，切换只交换指针 + 清空状态；推理进程按启动策略处理：
     // 非 lazy 模式推理进程始终存在；lazy 模式（infer_process_lazy=true）由
     // InferProcessManager 按需切换（立即停止不需要的进程，后台启动需要的进程）。
-    auto switchPipeline = [&](PipelineMode m) {
-        if (active_pipeline->mode() == m) return;
-        active_pipeline->clear();   // 清空旧流水线（队列 + 滤波状态）
-        active_pipeline = (m == PipelineMode::OUTPOST)
-            ? static_cast<IPipeline*>(&outpost_pipeline)
-            : static_cast<IPipeline*>(&power_rune_pipeline);
-        active_pipeline->clear();
-        if (VisualizeOutput* vis = findVisualize()) {
+    switchPipeline = [&](PipelineMode m) {
+        std::string new_name;
+        {
+            std::lock_guard<std::mutex> lock(pipeline_mtx);
+            if (active_pipeline->mode() == m) return;
+            active_pipeline->clear();   // 清空旧流水线（队列 + 滤波状态）
+            active_pipeline = (m == PipelineMode::OUTPOST)
+                ? static_cast<IPipeline*>(&outpost_pipeline)
+                : static_cast<IPipeline*>(&power_rune_pipeline);
+            active_pipeline->clear();
+            new_name = active_pipeline->name();
+        }
+        if (std::shared_ptr<VisualizeOutput> vis = findVisualize()) {
             vis->setMode(m);
         }
         if (infer_manager) {
@@ -566,32 +670,37 @@ int main(int argc, char** argv) {
                 ? Infer::InferProcessManager::Kind::OUTPOST
                 : Infer::InferProcessManager::Kind::POWER_RUNE);
         }
-        std::cout << "[main] Pipeline -> " << active_pipeline->name() << std::endl;
+        std::cout << "[main] Pipeline -> " << new_name << std::endl;
     };
     // 'v'：切换可视化开关（不影响云台）；'g'：切换云台开关（不影响可视化）；'n'：全部关闭
-    auto toggleOutput = [&](OutputMode m) {
+    toggleOutput = [&](OutputMode m) {
         bool add = true;
-        for (auto it = output_modes.begin(); it != output_modes.end(); ++it) {
-            if ((*it)->type() == m) {
-                output_modes.erase(it);
-                add = false;
-                break;
+        {
+            std::lock_guard<std::mutex> lock(output_mtx);
+            for (auto it = output_modes.begin(); it != output_modes.end(); ++it) {
+                if ((*it)->type() == m) {
+                    output_modes.erase(it);
+                    add = false;
+                    break;
+                }
             }
         }
         if (add) {
             if (m == OutputMode::VISUALIZE) {
-                auto vis = std::make_unique<VisualizeOutput>(camera_proj, aim_predictor);
+                ensureVisualizeThread();   // 首次开启时创建可视化循环线程（随后不销毁）
+                auto vis = std::make_shared<VisualizeOutput>(camera_proj, aim_predictor);
                 vis->setMode(active_pipeline->mode());
-                output_modes.push_back(std::move(vis));
+                std::lock_guard<std::mutex> lock(output_mtx);
+                output_modes.push_back(vis);
             } else if (m == OutputMode::GIMBAL) {
                 ensureRobotController();
-                output_modes.push_back(std::make_unique<GimbalOutput>(aim_predictor, *robot_controller));
+                ensureGimbalThread();      // 首次开启时创建云台循环线程（随后不销毁）
+                auto gimbal = std::make_shared<GimbalOutput>(aim_predictor, *robot_controller);
+                std::lock_guard<std::mutex> lock(output_mtx);
+                output_modes.push_back(gimbal);
             }
         }
-        std::cout << "[main] Output modes:";
-        if (output_modes.empty()) std::cout << " None";
-        for (auto& om : output_modes) std::cout << " " << om->getName();
-        std::cout << std::endl;
+        std::cout << "[main] Output modes: " << outputNames() << std::endl;
     };
 
     // ── 输入线程：从 input_mode 取帧，送入激活流水线 ──
@@ -630,7 +739,12 @@ int main(int argc, char** argv) {
             }
 
             // 无论 addFrame 成败都记录该帧；accepted 标记该帧是否成功加入流水线
-            bool accepted = active_pipeline->addFrame(std::move(frame), frame_timestamp, extra_info);
+            // （active_pipeline 由窗口线程切换，加锁读取）
+            bool accepted;
+            {
+                std::lock_guard<std::mutex> lock(pipeline_mtx);
+                accepted = active_pipeline->addFrame(std::move(frame), frame_timestamp, extra_info);
+            }
             if (recorder && !frame_for_record.empty()) {
                 recorder->recordFrame(frame_for_record, frame_timestamp, extra_info, accepted);
             }
@@ -651,120 +765,209 @@ int main(int argc, char** argv) {
         t1_done.store(true, std::memory_order_release);
     });
 
-    // ── 处理线程：提取到时帧 → 输出模式；窗口显示与热键 ──
-    // 窗口仅在启动时指定了 visualize 时创建；否则纯后台运行（不显示窗口、不绘制任何可视化）。
-    const bool show_window = opt.output.visualize;
+    // ── 处理线程：提取到时帧 → 填充弹道缓冲位即截止 ──
+    // 本线程不再做任何输出工作（弹道/云台/可视化/窗口均由各自循环线程处理），
+    // 有效帧时只组装弹道请求并发布到 ballistic_slot。
     std::thread process_thread([&]() {
-        FrameRateCounter overlay_fps(60);
-        cv::Mat last_frame;   // 最近一帧（可视化关闭时窗口仅显示原始画面）
-        TimePoint last_valid_ts{};   // 最近一次有效帧时间戳（覆盖层 TS 显示用；
-                                    // tryPopFrame 返回无效帧时 frame_timestamp 为默认 0）
+        FrameRateCounter fps(60);
         while (!t1_done.load(std::memory_order_acquire) && g_running) {
-            TimePoint timestamp = shared_frame_timestamp.load(std::memory_order_acquire);
+            const TimePoint timestamp = shared_frame_timestamp.load(std::memory_order_acquire);
             if (timestamp == TimePoint{}) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 continue;
             }
 
-            PipelineResult result = active_pipeline->tryPopFrame(timestamp);
+            PipelineResult result;
+            {
+                std::lock_guard<std::mutex> lock(pipeline_mtx);   // active_pipeline 由窗口线程切换
+                result = active_pipeline->tryPopFrame(timestamp);
+            }
 
             // ── 队列积压自适应额外延迟：tryPopFrame 返回各缓冲队列积压个数，
-            // 除输出缓冲队列外的积压总数（input + inter0..inter3）交给
+            // 除输出缓冲队列外的积压总数（input + inter0..inter3）交给 // 注：若新增Pipeline阶段数不为5，需调整这里
             // BacklogAdaptiveDelay 调整取帧线程的额外延迟（功能关闭时跳过）──
             if (backlog_delay.enabled()) {
                 const int non_output_backlog =
-                    result.queue_sizes.input + result.queue_sizes.inter0 +
-                    result.queue_sizes.inter1 + result.queue_sizes.inter2 +
-                    result.queue_sizes.inter3;
+                    result.queue_sizes.input + result.queue_sizes.inter0 + result.queue_sizes.inter1 +
+                    result.queue_sizes.inter2 + result.queue_sizes.inter3;
                 backlog_delay.update(non_output_backlog);
             }
 
-            // ── 统一预测瞄准点（任何情况下都调用，与输出模式无关）──
-            // 生成预测云台控制序列 + 瞄准点序列；GimbalOutput 消费控制序列，
-            // VisualizeOutput 消费瞄准点序列第一个值。
+            // ── 有效帧：填充弹道解算缓冲位（本线程工作至此截止）──
+            // 缓冲位未被取走时直接覆盖（latest-wins），流水线提取不因下游耗时阻塞。
             if (result.valid) {
-                const RobotController::State st =
-                    robot_controller ? robot_controller->getState() : RobotController::State{};
-                if (result.outpost.esekf_initialized && result.outpost.predictor) {
-                    aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
-                    aim_predictor.predict(st, *result.outpost.predictor, timestamp,
-                                          result.outpost.predictor_timestamp);
-                } else if (result.power_rune.target_predictor) {
-                    // PowerRune：靶点预测函数已在流水线内部封装为统一签名
-                    // std::vector<cv::Point3f>(double)（TargetPositionCalculator::compose），
-                    // 直接传入 AimPredictor，无需再包装。
-                    aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::LOWEST_Z);
-                    aim_predictor.predict(st, *result.power_rune.target_predictor, timestamp,
-                                          result.power_rune.predictor_timestamp);
-                } else {
-                    aim_predictor.invalidate();
+                RobotController::State st;
+                RobotController* rc = nullptr;
+                {
+                    std::lock_guard<std::mutex> lock(rc_mtx);
+                    rc = robot_controller.get();
+                    if (rc) st = rc->getState();
                 }
-                overlay_fps.tick();
+                BallisticRequest req;
+                req.st = st;
+                req.rc = rc;
+                req.result = std::make_unique<PipelineResult>(std::move(result));
+                ballistic_slot.publish(std::move(req));
+                fps.tick();
+                pipeline_fps.store(fps.fps(), std::memory_order_relaxed);
             }
 
-            // 更新全部输出模式（visualize 与 gimbal 可同时启用）
-            for (auto& m : output_modes) {
-                m->update(result, robot_controller.get());
-            }
-
-            if (!show_window) {
-                // 纯后台运行：不显示窗口、不绘制任何可视化信息
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                continue;
-            }
-
-            // 可视化开启：显示各 visualizer 的完整渲染画面并叠加统一覆盖层
-            // （串口信息 / 帧数统计 / 热键提醒，两个流水线一致）；
-            // 可视化关闭：窗口仅显示原始画面，不绘制任何覆盖层。
-            VisualizeOutput* vis = findVisualize();
-            bool vis_active = (vis != nullptr && !vis->display().empty());
-            cv::Mat to_show;
-            if (vis_active) {
-                to_show = vis->display().clone();
-            } else if (!last_frame.empty()) {
-                to_show = last_frame.clone();
-            }
-            if (result.valid) {
-                last_valid_ts = result.frame_timestamp;
-                last_frame = result.frame.clone();
-            }
-
-            if (to_show.empty()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                continue;
-            }
-
-            if (vis_active) {
-                drawOverlay(to_show, active_pipeline->name(), outputNames(),
-                            overlay_fps.fps(), robot_controller.get(), last_valid_ts,
-                            result.queue_sizes, backlog_delay.extraDelaySeconds());
-            }
-
-            cv::imshow("Unified Auto-Aim", to_show);
-            int key = cv::waitKey(1) & 0xFF;
-            if (key == 'q' || key == 'Q' || key == 27) {
-                t1_done.store(true, std::memory_order_release);
-                break;
-            } else if (key == '1') {
-                switchPipeline(PipelineMode::OUTPOST);
-            } else if (key == '2') {
-                switchPipeline(PipelineMode::POWER_RUNE);
-            } else if (key == 'n') {
-                // 全部关闭（窗口保留，仅显示原始画面）
-                output_modes.clear();
-                std::cout << "[main] Output modes: None" << std::endl;
-            } else if (key == 'v') {
-                // 开关可视化：关闭后窗口仅显示原始画面，热键始终可用，可随时恢复
-                toggleOutput(OutputMode::VISUALIZE);
-            } else if (key == 'g') {
-                toggleOutput(OutputMode::GIMBAL);
-            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         t2_done.store(true, std::memory_order_release);
     });
 
+    // ── 弹道解算循环线程 ──
+    // 循环取弹道缓冲位中的请求处理（弹道解算），并给每一个输出模式的缓冲位填入；
+    // 缓冲位空则等待，有数据即处理（不设帧率上限，最新请求覆盖未消费的旧请求）。
+    // 所需时间戳直接取最新 shared_frame_timestamp。
+    std::thread ballistic_thread([&]() {
+        FrameRateCounter fps(60);
+        BallisticRequest req;
+        while (ballistic_slot.take(req)) {
+            if (req.result) {
+                // 弹道解算：按流水线模式选择目标策略（与原 process_thread 内逻辑一致）
+                if (req.result->outpost.esekf_initialized && req.result->outpost.predictor) {
+                    aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
+                    aim_predictor.predict(req.st, *req.result->outpost.predictor,
+                                          shared_frame_timestamp.load(std::memory_order_acquire),
+                                          req.result->outpost.predictor_timestamp);
+                } else if (req.result->power_rune.target_predictor) {
+                    aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::LOWEST_Z);
+                    aim_predictor.predict(req.st, *req.result->power_rune.target_predictor,
+                                          shared_frame_timestamp.load(std::memory_order_acquire),
+                                          req.result->power_rune.predictor_timestamp);
+                } else {
+                    aim_predictor.invalidate();
+                }
+
+                // 给每一个输出模式的输入缓冲填入（模式关闭时对象为空，对应线程跳过）
+                VisualizeRequest vreq;
+                vreq.vis = findVisualize();
+                vreq.result = std::move(req.result);
+                vreq.rc = req.rc;
+                visualize_stage.slot.publish(std::move(vreq));
+
+                GimbalRequest greq;
+                greq.gimbal = findGimbal();
+                gimbal_stage.slot.publish(std::move(greq));
+            }
+            fps.tick();
+            ballistic_fps.store(fps.fps(), std::memory_order_relaxed);
+        }
+    });
+
+    // ── 云台输出循环线程（模式首次开启时创建，随后不销毁）──
+    // 消费云台缓冲位中的请求，调用 GimbalOutput::update（发送控制序列）。
+    ensureGimbalThread = [&]() {
+        if (gimbal_stage.thread) return;
+        gimbal_stage.thread = std::make_unique<std::thread>([&]() {
+            FrameRateCounter fps(60);
+            GimbalRequest req;
+            while (gimbal_stage.slot.take(req)) {
+                if (req.gimbal) {
+                    // GimbalOutput 仅读取 result.valid（云台状态/瞄准点自行读取），
+                    // 用轻量 stub 传入（完整流水线结果已转给可视化线程）
+                    PipelineResult stub;
+                    stub.valid = true;
+                    req.gimbal->update(stub, nullptr);
+                    fps.tick();
+                    gimbal_stage.fps.store(fps.fps(), std::memory_order_relaxed);
+                }
+            }
+        });
+    };
+
+    // ── 可视化输出循环线程（模式首次开启时创建，随后不销毁）──
+    // drawOverlay、imshow 与按键读取等窗口相关操作均在本线程；
+    // 无请求时仍持续泵窗口（tryTake 非阻塞），保证按键响应。
+    ensureVisualizeThread = [&]() {
+        if (visualize_stage.thread) return;
+        visualize_stage.thread = std::make_unique<std::thread>([&]() {
+            FrameRateCounter fps(60);
+            cv::Mat last_display;      // 最近渲染画面（可视化开启时显示 + 覆盖层）
+            cv::Mat last_raw_frame;    // 最近原始帧（可视化关闭时窗口显示原始画面）
+            PipelineResult::QueueSizes last_qs;
+            while (!t1_done.load(std::memory_order_acquire) && g_running) {
+                // 取可视化缓冲位（非阻塞；窗口泵不因无请求而停顿）
+                VisualizeRequest req;
+                const bool got = visualize_stage.slot.tryTake(req);
+                if (got && req.result) {
+                    last_qs = req.result->queue_sizes;
+                    if (req.vis) {
+                        req.vis->update(*req.result, req.rc);
+                        last_display = req.vis->display();
+                        fps.tick();
+                        visualize_stage.fps.store(fps.fps(), std::memory_order_relaxed);
+                    }
+                    last_raw_frame = req.result->frame;   // 浅拷贝（引用计数保活）
+                }
+
+                // ── 窗口泵：drawOverlay + imshow + 按键读取（均在本线程）──
+                const std::shared_ptr<VisualizeOutput> vis = findVisualize();
+                const bool vis_active = (vis != nullptr && !last_display.empty());
+                cv::Mat to_show = vis_active ? last_display : last_raw_frame;
+                if (!to_show.empty()) {
+                    if (vis_active) {
+                        drawOverlay(to_show, active_pipeline->name(), outputNames(),
+                                    pipeline_fps.load(std::memory_order_relaxed),
+                                    ballistic_fps.load(std::memory_order_relaxed),
+                                    gimbal_stage.fps.load(std::memory_order_relaxed),
+                                    visualize_stage.fps.load(std::memory_order_relaxed),
+                                    robotControllerPtr(),
+                                    shared_frame_timestamp.load(std::memory_order_acquire),
+                                    last_qs, backlog_delay.extraDelaySeconds());
+                    }
+                    cv::imshow("Unified Auto-Aim", to_show);
+                }
+                int key = cv::waitKey(1) & 0xFF;
+                if (key == 'q' || key == 'Q' || key == 27) {
+                    t1_done.store(true, std::memory_order_release);
+                    break;
+                } else if (key == '1') {
+                    switchPipeline(PipelineMode::OUTPOST);
+                } else if (key == '2') {
+                    switchPipeline(PipelineMode::POWER_RUNE);
+                } else if (key == 'n') {
+                    // 全部关闭（窗口保留，仅显示原始画面）
+                    {
+                        std::lock_guard<std::mutex> lock(output_mtx);
+                        output_modes.clear();
+                    }
+                    std::cout << "[main] Output modes: " << outputNames() << std::endl;
+                } else if (key == 'v') {
+                    // 开关可视化：关闭后窗口仅显示原始画面，热键始终可用，可随时恢复
+                    toggleOutput(OutputMode::VISUALIZE);
+                } else if (key == 'g') {
+                    toggleOutput(OutputMode::GIMBAL);
+                }
+                if (!got) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+            }
+        });
+    };
+
+    // ── 启动：创建初始输出模式（首次开启某模式时创建对应循环线程）──
+    makeOutputs(opt.output);
+
     input_thread.join();
     process_thread.join();
+
+    // 停止各阶段循环线程：先停弹道（其消费结束后不再向输出缓冲位发布），
+    // 再停输出线程；stop() 唤醒阻塞的 take() 使线程退出，随后 join。
+    // 注意：云台线程可能在可视化线程内被创建（'g' 热键），故先 join 可视化
+    // 线程（提供 happens-before）再读取/停止云台线程，避免对 thread 指针的竞态。
+    ballistic_slot.stop();
+    ballistic_thread.join();
+    if (visualize_stage.thread) {
+        visualize_stage.slot.stop();
+        visualize_stage.thread->join();
+    }
+    if (gimbal_stage.thread) {
+        gimbal_stage.slot.stop();
+        gimbal_stage.thread->join();
+    }
 
     std::cout << "\nExiting." << std::endl;
     if (recorder) {

@@ -84,7 +84,13 @@ public:
     /// 最新一次预测结果（无有效预测时 valid == false）
     Result latest() const;
 
-    /// 任一内部云台解算器（fire 判定距离等用途；各线程实例树状态相同）
+    /// 最近一次预测所用云台 yaw 系原点（world 系，线程安全）。
+    /// 弹道解算运行在独立循环线程后，输出模式（GimbalOutput 等）跨线程读取，
+    /// 不能直接访问内部 GimbalSolver（predict 期间会被写）；本值由 predict()
+    /// 在同一线程内计算并加锁缓存。
+    cv::Vec3f yawWorldOrigin() const;
+
+    /// 任一内部云台解算器（仅弹道线程内使用；外部请勿直接访问）
     std::shared_ptr<GimbalSolver> gimbal() const { return gimbals_.front(); }
 
 private:
@@ -110,6 +116,7 @@ private:
     // 最新结果槽
     mutable std::mutex mtx_;
     Result latest_;
+    cv::Vec3f yaw_origin_ = cv::Vec3f(0, 0, 0);   // 最近一次预测的 yaw 系原点（world 系）
 };
 
 #endif // AIM_PREDICTOR_H

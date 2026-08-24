@@ -58,7 +58,7 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*)
         if (ns > 0) {
             // 动态阈值：基于首个序列元素瞄准目标与 yaw 系原点在 world xy 平面的投影距离
             double threshold = fire_angle_lower_limit_;
-            const cv::Vec3f yaw_origin = aim_.gimbal()->yawWorldOrigin();
+            const cv::Vec3f yaw_origin = aim_.yawWorldOrigin();   // 线程安全缓存（弹道线程写入）
             const cv::Vec3f target = seq.first_point;
             const double dist_xy = std::hypot((double)target[0] - (double)yaw_origin[0],
                                               (double)target[1] - (double)yaw_origin[1]);
