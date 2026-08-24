@@ -49,10 +49,20 @@ public:
     /**
      * @brief Retrieve the next frame from the input source.
      * @param frame       [out] The captured frame (clone-safe).
+     *                    返回空 Mat（frame.empty()）表示输入源当前无新帧：
+     *                    调用方应短暂 sleep 后继续轮询（区别于返回 false 表示源已耗尽）。
      * @param timestamp   [out] The timestamp associated with this frame.
+     *                    即使无新帧也会被更新（见下方约定）。
      * @param extra_info [out] Extra input info (StrictPose + chassis xyz).
-     * @return true       Frame was retrieved successfully.
+     *                    即使无新帧也会被更新（见下方约定）。
+     * @return true       Frame was retrieved successfully (frame 可能为空 = 无新帧)。
      * @return false      No more frames available (source ended or user quit).
+     *
+     * 无新帧（返回空 frame）时的时间戳约定：
+     *  - CameraInputMode：时间戳取调用 getNextFrame 的时刻（now），extra_info 取
+     *    该时刻对应的延迟状态（有输入源新帧时行为不变）；
+     *  - 其余输入方式：若时间戳来自 now（如 InteractiveInputMode），则重新取 now；
+     *    否则（时间戳来自累计时间，如 VideoInputMode）沿用上一次成功返回的时间。
      */
     virtual bool getNextFrame(cv::Mat& frame,
                               std::chrono::steady_clock::time_point& timestamp,

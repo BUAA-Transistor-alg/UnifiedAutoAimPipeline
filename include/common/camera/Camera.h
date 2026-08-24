@@ -83,10 +83,12 @@ private:
     cv::Mat lastValidImage; // 用于检测图像变化
     
     // ── 帧存储与同步 ──
+    // hasNewFrame_ 完全由 frameMutex_ 保护（写入侧与 getLatestFrame 均持锁访问），
+    // 无需原子类型。
     cv::Mat latestFrame_;
     std::chrono::steady_clock::time_point frameTimestamp_;
     std::mutex frameMutex_;
-    std::atomic<bool> hasNewFrame_{false};
+    bool hasNewFrame_ = false;
     
     // 重连相关
     std::thread reconnectThread;

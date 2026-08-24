@@ -23,17 +23,31 @@ CameraInputMode::~CameraInputMode() {
 bool CameraInputMode::getNextFrame(cv::Mat& frame,
                                    std::chrono::steady_clock::time_point& timestamp,
                                    ExtraInputInfo& extra_info) {
-    // 相机取流失败（无新帧）时返回空帧，调用方应 sleep 后继续轮询
+    // 无新帧时的时间戳取"调用 getNextFrame 的时刻"：必须在相机检查之前采样。
+    // 若在检查（持锁）之后采样，写入线程可能在检查与采样之间发布一帧更早打戳的
+    // 新帧，导致下一次成功取帧返回的时间戳回退；检查前采样则保证写线程随后
+    // 打戳的新帧时间戳必然晚于本调用时刻（配合 Camera::getLatestFrame 的持锁协议）。
+    const auto now = std::chrono::steady_clock::now();
+
+    // 相机取流失败（无新帧）时返回空帧，调用方应 sleep 后继续轮询。
+    // 无新帧时也必须更新时间戳与 extra_info：时间戳取调用时刻（now），
+    // extra_info 取该时刻对应的延迟状态（队头，见下方成功取帧分支的说明）。
     if (!camera_.getLatestFrame(frame, timestamp)) {
         frame.release();  // 标记无新帧
+        timestamp = now;
+        std::unique_lock<std::mutex> lock(state_mtx_);
+        state_cv_.wait(lock, [this]() { return !state_queue_.empty(); });
+        trimStateQueueLocked(timestamp);
+        extra_info = state_queue_.front().info;
         return true;
     }
 
-    // 成功取帧：extra_info 取延迟状态队列队头（= 相对当前时刻 extra_info_delay 前的数据，
-    // 至少有一个数据；底盘 xyz 固定为 0，相机模式下底盘视为世界原点）。
+    // 成功取帧（有输入源新帧）：行为不变——extra_info 取延迟状态队列队头
+    // （= 相对当前时刻 extra_info_delay 前的数据，至少有一个数据；
+    // 底盘 xyz 固定为 0，相机模式下底盘视为世界原点）。
     std::unique_lock<std::mutex> lock(state_mtx_);
     state_cv_.wait(lock, [this]() { return !state_queue_.empty(); });
-    trimStateQueueLocked(std::chrono::steady_clock::now());
+    trimStateQueueLocked(timestamp);
     extra_info = state_queue_.front().info;
     return true;
 }

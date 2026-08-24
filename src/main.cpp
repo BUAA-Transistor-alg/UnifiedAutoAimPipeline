@@ -600,13 +600,18 @@ int main(int argc, char** argv) {
             TimePoint frame_timestamp;
             ExtraInputInfo extra_info;
             if (!input_mode->getNextFrame(frame, frame_timestamp, extra_info)) break;
+
+            // 无论输入源是否产生新帧，都把 frame_timestamp 发布到共享变量：
+            // 无新帧时各输入模式也会更新 frame_timestamp 与 extra_info（约定见
+            // IInputMode），保证处理线程的时钟（tryPopFrame 的 min_delay 判定）
+            // 在输入源停顿期间持续推进，已入队结果仍能按时提取。
+            shared_frame_timestamp.store(frame_timestamp, std::memory_order_release);
+
             if (frame.empty()) {
-                // 输入源无新帧：短暂等待后继续轮询
+                // 输入源无新帧：时间戳已发布，短暂等待后继续轮询
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 continue;
             }
-
-            shared_frame_timestamp.store(frame_timestamp, std::memory_order_release);
 
             // 录制：addFrame 会移动原帧，故先克隆一份（仅在录制开启时）
             cv::Mat frame_for_record;

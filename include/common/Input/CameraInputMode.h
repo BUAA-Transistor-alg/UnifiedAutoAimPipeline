@@ -24,6 +24,10 @@
  *   common.input_mode.camera_mode.extra_info_delay，必填；0.0 = 最新状态），且至少保留一个数据；
  *   成功取帧时返回队头数据（该帧 + 时间戳 + 延迟对齐的 tf 状态三者对应）；
  *   底盘 xyz 填 0；
+ * - 相机取流失败（无新帧）时返回空帧（调用方 sleep 后继续轮询），但时间戳与
+ *   extra_info 仍会被更新：时间戳取调用 getNextFrame 的时刻（在相机检查之前
+ *   采样，配合 Camera::getLatestFrame 的持锁协议保证返回时间戳单调不减），
+ *   extra_info 取该时刻对应的延迟状态（队头），与成功取帧分支使用同一套语义；
  * - 帧间无人工延迟（getFrameDelay = 0），由相机自身帧率驱动。
  */
 class CameraInputMode : public IInputMode {

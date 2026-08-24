@@ -193,13 +193,16 @@ void Camera::grabLoop() {
                             lastValidImage = processedImage.clone();
                             lastSuccessTime = steady_clock::now();
                         }
-                        // 写入成员变量，始终覆盖并设置新帧标志
+                        // 写入成员变量，始终覆盖并设置新帧标志。
+                        // hasNewFrame_ 与时间戳在同一临界区内发布：getLatestFrame
+                        // 全程持锁检查标志，写入新帧期间获取新帧会被阻塞，
+                        // 杜绝"读到旧帧时间戳 / 半写状态"的竞态。
                         {
                             std::lock_guard<std::mutex> lock(frameMutex_);
                             latestFrame_ = processedImage.clone();
                             frameTimestamp_ = steady_clock::now();
+                            hasNewFrame_ = true;
                         }
-                        hasNewFrame_.store(true);
                     }
                 }
             } else {
@@ -235,13 +238,13 @@ void Camera::grabLoop() {
 
 // ── 获取最新帧与时间戳 ──
 bool Camera::getLatestFrame(cv::Mat& frame, std::chrono::steady_clock::time_point& timestamp) {
-    if (!hasNewFrame_.load()) return false;
-    {
-        std::lock_guard<std::mutex> lock(frameMutex_);
-        latestFrame_.copyTo(frame);
-        timestamp = frameTimestamp_;
-    }
-    hasNewFrame_.store(false);
+    // 全程持锁：写入新帧期间本调用阻塞等待，不返回"无新帧"误判；
+    // 标志与时间戳在同一临界区发布/读取，见取流循环写入侧注释。
+    std::lock_guard<std::mutex> lock(frameMutex_);
+    if (!hasNewFrame_) return false;
+    latestFrame_.copyTo(frame);
+    timestamp = frameTimestamp_;
+    hasNewFrame_ = false;
     return true;
 }
 
