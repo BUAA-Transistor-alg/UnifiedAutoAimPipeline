@@ -51,6 +51,12 @@ Model/Outpost/0526.onnx 是一个由 PyTorch 2.0.1 静态导出的"魔改 YOLO"�
                                 [--output Model/Outpost/0526_dynamic.onnx]
                                 [--no-verify]
 
+配套改动
+--------
+C++ 侧后处理原先把 anchor 数写死为 NUM_ANCHORS=25200（include/Outpost/OpenvinoInfer.h），
+分辨率一改就会拒绝输出。配合本脚本需将后处理改为按输出张量形状动态读取 anchor 数
+（已随分支提交：删除 NUM_ANCHORS，postprocess 内用 shape[1] 作为循环/步长）。
+
 验证
 ----
 脚本默认对输出模型做：

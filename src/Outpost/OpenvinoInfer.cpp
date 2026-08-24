@@ -92,17 +92,22 @@ std::vector<Object> OutpostPostprocessor::postprocess(
 
     const int num_anchors = (int)shape[1];
     const int out_dim     = (int)shape[2];
-    if (out_dim != OUTPUT_DIM || num_anchors != NUM_ANCHORS) {
+    if (out_dim != OUTPUT_DIM) {
         std::cerr << "[ERROR] postprocess: output dim mismatch! expected ("
-                  << NUM_ANCHORS << ", " << OUTPUT_DIM << ") got ("
+                  << "num_anchors, " << OUTPUT_DIM << ") got ("
                   << num_anchors << ", " << out_dim << ")" << std::endl;
         return detections;
     }
+    if (num_anchors <= 0) {
+        std::cerr << "[ERROR] postprocess: invalid num_anchors: " << num_anchors << std::endl;
+        return detections;
+    }
 
-    // 行优先布局 (bs, num_anchors, OUTPUT_DIM)
+    // 行优先布局 (bs, num_anchors, OUTPUT_DIM)；anchor 数随输入分辨率动态变化
+    // （640→25200，512→16128，320→6300），一律以实际输出形状为准
     float* data = output_tensor->data<float>();
-    float* batch_data = data + (size_t)batch_index * NUM_ANCHORS * OUTPUT_DIM;
-    cv::Mat output_buffer(NUM_ANCHORS, OUTPUT_DIM, CV_32F, batch_data);
+    float* batch_data = data + (size_t)batch_index * num_anchors * OUTPUT_DIM;
+    cv::Mat output_buffer(num_anchors, OUTPUT_DIM, CV_32F, batch_data);
 
     const float sx = (float)orig_w / input_width_;
     const float sy = (float)orig_h / input_height_;
@@ -116,7 +121,7 @@ std::vector<Object> OutpostPostprocessor::postprocess(
         else       return std::exp(x) / (1.0 + std::exp(x));
     };
 
-    for (int i = 0; i < NUM_ANCHORS; ++i) {
+    for (int i = 0; i < num_anchors; ++i) {
         // 置信度（需 sigmoid）
         float confidence = output_buffer.at<float>(i, 8);
         confidence = (float)sigmoid(confidence);

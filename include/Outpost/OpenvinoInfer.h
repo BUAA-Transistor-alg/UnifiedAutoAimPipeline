@@ -1,7 +1,8 @@
 // OpenvinoInfer.h — 前哨站检测推理封装（预处理/推理使用公共 InferCore，解码为 Outpost 特有）
 //
-// 模型：输入 (bs, 3, W, H)，输出 (bs, 25200, 22)；输入分辨率由 config.yaml
-// 的 outpost.inference.resolution 提供（默认当前模型 640×640）：
+// 模型：输入 (bs, 3, H, W)，输出 (bs, num_anchors, 22)；输入分辨率由 config.yaml
+// 的 outpost.inference.resolution 提供（当前模型 640×640 → 25200 anchors，
+// 512×512 → 16128，320×320 → 6300；anchor 数随分辨率变化，后处理按输出形状动态读取）：
 //   col 0-7    4 个关键点 xy（左上/左下/右下/右上）
 //   col 8      obj 置信度（需 sigmoid）
 //   col 9-12   颜色独热（0=red, 1=blue, 2/3=丢弃）
@@ -21,8 +22,7 @@
 
 namespace OutpostDetect {
 
-// ---- 共享常量（与当前模型对齐） ----
-constexpr int NUM_ANCHORS   = 25200;
+// ---- 共享常量（输出列数固定，anchor 数随分辨率动态变化，见 postprocess） ----
 constexpr int OUTPUT_DIM    = 22;    // 模型输出列数（8 kpts + 1 conf + 4 color + 9 class）
 constexpr int NUM_COLOR     = 4;
 constexpr int NUM_CLASSES   = 9;
