@@ -20,40 +20,40 @@ common:
   # 两个流水线共用的提取帧最小延迟（秒，输出队列帧龄须达到该值后 tryPopFrame 才返回）
   min_delay_seconds: 0.2
 
-  # ── 队列积压自适应额外延迟（可选功能，BacklogAdaptiveDelay，v3 限速比例积分）──
+  # ── 队列积压自适应额外延迟（可选功能，BacklogAdaptiveDelay，v6 PID 式 PI）──
   # 开启后：处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列的积压
   # 总数（input + inter0..inter3），记为 non_output_backlog，据此自适应调整取帧
   # 线程（输入线程）的额外延迟，缓解流水线积压/丢帧。控制结构为
-  # 「EMA 平滑 + 限速比例积分 + 抗饱和」：
-  #   - 先对 non_output_backlog 做 EMA 平滑（系数 smoothing_alpha），抑制队列
-  #     瞬时快照在阈值边缘的抖动；
-  #   - 以滞回带中点 (increase+decrease)/2 为设定点：平滑积压高于设定点 → 延迟
-  #     以与误差成正比的速率上升（走到带边缘时速率恰好封顶），低于设定点 →
-  #     反向下降，整体速率封顶 max_rate_s_s（秒/秒），延迟封顶
-  #     max_extra_delay_seconds（抗饱和）。
+  # 「PI 直接输出 + 抗饱和」（无 EMA、无速率上限）：
+  #   - 误差 e = non_output_backlog - target_backlog（直接用原始测量，不做
+  #     EMA 平滑：积分项本身是天然低通，P 项增益小，平滑与否对输出几乎无影响，
+  #     见 BacklogAdaptiveDelay.h 说明）；
+  #   - 额外延迟（微秒）= gain_p * e + ∫gain_i * e · dt，钳位 [0,
+  #     max_extra_delay_seconds]。比例项即时校正，积分项把延迟推到平衡点
+  #     （稳态时积压收敛到 target_backlog，误差归零）。
   #   旧版是每帧固定 ±step 的积分器：配合 0.2s+ 的回环延迟（min_delay_seconds
   #   + 队列/处理耗时）必然产生三角波极限环，即 extra_delay_s 持续震荡
-  #   （重负载下实测可摆到上限 50ms）。v3 把变化速率限制到远小于回环延迟期间
-  #   允许的调整量（闭环仿真：稳态峰峰值从旧版 12~50ms 降到 0.4~1.3ms）。
+  #   （重负载下实测可摆到上限 50ms）。v6 取小量级增益（gain_p≈5~10µs/单位、
+  #   gain_i≈2~5µs/单位/秒），无需任何速率上限，闭环仿真稳态峰峰值仅 0.1~0.3ms
+  #   （含 0.2s 回环延迟、负载 0.3~0.95）。微分项（D）经仿真验证为负收益
+  #   （只加快负载突变时的收敛，但把稳态震荡恶化到 3.5~8.4ms），故未采用。
   # 各字段含义（给后续修改者，改动后仅需重启程序，无需重新编译）：
   #   enabled                ：功能总开关（true 开启 / false 关闭）
-  #   increase_threshold     ：滞回带上沿（设定点上方，须严格大于
-  #                            decrease_threshold，否则启动报错）
-  #   decrease_threshold     ：滞回带下沿（设定点下方，须严格小于
-  #                            increase_threshold）
+  #   target_backlog         ：目标积压（设定点，须 >= 1）：越大越容忍积压（额外
+  #                            延迟更小、取帧更快），越小越激进压积压（额外延迟
+  #                            可能更大、取帧更慢）。建议 3
   #   max_extra_delay_seconds：额外延迟上限（秒，须 >= 0）
-  #   smoothing_alpha        ：积压 EMA 平滑系数，须在 (0,1]：越大越跟手（抖动
-  #                            抑制弱），越小越平滑（反应慢）。建议 0.2
-  #   max_rate_s_s          ：延迟变化速率上限（秒/秒，须 > 0）：越小越稳
-  #                            （收敛慢），越大响应越快（易抖）。建议 0.0005
-  #                            （即 0.5ms/s）；要求更紧的稳态可试 0.00025
+  #   gain_p                 ：PI 比例增益（秒/单位积压，须 >= 0）：越大校正越
+  #                            快但越容易抖。建议 0.000005~0.00001（5~10µs/单位）
+  #   gain_i                 ：PI 积分增益（秒/单位积压/秒，须 >= 0）：决定
+  #                            收敛到平衡点的速度（稳态延迟由它维持）。建议
+  #                            0.000002~0.000005（2~5µs/单位/秒）
   backlog_adaptive_delay:
     enabled: true                # 功能总开关
-    increase_threshold: 4         # 滞回带上沿（设定点 3）
-    decrease_threshold: 2         # 滞回带下沿（设定点 3）
+    target_backlog: 3            # 目标积压（设定点，建议 3）
     max_extra_delay_seconds: 0.05 # 额外延迟上限（秒）
-    smoothing_alpha: 0.1          # 积压 EMA 平滑系数（(0,1]）
-    max_rate_s_s: 0.003          # 延迟变化速率上限（秒/秒）
+    gain_p: 0.001             # PI 比例增益（秒/单位积压，即 8µs/单位）
+    gain_i: 0.001             # PI 积分增益（秒/单位积压/秒，即 3µs/单位/秒）
 
   # ── 推理进程启动策略（bool）──
   #   false：启动时由 launch_all.py 启动全部推理进程

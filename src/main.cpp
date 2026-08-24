@@ -403,20 +403,23 @@ int main(int argc, char** argv) {
 
     // ── 队列积压自适应额外延迟（可选功能，config common.backlog_adaptive_delay）──
     // 开启后：处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列积压
-    // 总数，先 EMA 平滑、再以滞回带中点为设定点做限速比例积分（变化速率封顶、
-    // 抗饱和；v3，见 BacklogAdaptiveDelay，无极限环震荡）。
+    // 总数，以 target_backlog 为目标做 PI 直接输出（比例 + 积分、抗饱和，
+    // 无 EMA、无速率上限；v6，见 BacklogAdaptiveDelay，稳态无极限环震荡）。
     // 全部可调参数均来自 config，此处仅组装并调用其接口。
     const RobotConfig::CommonParams::BacklogAdaptiveDelayParams& bad_cfg =
         cfg.common.backlogAdaptiveDelay;
     BacklogAdaptiveDelay backlog_delay(BacklogAdaptiveDelay::Config{
-        bad_cfg.enabled, bad_cfg.increaseThreshold, bad_cfg.decreaseThreshold,
-        bad_cfg.maxExtraDelaySeconds, bad_cfg.smoothingAlpha, bad_cfg.maxRateSecPerSec});
+        bad_cfg.enabled, bad_cfg.targetBacklog, bad_cfg.maxExtraDelaySeconds,
+        bad_cfg.gainP, bad_cfg.gainI});
     if (backlog_delay.enabled()) {
-        std::cout << "[main] Backlog adaptive delay: ON (band "
-                  << bad_cfg.decreaseThreshold << ".." << bad_cfg.increaseThreshold
-                  << ", max " << bad_cfg.maxExtraDelaySeconds << " s, alpha "
-                  << bad_cfg.smoothingAlpha << ", max rate "
-                  << bad_cfg.maxRateSecPerSec << " s/s)" << std::endl;
+        std::ostringstream oss_bad;
+        oss_bad << std::fixed << std::setprecision(6)
+                << "[main] Backlog adaptive delay: ON (target "
+                << bad_cfg.targetBacklog << ", max "
+                << bad_cfg.maxExtraDelaySeconds << " s, gain_p "
+                << bad_cfg.gainP << " s/unit, gain_i "
+                << bad_cfg.gainI << " s/unit/s)";
+        std::cout << oss_bad.str() << std::endl;
     }
 
     // 相机参数：按输入模式自动选择（camera → input_mode.camera_mode；video/interactive → input_mode.video_mode）

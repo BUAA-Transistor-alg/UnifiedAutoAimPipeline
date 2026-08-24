@@ -178,12 +178,13 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     //   true：仅启动当前流水线所需推理进程，切换时立即关闭不需要的进程（主程序管理）
     cfg.common.inferProcessLazy = requireScalar<bool>(cm, "infer_process_lazy", "common");
 
-    // ── common.backlog_adaptive_delay（队列积压自适应额外延迟，v3 限速比例积分）──
+    // ── common.backlog_adaptive_delay（队列积压自适应额外延迟，v6 PID 式 PI）──
     // 开启后（见 BacklogAdaptiveDelay）：
-    //   - 除输出缓冲队列外各队列积压总数先做 EMA 平滑（smoothing_alpha）；
-    //   - 以滞回带中点 (increase+decrease)/2 为设定点做限速比例积分：变化速率
-    //     与误差成正比但封顶 max_rate_s_s（秒/秒），延迟封顶
-    //     max_extra_delay_seconds（抗饱和）。
+    //   - 以 target_backlog 为目标做 PI 直接输出：extra_delay = gain_p*e +
+    //     ∫gain_i*e·dt（增益单位分别为 秒/单位积压、秒/单位积压/秒，内部换算
+    //     为 µs；e 为积压总数与目标的差，无 EMA 平滑），钳位
+    //     [0, max_extra_delay_seconds]（抗饱和，无速率上限）。稳态时积压
+    //     收敛到 target_backlog，误差归零。
     //   若要在 config.yaml 中新增本功能的参数，需同步修改
     //   RobotConfig::BacklogAdaptiveDelayParams 与本段解析。
     const YAML::Node& bad = cm["backlog_adaptive_delay"];
@@ -191,33 +192,23 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
         throw std::runtime_error("RobotConfig: 缺少 'common.backlog_adaptive_delay' 配置段");
     cfg.common.backlogAdaptiveDelay.enabled =
         requireScalar<bool>(bad, "enabled", "common.backlog_adaptive_delay");
-    cfg.common.backlogAdaptiveDelay.increaseThreshold =
-        requireScalar<int>(bad, "increase_threshold", "common.backlog_adaptive_delay");
-    cfg.common.backlogAdaptiveDelay.decreaseThreshold =
-        requireScalar<int>(bad, "decrease_threshold", "common.backlog_adaptive_delay");
+    cfg.common.backlogAdaptiveDelay.targetBacklog =
+        requireScalar<double>(bad, "target_backlog", "common.backlog_adaptive_delay");
     cfg.common.backlogAdaptiveDelay.maxExtraDelaySeconds =
         requireScalar<double>(bad, "max_extra_delay_seconds", "common.backlog_adaptive_delay");
-    cfg.common.backlogAdaptiveDelay.smoothingAlpha =
-        requireScalar<double>(bad, "smoothing_alpha", "common.backlog_adaptive_delay");
-    cfg.common.backlogAdaptiveDelay.maxRateSecPerSec =
-        requireScalar<double>(bad, "max_rate_s_s", "common.backlog_adaptive_delay");
-    // 取值校验：阈值关系与非法值同样在此处报错（不静默修正）
-    if (cfg.common.backlogAdaptiveDelay.increaseThreshold <=
-        cfg.common.backlogAdaptiveDelay.decreaseThreshold) {
-        throw std::runtime_error("RobotConfig: common.backlog_adaptive_delay."
-                                 "increase_threshold 必须大于 decrease_threshold");
-    }
-    if (cfg.common.backlogAdaptiveDelay.increaseThreshold < 0 ||
-        cfg.common.backlogAdaptiveDelay.decreaseThreshold < 0 ||
+    cfg.common.backlogAdaptiveDelay.gainP =
+        requireScalar<double>(bad, "gain_p", "common.backlog_adaptive_delay");
+    cfg.common.backlogAdaptiveDelay.gainI =
+        requireScalar<double>(bad, "gain_i", "common.backlog_adaptive_delay");
+    // 取值校验：非法值同样在此处报错（不静默修正）
+    if (cfg.common.backlogAdaptiveDelay.targetBacklog < 1.0 ||
         cfg.common.backlogAdaptiveDelay.maxExtraDelaySeconds < 0.0 ||
-        cfg.common.backlogAdaptiveDelay.smoothingAlpha <= 0.0 ||
-        cfg.common.backlogAdaptiveDelay.smoothingAlpha > 1.0 ||
-        cfg.common.backlogAdaptiveDelay.maxRateSecPerSec <= 0.0) {
+        cfg.common.backlogAdaptiveDelay.gainP < 0.0 ||
+        cfg.common.backlogAdaptiveDelay.gainI < 0.0) {
         throw std::runtime_error("RobotConfig: common.backlog_adaptive_delay."
-                                 "increase_threshold / decrease_threshold / "
+                                 "target_backlog 必须 >= 1，"
                                  "max_extra_delay_seconds 必须 >= 0，"
-                                 "smoothing_alpha 必须在 (0,1]，"
-                                 "max_rate_s_s 必须 > 0");
+                                 "gain_p / gain_i 必须 >= 0");
     }
 
     // ── common.recording ──
