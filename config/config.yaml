@@ -24,36 +24,21 @@ common:
   # 开启后：处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列的积压
   # 总数（input + inter0..inter3），记为 non_output_backlog，据此自适应调整取帧
   # 线程（输入线程）的额外延迟，缓解流水线积压/丢帧。控制结构为
-  # 「PI 直接输出 + 抗饱和」（无 EMA、无速率上限）：
-  #   - 误差 e = non_output_backlog - target_backlog（直接用原始测量，不做
-  #     EMA 平滑：积分项本身是天然低通，P 项增益小，平滑与否对输出几乎无影响，
-  #     见 BacklogAdaptiveDelay.h 说明）；
-  #   - 额外延迟（微秒）= gain_p * e + ∫gain_i * e · dt，钳位 [0,
-  #     max_extra_delay_seconds]。比例项即时校正，积分项把延迟推到平衡点
-  #     （稳态时积压收敛到 target_backlog，误差归零）。
-  #   旧版是每帧固定 ±step 的积分器：配合 0.2s+ 的回环延迟（min_delay_seconds
-  #   + 队列/处理耗时）必然产生三角波极限环，即 extra_delay_s 持续震荡
-  #   （重负载下实测可摆到上限 50ms）。v6 取小量级增益（gain_p≈5~10µs/单位、
-  #   gain_i≈2~5µs/单位/秒），无需任何速率上限，闭环仿真稳态峰峰值仅 0.1~0.3ms
-  #   （含 0.2s 回环延迟、负载 0.3~0.95）。微分项（D）经仿真验证为负收益
-  #   （只加快负载突变时的收敛，但把稳态震荡恶化到 3.5~8.4ms），故未采用。
+  # 「PI 直接输出 + 抗饱和」
   # 各字段含义（给后续修改者，改动后仅需重启程序，无需重新编译）：
   #   enabled                ：功能总开关（true 开启 / false 关闭）
-  #   target_backlog         ：目标积压（设定点，须 >= 1）：越大越容忍积压（额外
-  #                            延迟更小、取帧更快），越小越激进压积压（额外延迟
-  #                            可能更大、取帧更慢）。建议 3
+  #   target_backlog         ：目标积压（设定点，须 >= 1）
   #   max_extra_delay_seconds：额外延迟上限（秒，须 >= 0）
   #   gain_p                 ：PI 比例增益（秒/单位积压，须 >= 0）：越大校正越
-  #                            快但越容易抖。建议 0.000005~0.00001（5~10µs/单位）
+  #                            快但越容易抖。
   #   gain_i                 ：PI 积分增益（秒/单位积压/秒，须 >= 0）：决定
-  #                            收敛到平衡点的速度（稳态延迟由它维持）。建议
-  #                            0.000002~0.000005（2~5µs/单位/秒）
+  #                            收敛到平衡点的速度（稳态延迟由它维持）。
   backlog_adaptive_delay:
     enabled: true                # 功能总开关
     target_backlog: 3            # 目标积压（设定点，建议 3）
     max_extra_delay_seconds: 0.05 # 额外延迟上限（秒）
-    gain_p: 0.001             # PI 比例增益（秒/单位积压，即 8µs/单位）
-    gain_i: 0.01             # PI 积分增益（秒/单位积压/秒，即 3µs/单位/秒）
+    gain_p: 0.001             # PI 比例增益（秒/单位积压）
+    gain_i: 0.01             # PI 积分增益（秒/单位积压/秒）
 
   # ── 推理进程启动策略（bool）──
   #   false：启动时由 launch_all.py 启动全部推理进程
@@ -71,7 +56,7 @@ common:
       # 相机输入模式（CameraInputMode）extra_info 延迟（秒）：
       # 后台线程持续采样 RobotController::getState() 并维护延迟队列，返回给流水线的
       # extra_info 为相对当前时刻 extra_info_delay 前的队头数据（0.0 = 最新状态）
-      extra_info_delay: 0.019587
+      extra_info_delay: 0.020069
       device_ip: "192.168.10.10"    # 相机设备 IP
       net_ip: "192.168.10.25"       # 本机网口 IP
       exposure: 2000.0              # 曝光时间（微秒）
@@ -90,7 +75,7 @@ common:
     video_mode:
       # 测试最大帧率：true 时 VideoInputMode 的 getFrameDelay() 返回 0
       # （不做按视频帧率的节流），以测得视频输入 + 流水线的最大帧数/FPS。
-      test_max_fps: true
+      test_max_fps: false
       resolution:
         width: 1920                 # 图像宽（像素）
         height: 1080                # 图像高（像素）
