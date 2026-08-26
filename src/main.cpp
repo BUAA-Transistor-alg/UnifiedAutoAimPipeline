@@ -33,7 +33,7 @@
 #include "common/Output/IOutputMode.h"
 #include "common/Output/VisualizeOutput.h"
 #include "common/Output/GimbalOutput.h"
-#include "common/Ballistic/AimPredictor.h"
+#include "common/Ballistic/SequencePredictor.h"
 #include "common/LatestSlot.h"
 #include "common/RobotConfig.h"
 #include "common/FrameRateCounter.h"
@@ -552,7 +552,7 @@ int main(int argc, char** argv) {
     std::vector<std::shared_ptr<IOutputMode>> output_modes;   // shared_ptr：输出请求跨线程持有对象
     // 预测瞄准点通用类：任何情况下（无论输出模式）每帧调用，生成预测云台控制
     // 序列 + 瞄准点序列；GimbalOutput 消费控制序列，VisualizeOutput 消费首个瞄准点
-    AimPredictor aim_predictor;
+    SequencePredictor sequence_predictor;
     // 相机投影（与输入模式绑定，两个流水线/可视化共用）
     auto camera_proj = std::make_shared<CameraProjection>(
         camera_params.cameraMatrix, camera_params.distCoeffs,
@@ -635,7 +635,7 @@ int main(int argc, char** argv) {
         }
         if (oc.visualize) {
             ensureVisualizeThread();   // 首次开启时创建可视化循环线程（随后不销毁）
-            auto vis = std::make_shared<VisualizeOutput>(camera_proj, aim_predictor);
+            auto vis = std::make_shared<VisualizeOutput>(camera_proj, sequence_predictor);
             vis->setMode(active_pipeline->mode());
             std::lock_guard<std::mutex> lock(output_mtx);
             output_modes.push_back(vis);
@@ -643,7 +643,7 @@ int main(int argc, char** argv) {
         if (oc.gimbal) {
             ensureRobotController();
             ensureGimbalThread();      // 首次开启时创建云台循环线程（随后不销毁）
-            auto gimbal = std::make_shared<GimbalOutput>(aim_predictor, *robot_controller);
+            auto gimbal = std::make_shared<GimbalOutput>(sequence_predictor, *robot_controller);
             std::lock_guard<std::mutex> lock(output_mtx);
             output_modes.push_back(gimbal);
         }
@@ -692,14 +692,14 @@ int main(int argc, char** argv) {
         if (add) {
             if (m == OutputMode::VISUALIZE) {
                 ensureVisualizeThread();   // 首次开启时创建可视化循环线程（随后不销毁）
-                auto vis = std::make_shared<VisualizeOutput>(camera_proj, aim_predictor);
+                auto vis = std::make_shared<VisualizeOutput>(camera_proj, sequence_predictor);
                 vis->setMode(active_pipeline->mode());
                 std::lock_guard<std::mutex> lock(output_mtx);
                 output_modes.push_back(vis);
             } else if (m == OutputMode::GIMBAL) {
                 ensureRobotController();
                 ensureGimbalThread();      // 首次开启时创建云台循环线程（随后不销毁）
-                auto gimbal = std::make_shared<GimbalOutput>(aim_predictor, *robot_controller);
+                auto gimbal = std::make_shared<GimbalOutput>(sequence_predictor, *robot_controller);
                 std::lock_guard<std::mutex> lock(output_mtx);
                 output_modes.push_back(gimbal);
             }
@@ -832,17 +832,17 @@ int main(int argc, char** argv) {
             if (req.result) {
                 // 弹道解算：按流水线模式选择目标策略（与原 process_thread 内逻辑一致）
                 if (req.result->outpost.esekf_initialized && req.result->outpost.predictor) {
-                    aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
-                    aim_predictor.predict(req.st, *req.result->outpost.predictor,
+                    sequence_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
+                    sequence_predictor.predict(req.st, *req.result->outpost.predictor,
                                           shared_frame_timestamp.load(std::memory_order_acquire),
                                           req.result->outpost.predictor_timestamp);
                 } else if (req.result->power_rune.target_predictor) {
-                    aim_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::LOWEST_Z);
-                    aim_predictor.predict(req.st, *req.result->power_rune.target_predictor,
+                    sequence_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::LOWEST_Z);
+                    sequence_predictor.predict(req.st, *req.result->power_rune.target_predictor,
                                           shared_frame_timestamp.load(std::memory_order_acquire),
                                           req.result->power_rune.predictor_timestamp);
                 } else {
-                    aim_predictor.invalidate();
+                    sequence_predictor.invalidate();
                 }
 
                 // 给每一个输出模式的输入缓冲填入（模式关闭时对象为空，对应线程跳过）

@@ -1,5 +1,7 @@
-// AimPredictor.cpp — 预测瞄准点通用类实现
-#include "common/Ballistic/AimPredictor.h"
+// SequencePredictor.cpp — 预测序列通用类实现
+#include "common/Ballistic/SequencePredictor.h"
+
+#include <algorithm>
 
 #include "common/RobotConfig.h"
 
@@ -12,13 +14,14 @@ int workerGimbalIndex(std::atomic<int>& next) {
 }
 } // namespace
 
-AimPredictor::AimPredictor()
+SequencePredictor::SequencePredictor()
     : extra_predict_time_(RobotConfig::instance().common.predictedBallistic.extraPredictTime),
       dt_control_(RobotConfig::instance().common.robotController.dtControl),
-      pitch_bias_(RobotConfig::instance().common.inputController.pitchBias),
-      yaw_bias_(RobotConfig::instance().common.inputController.yawBias),
-      prediction_points_(RobotConfig::instance().common.inputController.predictionPoints),
-      interpolation_refine_(RobotConfig::instance().common.inputController.interpolationRefine) {
+      pitch_bias_(RobotConfig::instance().common.predictSequence.pitchBias),
+      yaw_bias_(RobotConfig::instance().common.predictSequence.yawBias),
+      prediction_points_(RobotConfig::instance().common.predictSequence.predictionPoints),
+      interpolation_refine_(RobotConfig::instance().common.predictSequence.interpolationRefine),
+      exact_lead_points_(RobotConfig::instance().common.predictSequence.exactLeadPoints) {
     // 默认线程数 min(硬件核数/2, 4)；为每个工作线程准备一个独立的
     // GimbalSolver + 各自绑定的 PredictedBallisticSolver
     const size_t T = pool_.size();
@@ -30,7 +33,7 @@ AimPredictor::AimPredictor()
     }
 }
 
-AimPredictor::Item AimPredictor::lerpItem(const Item& lo, const Item& hi, double t)
+SequencePredictor::Item SequencePredictor::lerpItem(const Item& lo, const Item& hi, double t)
 {
     Item r;
     r.success = lo.success;
@@ -43,7 +46,7 @@ AimPredictor::Item AimPredictor::lerpItem(const Item& lo, const Item& hi, double
     return r;
 }
 
-AimPredictor::Item AimPredictor::extrapItem(const Item& A, const Item& P, double s)
+SequencePredictor::Item SequencePredictor::extrapItem(const Item& A, const Item& P, double s)
 {
     // 沿段 (P, A) 的方向外推 s 个步长：R = A + s*(A - P)
     Item r;
@@ -57,7 +60,7 @@ AimPredictor::Item AimPredictor::extrapItem(const Item& A, const Item& P, double
     return r;
 }
 
-AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
+SequencePredictor::Result SequencePredictor::predict(const RobotController::State& st,
                                            const Predictor& predictor,
                                            const std::chrono::steady_clock::time_point& timestamp,
                                            const std::chrono::steady_clock::time_point& predictor_timestamp)
@@ -82,22 +85,34 @@ AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
     //    供输出模式跨线程读取（弹道线程化后不能直接读 GimbalSolver）──
     const cv::Vec3f yaw_origin = gimbals_.front()->yawWorldOrigin();
 
-    // ── 1. 只精确解算 M 个实际计算点（索引 (j-1)*K，j=1..M），solve 之间并行 ──
+    // ── 1. 精确解算点集合（solve 之间并行）──
+    // 返回序列 = [前 n 个前导精确点（索引 0..n-1）] 后接 [原划分序列
+    // （索引 n .. n+(M-1)K）]，总返回点数 = (M-1)*K + 1 + n，
+    // 时间间隔全程均匀为 dt_control（索引 i 对应 extra + (i+1)*dt）。
+    // 精确解算共 n + M 个点：n 个前导点 + M 个原划分实际计算点（索引 n + j*K, j=0..M-1）。
     const int M = prediction_points_;
     const int K = interpolation_refine_;
-    const int N = (M - 1) * K + 1;   // 总返回点数
-    std::vector<PredictedBallisticSolver::Result> solved((size_t)M);
+    const int N = (M - 1) * K + 1;   // 原划分序列点数（不含前导）
+    const int n = std::max(exact_lead_points_, 0);   // 防御性夹取（RobotConfig 已校验 >= 0）
+    const int TOTAL = N + n;         // 总返回点数
+
+    std::vector<int> solve_idx;
+    solve_idx.reserve((size_t)n + (size_t)M);
+    for (int i = 0; i < n; ++i) solve_idx.push_back(i);            // 前导精确点
+    for (int j = 0; j < M; ++j) solve_idx.push_back(n + j * K);    // 原划分实际计算点
+
+    const int U = (int)solve_idx.size();
+    std::vector<PredictedBallisticSolver::Result> solved((size_t)U);
     const size_t T = gimbals_.size();
-    pool_.run_parallel(M, [&](int idx) {
+    pool_.run_parallel(U, [&](int idx) {
         const int wid = workerGimbalIndex(next_gimbal_);
-        const int j = idx + 1;
-        const int ret_idx = (j - 1) * K;   // 该实际计算点在返回点序列中的索引
-        solved[idx] = solvers_[(size_t)(wid % T)].solve(
+        const int ret_idx = solve_idx[(size_t)idx];   // 该实际计算点在返回点序列中的索引
+        solved[(size_t)idx] = solvers_[(size_t)(wid % T)].solve(
             predictor, extra_predict_time + (ret_idx + 1) * dt_control_);
     });
 
     // ── 2. 组装返回点序列（实际计算点 + 插值/外推/复制点）──
-    std::vector<Item> items((size_t)N);
+    std::vector<Item> items((size_t)TOTAL);
     auto makeActual = [&](const PredictedBallisticSolver::Result& r) {
         Item item;
         item.success = r.success;
@@ -109,21 +124,32 @@ AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
         item.target_index = r.target_index;
         return item;
     };
-    for (int j = 1; j <= M; ++j) {
-        items[(size_t)((j - 1) * K)] = makeActual(solved[(size_t)(j - 1)]);
+    for (int u = 0; u < U; ++u) {
+        items[(size_t)solve_idx[(size_t)u]] = makeActual(solved[(size_t)u]);
     }
 
-    // ── 3. 相邻实际计算点之间填充插值/外推/复制点 ──
-    for (int j = 1; j < M; ++j) {
-        const size_t a = (size_t)((j - 1) * K);   // 左侧实际计算点索引
-        const size_t b = (size_t)(j * K);         // 右侧实际计算点索引
+    // ── 3. 原划分序列段间填充插值/外推/复制点 ──
+    // 相邻实际计算点 (a, b)（a = n + j*K, b = a + K）之间填 K-1 个点：
+    //   同目标 → 线性插值；
+    //   目标不同 → 外推参考分两种：
+    //     - 首段（j=0，即紧邻窗口 n+1..n+K-1）：用前导精确区最后一个点
+    //       items[n-1]（n >= 1 时存在），要求与 A 同目标，否则复制 A；
+    //     - 其余段：原规则 items[a-K]（上一实际计算点，须同目标，否则复制 A）。
+    for (int j = 0; j < M - 1; ++j) {
+        const size_t a = (size_t)(n + j * K);         // 左侧实际计算点索引
+        const size_t b = (size_t)(n + (j + 1) * K);   // 右侧实际计算点索引
         const Item& A = items[a];
         const Item& B = items[b];
 
-        // 左侧点 A 的上一个实际计算点 P（索引 a-K），判断是否可用作外推参考
+        // 首段外推参考：前导精确区最后一个点 items[n-1]（n >= 1 时存在，
+        // 由短路的 n >= 1 保证下标合法），须与 A 同目标，否则复制 A
+        const bool lead_extrap_valid = (j == 0) && (n >= 1) &&
+            (items[(size_t)n - 1].target_index == A.target_index);
+
+        // 原规则外推参考：A 的上一个实际计算点 P（索引 a-K），仅非首段使用
         bool can_extrap = false;
         Item P;
-        if (a >= (size_t)K) {
+        if (j > 0) {
             const Item& Pp = items[a - (size_t)K];
             can_extrap = (Pp.target_index == A.target_index);
             if (can_extrap) P = Pp;
@@ -134,11 +160,14 @@ AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
             if (A.target_index == B.target_index) {
                 // 目标相同：正常线性插值
                 items[a + (size_t)m] = lerpItem(A, B, t);
+            } else if (lead_extrap_valid) {
+                // 首段（紧邻窗口）：以第 n 个精确值 items[n-1] 为参考外推
+                items[a + (size_t)m] = extrapItem(A, items[(size_t)n - 1], t);
             } else if (can_extrap) {
                 // 相邻实际点目标不同：用段 (P, A) 的线性差值参数外推
                 items[a + (size_t)m] = extrapItem(A, P, t);
             } else {
-                // 左侧点与再上一个点也目标不同或没有再上一个点：复制左侧点
+                // 无可用外推参考：复制左侧点
                 items[a + (size_t)m] = A;
             }
         }
@@ -147,7 +176,7 @@ AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
     // ── 4. 结果 ──
     Result res;
     res.items = std::move(items);
-    res.valid = res.items.front().success;             // 第一个返回点 = 实际计算点 1
+    res.valid = res.items.front().success;             // 第一个返回点 = 前导精确点（实际计算点）
     res.first_point = res.items.front().predicted_point;
     res.first_predict_time = res.items.front().predict_time;
     // 积分补偿开关：仅在预测有效且 MCU 自瞄开关打开时启用
@@ -161,19 +190,19 @@ AimPredictor::Result AimPredictor::predict(const RobotController::State& st,
     return res;
 }
 
-void AimPredictor::invalidate()
+void SequencePredictor::invalidate()
 {
     std::lock_guard<std::mutex> lock(mtx_);
     latest_ = Result{};
 }
 
-AimPredictor::Result AimPredictor::latest() const
+SequencePredictor::Result SequencePredictor::latest() const
 {
     std::lock_guard<std::mutex> lock(mtx_);
     return latest_;
 }
 
-cv::Vec3f AimPredictor::yawWorldOrigin() const
+cv::Vec3f SequencePredictor::yawWorldOrigin() const
 {
     std::lock_guard<std::mutex> lock(mtx_);
     return yaw_origin_;

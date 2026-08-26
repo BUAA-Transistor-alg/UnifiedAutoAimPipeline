@@ -3,13 +3,13 @@
 // 按当前流水线模式（Outpost / PowerRune）渲染对应画面：
 //  - 每帧从 PipelineResult.extra_info 同步自己的 RobotTfTree（world→cam 投影）；
 //  - Outpost 用 OutpostVisualizer，PowerRune 用 PowerRuneVisualizer；
-//  - 预测瞄准点取自 AimPredictor 瞄准点序列的第一个值（main 每帧统一预测，
+//  - 预测瞄准点取自 SequencePredictor 瞄准点序列的第一个值（main 每帧统一预测，
 //    两种流水线模式一致绘制，任何输出状态下都可用）。
 #ifndef VISUALIZE_OUTPUT_H
 #define VISUALIZE_OUTPUT_H
 
 #include "common/Output/IOutputMode.h"
-#include "common/Ballistic/AimPredictor.h"
+#include "common/Ballistic/SequencePredictor.h"
 #include "Outpost/OutpostVisualizer.h"
 #include "PowerRune/PowerRuneVisualizer.h"
 #include "common/TransformTree/RobotTfTree.h"
@@ -26,7 +26,7 @@ public:
     /// @param camera_proj 相机投影（由输入模式选择的相机参数构建）
     /// @param aim         预测瞄准点通用类（读取瞄准点序列第一个值绘制）
     explicit VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj,
-                             AimPredictor& aim);
+                             SequencePredictor& aim);
 
     /// 切换当前渲染的流水线模式（相机投影与输入模式绑定，不随流水线切换）
     void setMode(PipelineMode mode) { mode_.store(mode, std::memory_order_relaxed); }
@@ -58,7 +58,7 @@ private:
     cv::Mat render_buf_;              // 渲染目标缓冲（可视化线程独占）
     cv::Mat display_;
     mutable std::mutex display_mtx_;   // 保护 display_（可视化线程写 / 主线程读）
-    AimPredictor& aim_;
+    SequencePredictor& aim_;
 };
 
 #endif // VISUALIZE_OUTPUT_H

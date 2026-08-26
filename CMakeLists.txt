@@ -82,7 +82,7 @@ set(COMMON_SOURCES
     src/common/Ballistic/BallisticSolver.cpp
     src/common/Ballistic/GimbalSolver.cpp
     src/common/Ballistic/PredictedBallisticSolver.cpp
-    src/common/Ballistic/AimPredictor.cpp
+    src/common/Ballistic/SequencePredictor.cpp
     src/common/camera/Camera.cpp
     src/common/Input/CameraInputMode.cpp
     src/common/Input/VideoInputMode.cpp

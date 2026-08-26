@@ -33,7 +33,7 @@ void drawAimPointOverlay(cv::Mat& img, const cv::Vec3f& aim_world, double aim_t,
 } // namespace
 
 VisualizeOutput::VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj,
-                                 AimPredictor& aim)
+                                 SequencePredictor& aim)
     : camera_proj_(std::move(camera_proj)),
       aim_(aim) {}
 
@@ -62,12 +62,12 @@ void VisualizeOutput::update(const PipelineResult& result, RobotController* rc)
     else
         renderPowerRune(result, rc);
 
-    // 预测瞄准点：取自 AimPredictor 瞄准点序列的第一个值（两种模式统一绘制；
+    // 预测瞄准点：取自 SequencePredictor 瞄准点序列的第一个值（两种模式统一绘制；
     // 无有效瞄准点时不画）。display_ 由可视化线程写入、主线程读取，加锁保护。
     std::lock_guard<std::mutex> lock(display_mtx_);
     display_ = render_buf_;
     if (!display_.empty()) {
-        const AimPredictor::Result seq = aim_.latest();
+        const SequencePredictor::Result seq = aim_.latest();
         if (seq.valid) {
             drawAimPointOverlay(display_, seq.first_point, seq.first_predict_time,
                                 tree_, *camera_proj_);

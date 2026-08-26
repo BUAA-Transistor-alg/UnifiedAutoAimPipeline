@@ -107,12 +107,19 @@ public:
         double recvPitchOffset;  // 接收偏移
     };
 
-    // 云台输入控制器参数（序列输入模式）
-    struct InputControllerParams {
+    // 预测序列参数（序列输入模式：预测序列生成与消费）
+    struct PredictSequenceParams {
         int    predictionPoints;    // 预测点数：实际精确弹道解算的点数（M）
         int    interpolationRefine; // 插值细化倍数：相邻实际计算点之间细分的返回点间隔数（K）
-                                    // 总返回点数 = (M-1)*K + 1，间隔恰为 dt_control
-        int    pitchSeqLead;        // m：pitch 序列提前数（必须小于总返回点数）
+                                    // 原划分序列点数 = (M-1)*K + 1，间隔恰为 dt_control
+        int    exactLeadPoints;     // 前导精确点数（n）：在序列最前面拼接 n 个逐点精确弹道
+                                    // 解算的前导点（不使用插值；0 表示关闭，行为与原版一致）。
+                                    // 返回序列 = [前导精确点] + [原划分序列]，
+                                    // 总返回点数 = (M-1)*K+1+n，精确解算点共 M+n 个。
+                                    // 原划分首段（紧邻窗口 n+1..n+K-1）需要外推时参考点改用
+                                    // items[n-1]（须与段左端点同目标，否则复制左端点），
+                                    // 其余段仍用原规则。取值范围 n >= 0
+        int    pitchSeqLead;        // m：pitch 序列提前数（必须小于总返回点数 (M-1)*K+1+n）
         int    fireSeqLead;         // o：fire 序列提前数
         double pitchBias;           // pitch 轴偏置（弧度）
         double yawBias;             // yaw 轴偏置（弧度）
@@ -209,7 +216,7 @@ public:
         GimbalParams gimbal;                    // 云台解算参数
         PredictedBallisticParams predictedBallistic;  // 预测弹道解算参数
         RobotControllerParams robotController;         // RobotController 构造参数
-        InputControllerParams inputController;         // 云台输入控制器参数
+        PredictSequenceParams predictSequence;         // 预测序列参数
         double       minDelaySeconds;           // 两个流水线共用的提取帧最小延迟（秒）
 
         // 录制参数（必填段，config: common.recording；--record 开启录制时生效）

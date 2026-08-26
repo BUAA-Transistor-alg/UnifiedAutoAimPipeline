@@ -25,13 +25,13 @@ std::vector<T> truncateKeepLast(const std::vector<T>& seq, int skip, const T& fa
 
 } // namespace
 
-GimbalOutput::GimbalOutput(AimPredictor& aim, RobotController& rc)
+GimbalOutput::GimbalOutput(SequencePredictor& aim, RobotController& rc)
     : aim_(aim),
       rc_(rc),
-      pitch_seq_lead_(RobotConfig::instance().common.inputController.pitchSeqLead),
-      fire_seq_lead_(RobotConfig::instance().common.inputController.fireSeqLead),
-      fire_angle_lower_limit_(RobotConfig::instance().common.inputController.fireAngleLowerLimit),
-      fire_angle_length_(RobotConfig::instance().common.inputController.fireAngleLength) {}
+      pitch_seq_lead_(RobotConfig::instance().common.predictSequence.pitchSeqLead),
+      fire_seq_lead_(RobotConfig::instance().common.predictSequence.fireSeqLead),
+      fire_angle_lower_limit_(RobotConfig::instance().common.predictSequence.fireAngleLowerLimit),
+      fire_angle_length_(RobotConfig::instance().common.predictSequence.fireAngleLength) {}
 
 bool GimbalOutput::computeFire(double ref, double pred, double threshold) {
     // 角度差先解缠绕到 (-π, π]
@@ -47,8 +47,8 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*)
     // ── 直接读取串口/MPC 状态（不经流水线）──
     const RobotController::State st = rc_.getState();
 
-    // ── 取 AimPredictor 最新预测（main 每帧已调用，含预测云台控制序列 + 瞄准点）──
-    const AimPredictor::Result seq = aim_.latest();
+    // ── 取 SequencePredictor 最新预测（main 每帧已调用，含预测云台控制序列 + 瞄准点）──
+    const SequencePredictor::Result seq = aim_.latest();
 
     if (seq.valid && !seq.items.empty()) {
         // ── fire 序列：ref/pred 每一对按当前方法计算 ──

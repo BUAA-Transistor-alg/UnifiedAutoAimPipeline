@@ -1,4 +1,4 @@
-// AimPredictor.h — 预测瞄准点通用类（预测云台控制序列 + 瞄准点序列）
+// SequencePredictor.h — 预测序列通用类（预测云台控制序列 + 瞄准点序列）
 //
 // 基于 PredictedBallisticSolver：对目标预测函数生成预测云台控制序列与对应的
 // 瞄准点序列，并保存最新结果供多个输出模式消费：
@@ -6,18 +6,25 @@
 //                     自行计算 fire 序列并截取后发送；
 //   - VisualizeOutput 使用瞄准点序列中的第一个值绘制预测瞄准点。
 //
-// 序列生成（config common.input_controller）：
-//   - 只精确解算 prediction_points（M）个实际计算点，时间间隔 K*dt_control；
-//   - 相邻实际计算点之间按 interpolation_refine（K）细分，线性插值推出
-//     K-1 个插值点；总返回点数 = (M-1)*K + 1，时间间隔恰为 dt_control，
-//     第一个和最后一个返回点必为实际计算点；
-//   - 相邻实际计算点选取的目标不同时：用左侧点与再上一个点之间的线性差值
-//     参数外推；若左侧点与再上一个点也目标不同或没有再上一个点，直接复制
-//     左侧点的值。
+// 序列生成（config common.predict_sequence）：
+//   - 原划分：只精确解算 prediction_points（M）个实际计算点，时间间隔
+//     K*dt_control；相邻实际计算点之间按 interpolation_refine（K）细分，
+//     线性插值推出 K-1 个插值点；原划分序列点数 = (M-1)*K + 1，时间间隔
+//     恰为 dt_control，首末点必为实际计算点；
+//   - 相邻实际计算点选取的目标不同时：用左侧点与再上一个点（前一个精确
+//     同目标点）之间的线性差值参数外推；若左侧点与再上一个点也目标不同或
+//     没有再上一个点，直接复制左侧点的值。
+//   - exact_lead_points（n，0 表示关闭）：在序列最前面拼接 n 个逐点精确
+//     弹道解算的前导点（不使用插值）。返回序列 = [前导精确点 0..n-1] +
+//     [原划分序列]，总返回点数 = (M-1)*K + 1 + n，时间间隔全程均匀为
+//     dt_control；精确解算点共 n + M 个（n 个前导点 + M 个原划分实际计算点）。
+//     外推参考的例外：原划分首段（紧邻窗口 n+1..n+K-1）需要外推时，参考点
+//     改用前导精确区最后一个点 items[n-1]（要求与段左端点目标相同，否则
+//     复制左端点）；其余段仍用原规则（上一实际计算点 items[a-K]）。
 //
 // 任何情况下（无论输出模式）由 main 每帧调用 predict()，保证瞄准点始终可用。
-#ifndef AIM_PREDICTOR_H
-#define AIM_PREDICTOR_H
+#ifndef SEQUENCE_PREDICTOR_H
+#define SEQUENCE_PREDICTOR_H
 
 #include <chrono>
 #include <functional>
@@ -32,7 +39,7 @@
 #include "common/Ballistic/GimbalSolver.h"
 #include "common/Ballistic/PredictedBallisticSolver.h"
 
-class AimPredictor {
+class SequencePredictor {
 public:
     using Predictor = PredictedBallisticSolver::Predictor;
 
@@ -52,13 +59,13 @@ public:
         bool valid = false;          // 首个返回点（实际计算点）解算是否有效
         bool integral_enable = false;  // 本帧 yaw 力矩积分补偿是否启用：
                                        // 仅当 valid 且 st.mcu.auto_aim_switch == 1 时为 true
-        std::vector<Item> items;     // 总返回点数 = (M-1)*K + 1
+        std::vector<Item> items;     // 总返回点数 = (M-1)*K + 1 + n（前导精确点 + 原划分序列）
         cv::Vec3f first_point;       // 瞄准点序列第一个值（可视化用）
         double first_predict_time = 0.0;
     };
 
     /// 构造时创建内部 GimbalSolver，序列/弹道/偏置参数从 RobotConfig common 段读取
-    AimPredictor();
+    SequencePredictor();
 
     // 目标选择策略透传（Outpost NEAREST / PowerRune LOWEST_Z），作用于全部线程实例
     void setTargetSelection(PredictedBallisticSolver::TargetSelection sel) {
@@ -107,6 +114,7 @@ private:
     double yaw_bias_;
     int    prediction_points_;       // M：实际精确解算点数
     int    interpolation_refine_;    // K：插值细化倍数
+    int    exact_lead_points_;       // n：序列最前面拼接的精确解算前导点数（0 = 关闭）
 
     // 线性插值：lo + t*(hi - lo)（t ∈ [0,1]）
     static Item lerpItem(const Item& lo, const Item& hi, double t);
@@ -119,4 +127,4 @@ private:
     cv::Vec3f yaw_origin_ = cv::Vec3f(0, 0, 0);   // 最近一次预测的 yaw 系原点（world 系）
 };
 
-#endif // AIM_PREDICTOR_H
+#endif // SEQUENCE_PREDICTOR_H

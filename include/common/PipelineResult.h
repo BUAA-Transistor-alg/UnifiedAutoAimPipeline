@@ -83,7 +83,7 @@ struct PowerRunePerception {
     // 位姿预测函数快照：std::pair<cv::Vec3f, cv::Mat>(float dt)（world 系位置 + 旋转矩阵）
     std::unique_ptr<std::function<std::pair<cv::Vec3f, cv::Mat>(float)>> predictor_lambda;
     // 靶点预测函数快照：std::vector<cv::Point3f>(double dt)（world 系；
-    // 已为 AimPredictor 统一签名，无需外部包装）
+    // 已为 SequencePredictor 统一签名，无需外部包装）
     std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> target_predictor;
     // 产生上述 target_predictor 快照的那一帧的时间戳（dt 的零点，即该帧的 frame_timestamp）
     std::chrono::steady_clock::time_point predictor_timestamp;

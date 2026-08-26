@@ -158,13 +158,23 @@ common:
     recv_pitch_scale: 1.122635     # mcu_pitch_angle → imu_euler_pitch（接收）
     recv_pitch_offset: -0.170755   # 接收偏移
 
-  # ── 云台输入控制器参数（序列输入模式）──
-  input_controller:
-    prediction_points: 6             # M：预测点数（实际精确弹道解算的点数）
-    interpolation_refine: 4          # K：插值细化倍数（相邻实际计算点之间细分的返回点间隔数）
-                                     # 总返回点数 = (M-1)*K+1 = 21，间隔恰为 dt_control，
+  # ── 预测序列参数（序列输入模式：预测序列生成与消费）──
+  predict_sequence:
+    prediction_points: 5             # M：预测点数（实际精确弹道解算的点数）
+    interpolation_refine: 5          # K：插值细化倍数（相邻实际计算点之间细分的返回点间隔数）
+                                     # 原划分序列点数 = (M-1)*K+1 = 21，间隔恰为 dt_control，
                                      # 首末点必为实际计算点
-    pitch_seq_lead: 5               # m：pitch 序列提前数（必须小于总返回点数），pitch 序列截取第 m 个之后
+    exact_lead_points: 3             # n：前导精确点数——在序列最前面拼接 n 个逐点精确弹道
+                                     # 解算的前导点（不用插值），0 = 关闭（行为与原版一致）。
+                                     # 返回序列 = [前导精确点] + [原划分序列]，
+                                     # 总返回点数 = (M-1)*K+1+n，精确解算点共 M+n 个，
+                                     # 时间间隔全程均匀为 dt_control。
+                                     # 原划分首段（紧邻窗口 n+1..n+K-1）需要外推时参考点改用
+                                     # items[n-1]（须与段左端点同目标，否则复制左端点），
+                                     # 其余段仍用原规则。取值范围 n >= 0。
+                                     # 例：M=6、K=4、n=3 → 索引 0,1,2 为前导精确点；
+                                     # 索引 3 起为原划分序列（实际点 3,7,11,15,19,23，共 24 点）。
+    pitch_seq_lead: 5               # m：pitch 序列提前数（必须小于总返回点数 (M-1)*K+1+n），pitch 序列截取第 m 个之后
     fire_seq_lead: 5                 # o：fire 序列提前数，fire 序列截取第 o 个之后
     pitch_bias: 0.023             # pitch 轴偏置（弧度），输出时叠加
     yaw_bias: 0.012                    # yaw 轴偏置（弧度），输出时叠加

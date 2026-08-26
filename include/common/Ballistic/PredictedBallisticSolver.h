@@ -26,7 +26,7 @@
 //   - NEAREST（默认）：预测点距离当前 muzzle 系原点最近；
 //   - LOWEST_Z：预测点 world z 最低（PowerRune 能量机关模式使用）。
 //
-// 预测序列由调用方（AimPredictor）生成：对 i = 1..n，以
+// 预测序列由调用方（SequencePredictor）生成：对 i = 1..n，以
 // extra_predict_time + i*dt_control 作为额外预测时间分别调用 solve()。
 // ============================================================================
 class PredictedBallisticSolver {

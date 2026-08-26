@@ -265,35 +265,41 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.common.robotController.recvPitchScale  = requireScalar<double>(rc, "recv_pitch_scale", "common.robot_controller");
     cfg.common.robotController.recvPitchOffset = requireScalar<double>(rc, "recv_pitch_offset", "common.robot_controller");
 
-    // ── common.input_controller ──
-    const YAML::Node& ic = cm["input_controller"];
-    if (!ic || !ic.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.input_controller' 配置段");
-    cfg.common.inputController.predictionPoints    = requireScalar<int>(ic, "prediction_points", "common.input_controller");
-    cfg.common.inputController.interpolationRefine = requireScalar<int>(ic, "interpolation_refine", "common.input_controller");
-    cfg.common.inputController.pitchSeqLead        = requireScalar<int>(ic, "pitch_seq_lead", "common.input_controller");
-    cfg.common.inputController.fireSeqLead         = requireScalar<int>(ic, "fire_seq_lead", "common.input_controller");
-    cfg.common.inputController.pitchBias           = requireScalar<double>(ic, "pitch_bias", "common.input_controller");
-    cfg.common.inputController.yawBias             = requireScalar<double>(ic, "yaw_bias", "common.input_controller");
-    cfg.common.inputController.fireAngleLowerLimit = requireScalar<double>(ic, "fire_angle_lower_limit", "common.input_controller");
-    cfg.common.inputController.fireAngleLength     = requireScalar<double>(ic, "fire_angle_length", "common.input_controller");
+    // ── common.predict_sequence ──
+    const YAML::Node& ic = cm["predict_sequence"];
+    if (!ic || !ic.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.predict_sequence' 配置段");
+    cfg.common.predictSequence.predictionPoints    = requireScalar<int>(ic, "prediction_points", "common.predict_sequence");
+    cfg.common.predictSequence.interpolationRefine = requireScalar<int>(ic, "interpolation_refine", "common.predict_sequence");
+    cfg.common.predictSequence.exactLeadPoints         = requireScalar<int>(ic, "exact_lead_points", "common.predict_sequence");
+    cfg.common.predictSequence.pitchSeqLead        = requireScalar<int>(ic, "pitch_seq_lead", "common.predict_sequence");
+    cfg.common.predictSequence.fireSeqLead         = requireScalar<int>(ic, "fire_seq_lead", "common.predict_sequence");
+    cfg.common.predictSequence.pitchBias           = requireScalar<double>(ic, "pitch_bias", "common.predict_sequence");
+    cfg.common.predictSequence.yawBias             = requireScalar<double>(ic, "yaw_bias", "common.predict_sequence");
+    cfg.common.predictSequence.fireAngleLowerLimit = requireScalar<double>(ic, "fire_angle_lower_limit", "common.predict_sequence");
+    cfg.common.predictSequence.fireAngleLength     = requireScalar<double>(ic, "fire_angle_length", "common.predict_sequence");
 
-    // 交叉校验：预测点数/插值倍数 >= 1；pitch 序列提前数 m 必须小于总返回点数 (M-1)*K+1
-    if (cfg.common.inputController.predictionPoints < 1) {
-        throw std::runtime_error("RobotConfig: common.input_controller.prediction_points 必须 >= 1");
+    // 交叉校验：预测点数/插值倍数 >= 1；前导精确点数 >= 0；
+    // pitch 序列提前数 m 必须小于总返回点数 (M-1)*K+1+n
+    if (cfg.common.predictSequence.predictionPoints < 1) {
+        throw std::runtime_error("RobotConfig: common.predict_sequence.prediction_points 必须 >= 1");
     }
-    if (cfg.common.inputController.interpolationRefine < 1) {
-        throw std::runtime_error("RobotConfig: common.input_controller.interpolation_refine 必须 >= 1");
+    if (cfg.common.predictSequence.interpolationRefine < 1) {
+        throw std::runtime_error("RobotConfig: common.predict_sequence.interpolation_refine 必须 >= 1");
     }
-    const int total_points = (cfg.common.inputController.predictionPoints - 1)
-                             * cfg.common.inputController.interpolationRefine + 1;
-    if (cfg.common.inputController.pitchSeqLead < 0 ||
-        cfg.common.inputController.pitchSeqLead >= total_points) {
-        throw std::runtime_error("RobotConfig: common.input_controller.pitch_seq_lead 必须小于总返回点数 "
-                                 "(prediction_points-1)*interpolation_refine+1 = " +
+    if (cfg.common.predictSequence.exactLeadPoints < 0) {
+        throw std::runtime_error("RobotConfig: common.predict_sequence.exact_lead_points 必须 >= 0");
+    }
+    const int total_points = (cfg.common.predictSequence.predictionPoints - 1)
+                             * cfg.common.predictSequence.interpolationRefine + 1
+                             + cfg.common.predictSequence.exactLeadPoints;
+    if (cfg.common.predictSequence.pitchSeqLead < 0 ||
+        cfg.common.predictSequence.pitchSeqLead >= total_points) {
+        throw std::runtime_error("RobotConfig: common.predict_sequence.pitch_seq_lead 必须小于总返回点数 "
+                                 "(prediction_points-1)*interpolation_refine+1+exact_lead_points = " +
                                  std::to_string(total_points));
     }
-    if (cfg.common.inputController.fireSeqLead < 0) {
-        throw std::runtime_error("RobotConfig: common.input_controller.fire_seq_lead 必须 >= 0");
+    if (cfg.common.predictSequence.fireSeqLead < 0) {
+        throw std::runtime_error("RobotConfig: common.predict_sequence.fire_seq_lead 必须 >= 0");
     }
 
     // ══════════════ outpost（独占参数） ══════════════

@@ -86,7 +86,7 @@ struct PowerRunePipelineData {
         // 位姿预测函数快照（RollPredictor::capturePredictor）
         std::unique_ptr<std::function<std::pair<cv::Vec3f, cv::Mat>(float)>> predictor_lambda;
         // 靶点预测函数快照：std::vector<cv::Point3f>(double dt)（world 系；
-        // 已为 AimPredictor 统一签名，无需外部包装）
+        // 已为 SequencePredictor 统一签名，无需外部包装）
         std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> target_predictor;
         std::chrono::steady_clock::time_point predictor_timestamp;  // 快照对应帧的时间戳（dt 零点）
     } stage5;
