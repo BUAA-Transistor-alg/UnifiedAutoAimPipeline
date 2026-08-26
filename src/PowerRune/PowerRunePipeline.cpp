@@ -393,6 +393,9 @@ void PowerRunePipeline::schedulerLoop()
             if (scheduler_exit_.load()) return;
             scheduler_should_check_ = false;
         }
+        // 推进阶段与 clear() 互斥：clear() 持 advance_mtx_ 时本循环阻塞，
+        // 保证清空期间不会有 tryAdvance 拉新批或动中段队列。
+        std::lock_guard<std::mutex> advance_lock(advance_mtx_);
         tryAdvanceStages();
     }
 }
@@ -490,19 +493,44 @@ PipelineResult PowerRunePipeline::tryPopFrame(const std::chrono::steady_clock::t
 void PowerRunePipeline::clear()
 {
     {
-        std::lock_guard<std::mutex> lk(input_mtx_);
-        input_queue_.clear();
-    }
-    {
-        std::lock_guard<std::mutex> lk(output_mtx_);
-        output_queue_.clear();
+        // 与调度器推进互斥：期间不拉新批、不动中段队列；worker 仍可跑完当前批。
+        std::lock_guard<std::mutex> advance_lock(advance_mtx_);
+
+        // 等待全部阶段完成当前批处理（stage2 在途推理最多 2s 超时，其余毫秒级）
+        stage1_.waitIdle();
+        stage2_.waitIdle();
+        stage3_.waitIdle();
+        stage4_.waitIdle();
+        stage5_.waitIdle();
+
+        // 丢弃各阶段在途批（此刻全部空闲，无并发访问）
+        stage1_.discardInFlight();
+        stage2_.discardInFlight();
+        stage3_.discardInFlight();
+        stage4_.discardInFlight();
+        stage5_.discardInFlight();
+
+        // 清空全部缓冲队列：输入/输出（持锁），中段队列（仅调度器访问，已互斥）
+        {
+            std::lock_guard<std::mutex> lk(input_mtx_);
+            input_queue_.clear();
+        }
+        for (auto& q : inter_queues_) q.clear();
+        {
+            std::lock_guard<std::mutex> lk(output_mtx_);
+            output_queue_.clear();
+        }
+
+        // 重置滤波与预测状态（stage5 已空闲，无竞争）
+        s5_.y_axis_filter.reset();
+        s5_.roll_predictor.reset();
+        s5_.last_valid_timestamp = std::chrono::steady_clock::time_point();
+        s5_.last_frame_timestamp = std::chrono::steady_clock::time_point();
+
+        // 队列计数归零
+        for (auto& qs : queue_sizes_) qs.store(0);
     }
 
-    // 重置滤波与预测状态
-    s5_.y_axis_filter.reset();
-    s5_.roll_predictor.reset();
-    s5_.last_valid_timestamp = std::chrono::steady_clock::time_point();
-    s5_.last_frame_timestamp = std::chrono::steady_clock::time_point();
-
+    // 恢复调度（advance_mtx_ 已释放，调度器可立即推进）
     wakeScheduler();
 }

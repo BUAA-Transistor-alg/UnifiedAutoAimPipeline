@@ -217,6 +217,10 @@ private:
     std::mutex scheduler_mtx_;
     std::condition_variable scheduler_cv_;
     bool scheduler_should_check_{false};
+    // 调度器推进（tryAdvanceStages）与 clear() 全量清空互斥：
+    // clear() 持锁期间调度器不得推进（不拉新批、不动中段队列），
+    // 各阶段 worker 仍可跑完当前批，之后由 clear() 统一丢弃。
+    std::mutex advance_mtx_;
 
     // ==================== 各阶段处理函数 ====================
     void processStage1(DataDeque& data);

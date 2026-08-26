@@ -126,6 +126,29 @@ public:
     }
 
     /**
+     * @brief 阻塞等待本阶段空闲（worker 完成当前批处理）。
+     *
+     * 前提：调用方必须已暂停调度器（例如持有流水线的 advance_mtx_ 或等价互斥），
+     * 保证不会有新的 tryAdvance 启动新批，否则本等待可能永不结束。
+     */
+    void waitIdle() {
+        std::unique_lock<std::mutex> lock(mtx_);
+        cv_.wait(lock, [this]() {
+            return idle_.load(std::memory_order_acquire);
+        });
+    }
+
+    /**
+     * @brief 丢弃当前在途批数据。
+     *
+     * 前提：本阶段已空闲（worker 已结束 process_fn_，见 waitIdle）且调度器已暂停，
+     * 此时 stage_in_flight_ 不再被任何线程访问，可直接清空。
+     */
+    void discardInFlight() {
+        stage_in_flight_.clear();
+    }
+
+    /**
      * @brief 关闭工作线程（阻塞直到线程退出）
      */
     void shutdown() {
@@ -164,7 +187,13 @@ private:
 
             process_fn_(stage_in_flight_);
 
-            idle_.store(true, std::memory_order_release);
+            // idle 置位与唤醒必须在 mtx_ 下完成：waitIdle 在持锁时检查/等待
+            // idle_，避免"置位-通知"落在其检查与睡眠之间造成通知丢失。
+            {
+                std::lock_guard<std::mutex> lock(mtx_);
+                idle_.store(true, std::memory_order_release);
+            }
+            cv_.notify_all();
 
             if (on_done_) {
                 on_done_();
