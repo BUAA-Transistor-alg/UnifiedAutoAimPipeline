@@ -750,7 +750,7 @@ int main(int argc, char** argv) {
                 accepted = active_pipeline->addFrame(std::move(frame), frame_timestamp, extra_info);
             }
             if (recorder && !frame_for_record.empty()) {
-                recorder->recordFrame(frame_for_record, frame_timestamp, extra_info, accepted);
+                recorder->recordFrame(std::move(frame_for_record), frame_timestamp, extra_info, accepted);
             }
 
             // 测试最大帧率：test_max_fps 的作用已移入 VideoInputMode（开启时其

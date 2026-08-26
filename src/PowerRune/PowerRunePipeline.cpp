@@ -184,19 +184,22 @@ void PowerRunePipeline::processStage2(DataDeque& data)
     ptrs.reserve(data.size());
     for (auto& d : data) ptrs.push_back(d.get());
 
+    // 已预处理的图像（阶段1 resize 到模型输入尺寸）交给推理客户端
     std::vector<const cv::Mat*> preprocessed_ptrs;
     preprocessed_ptrs.reserve(ptrs.size());
     for (auto* d : ptrs)
         preprocessed_ptrs.push_back(&d->stage1.frame);
 
+    // 推理输出由客户端直接 memcpy 进各数据的输出缓冲（PipelineData 自持）
+    std::vector<Infer::OutputBuffer*> outs;
+    outs.reserve(ptrs.size());
+    for (auto* d : ptrs)
+        outs.push_back(&d->stage2.output);
+
     // 推理器在独立进程（power_rune_infer_process）中：经共享内存通信调用，
     // 推理进程未启动时此处阻塞等待
-    auto outputs = s2_.client->runInference(preprocessed_ptrs);
-    if (outputs.size() != ptrs.size()) return;   // 通信失败：丢弃本批
-    for (size_t i = 0; i < ptrs.size(); ++i) {
-        ptrs[i]->stage2.output_tensor = outputs[i].first;
-        ptrs[i]->stage2.batch_index   = outputs[i].second;
-    }
+    if (!s2_.client->runInference(preprocessed_ptrs, outs))
+        return;   // 通信失败：丢弃本批
 }
 
 void PowerRunePipeline::processStage3(DataDeque& data)
@@ -205,21 +208,20 @@ void PowerRunePipeline::processStage3(DataDeque& data)
     ptrs.reserve(data.size());
     for (auto& d : data) ptrs.push_back(d.get());
 
-    std::vector<std::shared_ptr<ov::Tensor>> tensors;
-    std::vector<int> batch_indices, orig_ws, orig_hs;
-    tensors.reserve(ptrs.size());
-    batch_indices.reserve(ptrs.size());
+    std::vector<YoloPose::PoseBatchOutput> outputs;
+    std::vector<int> orig_ws, orig_hs;
+    outputs.reserve(ptrs.size());
     orig_ws.reserve(ptrs.size());
     orig_hs.reserve(ptrs.size());
     for (auto* d : ptrs) {
-        tensors.push_back(d->stage2.output_tensor);
-        batch_indices.push_back(d->stage2.batch_index);
+        const Infer::OutputBuffer& out = d->stage2.output;
+        outputs.push_back({out.data.data(), out.rows, out.cols});
         orig_ws.push_back(d->initial.frame.cols);
         orig_hs.push_back(d->initial.frame.rows);
     }
 
     std::vector<std::vector<PoseDetection>> results;
-    s3_.postprocessor->postprocessBatch(tensors, batch_indices, orig_ws, orig_hs,
+    s3_.postprocessor->postprocessBatch(outputs, orig_ws, orig_hs,
                                         conf_threshold_, results);
 
     for (size_t i = 0; i < ptrs.size(); ++i)

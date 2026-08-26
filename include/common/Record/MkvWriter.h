@@ -42,9 +42,11 @@ public:
      * 异步写入一帧 cv::Mat（BGR 格式）
      * @param bgrMat       OpenCV Mat，尺寸需与构造时一致
      * @param dropWhenFull 当队列已满时是否丢弃该帧
+     * @param cloneFrame   true: 入队前深拷贝（调用方之后仍会使用该 Mat）；
+     *                     false: 移动入队（调用方不再使用，省一次全帧拷贝）
      * @return true 成功推入队列，false 失败（如错误状态或关闭）或丢弃（如果允许）
      */
-    bool writeFrame(const cv::Mat& bgrMat, bool dropWhenFull = true);
+    bool writeFrame(cv::Mat bgrMat, bool dropWhenFull = true, bool cloneFrame = true);
 
     /**
      * 关闭写入器，停止后台线程并写入文件尾

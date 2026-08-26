@@ -115,7 +115,7 @@ size_t FrameRecorder::recordedFrames() const {
     return static_cast<size_t>(frame_index_);
 }
 
-bool FrameRecorder::recordFrame(const cv::Mat& frame,
+bool FrameRecorder::recordFrame(cv::Mat frame,
                                 const std::chrono::steady_clock::time_point& timestamp,
                                 const ExtraInputInfo& extra_info,
                                 bool accepted) {
@@ -156,8 +156,8 @@ bool FrameRecorder::recordFrame(const cv::Mat& frame,
         dt = std::chrono::duration<double>(timestamp - last_written_timestamp_).count();
     }
 
-    // ── 写视频帧（异步队列，满则丢弃）──
-    bool write_ok = writer_->writeFrame(bgr, true);
+    // ── 写视频帧（异步队列，满则丢弃；移动入队，不再二次拷贝）──
+    bool write_ok = writer_->writeFrame(std::move(bgr), true, /*cloneFrame=*/false);
     if (!write_ok) {
         // 视频队列满被丢弃：不写信息行（保证 txt 与视频帧一一对应）
         return false;

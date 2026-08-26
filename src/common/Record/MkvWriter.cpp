@@ -146,7 +146,7 @@ cleanup:
     return false;
 }
 
-bool MkvAllIntraWriter::writeFrame(const cv::Mat& bgrMat, bool dropWhenFull) {
+bool MkvAllIntraWriter::writeFrame(cv::Mat bgrMat, bool dropWhenFull, bool cloneFrame) {
     if (error_ || stop_) {
         std::cerr << "Writer is in error or stopped state" << std::endl;
         return false;
@@ -165,8 +165,11 @@ bool MkvAllIntraWriter::writeFrame(const cv::Mat& bgrMat, bool dropWhenFull) {
         }
     }
 
-    // 深拷贝图像数据，避免原 Mat 被销毁
-    frameQueue_.push(bgrMat.clone());
+    // 深拷贝图像数据，避免原 Mat 被销毁；或按调用方要求移动入队（省一次拷贝）
+    if (cloneFrame)
+        frameQueue_.push(bgrMat.clone());
+    else
+        frameQueue_.push(std::move(bgrMat));
     cvNotEmpty_.notify_one();
     return true;
 }

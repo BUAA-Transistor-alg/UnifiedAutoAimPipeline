@@ -58,42 +58,37 @@ OutpostPostprocessor::OutpostPostprocessor(int input_width, int input_height, in
     : input_width_(input_width), input_height_(input_height), pool_(num_threads) {}
 
 void OutpostPostprocessor::postprocessBatch(
-    const std::vector<std::shared_ptr<ov::Tensor>>& tensors,
-    const std::vector<int>& batch_indices,
+    const std::vector<BatchOutput>& outputs,
     const std::vector<int>& orig_ws,
     const std::vector<int>& orig_hs,
     int detect_color,
     float conf_threshold,
     float nms_threshold,
     std::vector<std::vector<Object>>& out) {
-    int n = (int)tensors.size();
+    int n = (int)outputs.size();
     out.resize(n);
     pool_.run_parallel(n, [&](int i) {
-        out[i] = postprocess(tensors[i], batch_indices[i], orig_ws[i], orig_hs[i],
+        out[i] = postprocess(outputs[i].data, outputs[i].rows, outputs[i].cols,
+                             orig_ws[i], orig_hs[i],
                              detect_color, conf_threshold, nms_threshold);
     });
 }
 
 std::vector<Object> OutpostPostprocessor::postprocess(
-    const std::shared_ptr<ov::Tensor>& output_tensor,
-    int batch_index,
+    const float* data,
+    int rows,
+    int cols,
     int orig_w,
     int orig_h,
     int detect_color,
     float conf_threshold,
     float nms_threshold) {
     std::vector<Object> detections;
-    if (!output_tensor)
+    if (!data)
         return detections;
 
-    auto shape = output_tensor->get_shape();
-    if (shape.size() != 3 || batch_index < 0 || (size_t)batch_index >= shape[0]) {
-        std::cerr << "[ERROR] postprocess: invalid tensor shape or batch_index" << std::endl;
-        return detections;
-    }
-
-    const int num_anchors = (int)shape[1];
-    const int out_dim     = (int)shape[2];
+    const int num_anchors = rows;
+    const int out_dim     = cols;
     if (out_dim != OUTPUT_DIM) {
         std::cerr << "[ERROR] postprocess: output dim mismatch! expected ("
                   << "num_anchors, " << OUTPUT_DIM << ") got ("
@@ -107,9 +102,7 @@ std::vector<Object> OutpostPostprocessor::postprocess(
 
     // 行优先布局 (bs, num_anchors, OUTPUT_DIM)；anchor 数随输入分辨率动态变化
     // （640→25200，512→16128，320→6300），一律以实际输出形状为准
-    float* data = output_tensor->data<float>();
-    float* batch_data = data + (size_t)batch_index * num_anchors * OUTPUT_DIM;
-    cv::Mat output_buffer(num_anchors, OUTPUT_DIM, CV_32F, batch_data);
+    cv::Mat output_buffer(num_anchors, OUTPUT_DIM, CV_32F, const_cast<float*>(data));
 
     const float sx = (float)orig_w / input_width_;
     const float sy = (float)orig_h / input_height_;

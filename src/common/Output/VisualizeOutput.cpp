@@ -55,16 +55,17 @@ void VisualizeOutput::update(const PipelineResult& result, RobotController* rc)
     syncTree(result.extra_info);
     fps_.tick();
 
-    // 渲染当前流水线模式的画面（display_ 的写入统一在下方加锁进行）
+    // 渲染当前流水线模式的画面（写入成员缓冲 render_buf_，复用以免每帧分配）
     const PipelineMode mode = mode_.load(std::memory_order_relaxed);
-    cv::Mat display = (mode == PipelineMode::OUTPOST)
-                          ? renderOutpost(result, rc)
-                          : renderPowerRune(result, rc);
+    if (mode == PipelineMode::OUTPOST)
+        renderOutpost(result, rc);
+    else
+        renderPowerRune(result, rc);
 
     // 预测瞄准点：取自 AimPredictor 瞄准点序列的第一个值（两种模式统一绘制；
     // 无有效瞄准点时不画）。display_ 由可视化线程写入、主线程读取，加锁保护。
     std::lock_guard<std::mutex> lock(display_mtx_);
-    display_ = std::move(display);
+    display_ = render_buf_;
     if (!display_.empty()) {
         const AimPredictor::Result seq = aim_.latest();
         if (seq.valid) {
@@ -80,7 +81,7 @@ cv::Mat VisualizeOutput::display() const
     return display_;   // 浅拷贝：共享像素数据（引用计数原子安全）
 }
 
-cv::Mat VisualizeOutput::renderOutpost(const PipelineResult& result, RobotController* rc)
+void VisualizeOutput::renderOutpost(const PipelineResult& result, RobotController* rc)
 {
     const OutpostPerception& p = result.outpost;
 
@@ -106,12 +107,13 @@ cv::Mat VisualizeOutput::renderOutpost(const PipelineResult& result, RobotContro
     vis.fps = fps_.fps();
     vis.frame_timestamp = result.frame_timestamp;
 
-    cv::Mat display = result.frame.clone();
-    outpost_vis_.render(display, vis, tree_, *camera_proj_);
-    return display;
+    // 成员缓冲复用：尺寸/类型不变时 create 不重新分配，仅 copyTo 拷贝像素
+    render_buf_.create(result.frame.size(), result.frame.type());
+    result.frame.copyTo(render_buf_);
+    outpost_vis_.render(render_buf_, vis, tree_, *camera_proj_);
 }
 
-cv::Mat VisualizeOutput::renderPowerRune(const PipelineResult& result, RobotController* rc)
+void VisualizeOutput::renderPowerRune(const PipelineResult& result, RobotController* rc)
 {
     const PowerRunePerception& p = result.power_rune;
 
@@ -159,7 +161,8 @@ cv::Mat VisualizeOutput::renderPowerRune(const PipelineResult& result, RobotCont
         }
     }
 
-    cv::Mat display = result.frame.clone();
-    power_rune_vis_.render(display, vis, tree_, *camera_proj_);
-    return display;
+    // 成员缓冲复用：尺寸/类型不变时 create 不重新分配，仅 copyTo 拷贝像素
+    render_buf_.create(result.frame.size(), result.frame.type());
+    result.frame.copyTo(render_buf_);
+    power_rune_vis_.render(render_buf_, vis, tree_, *camera_proj_);
 }

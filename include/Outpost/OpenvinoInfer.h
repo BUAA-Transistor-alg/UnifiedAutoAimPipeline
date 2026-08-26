@@ -100,17 +100,24 @@ private:
 // ==========================================================================
 // OutpostPostprocessor – 后处理（输出张量 → Object 列表，含手动 NMS）
 // ==========================================================================
+
+/// 单图推理输出视图：指向 PipelineData 自持的输出缓冲（行优先 f32）
+struct BatchOutput {
+    const float* data;   // 输出数据（num_anchors × OUTPUT_DIM）
+    int rows;            // 张量 shape[1]（outpost 为 num_anchors）
+    int cols;            // 张量 shape[2]（= OUTPUT_DIM）
+};
+
 class OutpostPostprocessor {
 public:
     /// @param input_width/input_height  模型输入分辨率（后处理坐标缩放基准）
     /// @param num_threads               线程池线程数，0 = 自动
     OutpostPostprocessor(int input_width, int input_height, int num_threads = 0);
 
-    /// 处理单个推理输出（一个 batch 张量 + 该图在 batch 中的索引）
+    /// 处理单个推理输出（每图一个独立输出缓冲）
     /// @param detect_color 0=仅红, 1=仅蓝, 2=双色
     /// @return 该图的所有检测结果（坐标已缩放到原图尺寸）
-    std::vector<Object> postprocess(const std::shared_ptr<ov::Tensor>& output_tensor,
-                                    int batch_index,
+    std::vector<Object> postprocess(const float* data, int rows, int cols,
                                     int orig_w,
                                     int orig_h,
                                     int detect_color,
@@ -118,8 +125,7 @@ public:
                                     float nms_threshold);
 
     /// 批量并行后处理（多线程）
-    void postprocessBatch(const std::vector<std::shared_ptr<ov::Tensor>>& tensors,
-                          const std::vector<int>& batch_indices,
+    void postprocessBatch(const std::vector<BatchOutput>& outputs,
                           const std::vector<int>& orig_ws,
                           const std::vector<int>& orig_hs,
                           int detect_color,

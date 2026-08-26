@@ -56,8 +56,9 @@ public:
     bool spaceExhausted() const;
 
     /// 记录一帧（无论 addFrame 是否成功；accepted 表示该帧是否成功加入流水线）。
+    /// 帧按值传入，channels==3 时直接移动进编码队列（不二次拷贝）；
     /// 视频队列满时该帧被丢弃且不写信息行（保证 txt 与视频帧一一对应），返回 false。
-    bool recordFrame(const cv::Mat& frame,
+    bool recordFrame(cv::Mat frame,
                      const std::chrono::steady_clock::time_point& timestamp,
                      const ExtraInputInfo& extra_info,
                      bool accepted);

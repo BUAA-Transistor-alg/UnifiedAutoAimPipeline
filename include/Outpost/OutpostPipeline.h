@@ -2,8 +2,8 @@
 //
 // 五阶段（各有独立工作线程，由 PipelineStage 模板管理）：
 //   1. 预处理          — OutpostPreprocessor 并行 resize（分辨率取 config outpost.inference.resolution）
-//   2. 推理            — OutpostInfer 动态 batch 1..N（编译 + 预热，公共 InferCore）
-//   3. 后处理          — OutpostPostprocessor 并行解码 + NMS
+//   2. 推理            — InferShmClient 经共享内存调用独立推理进程（动态 batch）
+//   3. 后处理          — OutpostPostprocessor 并行解码 + NMS（读取 PipelineData 自持输出缓冲）
 //   4. PnP + 坐标转换  — 每物体 solvePnP + world 转换 + 重投影；初始化 PnP（面 0）
 //   5. ESEKF           — 误差状态卡尔曼滤波（初始化 / update / predict / 观测超时重置）
 //
@@ -58,8 +58,9 @@ struct OutpostPipelineData {
 
     // ==================== 阶段2：推理 ====================
     struct Stage2Data {
-        std::shared_ptr<ov::Tensor> output_tensor;  // 该图所在 batch 的输出张量
-        int batch_index = 0;                         // 该图在此 batch 中的索引
+        // 推理输出张量（客户端直接 memcpy 填充，data 行优先 f32，
+        // rows/cols 为张量 shape[1]/shape[2]，如 outpost 的 [num_anchors, 22]）
+        Infer::OutputBuffer output;
     } stage2;
 
     // ==================== 阶段3：后处理 ====================

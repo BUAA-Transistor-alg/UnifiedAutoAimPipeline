@@ -52,6 +52,14 @@ private:
 // ==========================================================================
 // YoloPosePostprocessor – 后处理（输出张量 → PoseDetection）
 // ==========================================================================
+
+/// 单图推理输出视图：指向 PipelineData 自持的输出缓冲（行优先 f32）
+struct PoseBatchOutput {
+    const float* data;   // 输出数据
+    int rows;            // 张量 shape[1]
+    int cols;            // 张量 shape[2]
+};
+
 class YoloPosePostprocessor {
 public:
     /// @param manual_nms    true: 模型为无 NMS 的原始输出，需手动 NMS；false: NMS 已内嵌
@@ -59,18 +67,16 @@ public:
     /// @param num_threads   线程池线程数，0 = 自动
     YoloPosePostprocessor(bool manual_nms, int input_width, int input_height, int num_threads = 0);
 
-    /// 处理单个推理输出（一个 batch 张量 + 该图在 batch 中的索引）
+    /// 处理单个推理输出（每图一个独立输出缓冲）
     /// @return 该图的所有检测结果（坐标已缩放到原图尺寸）
-    std::vector<PoseDetection> postprocess(const std::shared_ptr<ov::Tensor>& output_tensor,
-                                           int batch_index,
+    std::vector<PoseDetection> postprocess(const float* data, int rows, int cols,
                                            int orig_w,
                                            int orig_h,
                                            float conf_threshold);
 
     /// 批量并行后处理（多线程）
     /// @param out 输出，out[i] 为第 i 个输入图对应的检测结果
-    void postprocessBatch(const std::vector<std::shared_ptr<ov::Tensor>>& tensors,
-                          const std::vector<int>& batch_indices,
+    void postprocessBatch(const std::vector<PoseBatchOutput>& outputs,
                           const std::vector<int>& orig_ws,
                           const std::vector<int>& orig_hs,
                           float conf_threshold,

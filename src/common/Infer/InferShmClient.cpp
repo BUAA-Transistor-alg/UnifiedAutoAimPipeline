@@ -52,21 +52,21 @@ void InferShmClient::openSemaphores() {
     }
 }
 
-std::vector<InferenceOutput> InferShmClient::runInference(
-    const std::vector<const cv::Mat*>& preprocessed_imgs) {
+bool InferShmClient::runInference(
+    const std::vector<const cv::Mat*>& preprocessed_imgs,
+    std::vector<OutputBuffer*>& outs) {
     // 与 reconnect 互斥：避免关闭/重开信号量时本函数仍在使用旧句柄
     std::lock_guard<std::mutex> lock(io_mtx_);
-    std::vector<InferenceOutput> results;
     size_t total = preprocessed_imgs.size();
-    if (total == 0 || total > InferShm::MAX_IMAGES)
-        return results;
+    if (total == 0 || total > InferShm::MAX_IMAGES || outs.size() != total)
+        return false;
 
-    // 1. 写入输入区（所有图等尺寸、连续 u8 BGR）
+    // 1. 写入输入区（所有图等尺寸、连续 u8 BGR；resize 已由流水线阶段1完成）
     const cv::Mat& first = *preprocessed_imgs[0];
     size_t img_bytes = (size_t)first.total() * first.channels();
     if (img_bytes * total > InferShm::MAX_INPUT_BYTES) {
         std::cerr << "[InferShmClient] input too large: " << img_bytes * total << std::endl;
-        return results;
+        return false;
     }
     shm_->batch_count = (int)total;
     shm_->in_h = first.rows;
@@ -80,7 +80,7 @@ std::vector<InferenceOutput> InferShmClient::runInference(
     // 2. 通知推理进程
     if (sem_post(req_sem_) != 0) {
         std::cerr << "[InferShmClient] sem_post(req) failed: " << strerror(errno) << std::endl;
-        return results;
+        return false;
     }
 
     // 3. 等待响应（推理进程正常时毫秒级返回；用有界超时避免推理进程异常
@@ -92,33 +92,38 @@ std::vector<InferenceOutput> InferShmClient::runInference(
         if (sem_timedwait(resp_sem_, &ts) != 0) {
             std::cerr << "[InferShmClient] sem_timedwait(resp) failed: "
                       << strerror(errno) << "（推理进程未响应，丢弃本批）" << std::endl;
-            return results;
+            return false;
         }
     }
 
-    // 4. 重建输出张量：各 batch 一个自持内存的 ov::Tensor，同 batch 图像共享
-    results.reserve(total);
+    // 4. 结果张量直接 memcpy 进调用方（PipelineData）提供的输出缓冲。
+    //    输入区/输出区在同一块 SHM 中，本批数据在下一轮请求写入前保持有效，
+    //    同步拷贝完成后即可安全被下一批覆盖（无需双缓冲）。
     int nb = shm_->result_batches;
     if (nb < 0 || nb > InferShm::MAX_BATCHES) {
         std::cerr << "[InferShmClient] invalid result_batches: " << nb << std::endl;
-        return results;
+        return false;
     }
-    const char* src = outputArea();
+    const char* src_out = outputArea();
     size_t offset = 0;
+    size_t out_idx = 0;
     for (int b = 0; b < nb; ++b) {
         int bs = shm_->batch_size[b];
         int r  = shm_->out_rows[b];
         int c  = shm_->out_cols[b];
         if (bs <= 0 || r <= 0 || c <= 0) continue;
-        size_t bytes = (size_t)bs * r * c * sizeof(float);
-        ov::Tensor tensor(ov::element::f32, {(size_t)bs, (size_t)r, (size_t)c});
-        std::memcpy(tensor.data(), src + offset, bytes);
-        offset += bytes;
-        auto sp = std::make_shared<ov::Tensor>(std::move(tensor));
-        for (int k = 0; k < bs; ++k)
-            results.emplace_back(sp, k);
+        size_t per = (size_t)r * c * sizeof(float);
+        for (int k = 0; k < bs; ++k) {
+            if (out_idx >= outs.size()) break;
+            OutputBuffer* out = outs[out_idx++];
+            out->rows = r;
+            out->cols = c;
+            out->data.resize((size_t)r * c);   // 尺寸不变时复用容量，不重新分配
+            std::memcpy(out->data.data(), src_out + offset + (size_t)k * per, per);
+        }
+        offset += (size_t)bs * per;
     }
-    return results;
+    return out_idx == outs.size();
 }
 
 void InferShmClient::reconnect() {

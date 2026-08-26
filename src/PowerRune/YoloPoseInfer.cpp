@@ -58,58 +58,45 @@ YoloPosePostprocessor::YoloPosePostprocessor(bool manual_nms, int input_width, i
       pool_(num_threads) {}
 
 void YoloPosePostprocessor::postprocessBatch(
-    const std::vector<std::shared_ptr<ov::Tensor>>& tensors,
-    const std::vector<int>& batch_indices,
+    const std::vector<PoseBatchOutput>& outputs,
     const std::vector<int>& orig_ws,
     const std::vector<int>& orig_hs,
     float conf_threshold,
     std::vector<std::vector<PoseDetection>>& out) {
-    int n = (int)tensors.size();
+    int n = (int)outputs.size();
     out.resize(n);
     pool_.run_parallel(n, [&](int i) {
-        out[i] = postprocess(tensors[i], batch_indices[i], orig_ws[i], orig_hs[i], conf_threshold);
+        out[i] = postprocess(outputs[i].data, outputs[i].rows, outputs[i].cols,
+                             orig_ws[i], orig_hs[i], conf_threshold);
     });
 }
 
 std::vector<PoseDetection> YoloPosePostprocessor::postprocess(
-    const std::shared_ptr<ov::Tensor>& output_tensor,
-    int batch_index,
+    const float* data,
+    int rows,
+    int cols,
     int orig_w,
     int orig_h,
     float conf_threshold) {
-    if (!output_tensor)
+    if (!data)
         return {};
-
-    auto shape = output_tensor->get_shape();
-    if (shape.size() != 3 || batch_index < 0 || (size_t)batch_index >= shape[0]) {
-        std::cerr << "[ERROR] postprocess: invalid tensor shape or batch_index" << std::endl;
-        return {};
-    }
-
-    float* data = output_tensor->data<float>();
-    int dim1 = (int)shape[1];
-    int dim2 = (int)shape[2];
 
     if (manual_nms_) {
         // 无 NMS 导出的原始输出: (bs, RAW_OUTPUT_DIM, num_anchors)，通道优先
-        if (dim1 != RAW_OUTPUT_DIM) {
+        if (rows != RAW_OUTPUT_DIM) {
             std::cerr << "[ERROR] Raw output channel mismatch! expected " << RAW_OUTPUT_DIM
-                      << " got " << dim1 << std::endl;
+                      << " got " << rows << std::endl;
             return {};
         }
-        int num_anchors = dim2;
-        float* batch_data = data + batch_index * RAW_OUTPUT_DIM * num_anchors;
-        return postprocessRaw(batch_data, num_anchors, orig_w, orig_h, conf_threshold);
+        return postprocessRaw(data, cols, orig_w, orig_h, conf_threshold);
     } else {
         // NMS 已内嵌的输出: (bs, num_dets, OUTPUT_DIM)
-        if (dim2 != OUTPUT_DIM) {
+        if (cols != OUTPUT_DIM) {
             std::cerr << "[ERROR] NMS output dim mismatch! expected " << OUTPUT_DIM
-                      << " got " << dim2 << std::endl;
+                      << " got " << cols << std::endl;
             return {};
         }
-        int num_dets = dim1;
-        float* batch_data = data + batch_index * num_dets * OUTPUT_DIM;
-        return postprocessNms(batch_data, num_dets, orig_w, orig_h, conf_threshold);
+        return postprocessNms(data, rows, orig_w, orig_h, conf_threshold);
     }
 }
 

@@ -239,18 +239,13 @@ std::shared_ptr<ov::Tensor> InferEngine::inferBatch(
         return nullptr;
     }
 
-    size_t single_img_size = (size_t)height_ * width_ * 3;
-    std::vector<uint8_t> blob(bs * single_img_size);
-
-    // 直接拼接已预处理的图像（无需 resize）
-    for (int i = 0; i < bs; ++i) {
-        std::memcpy(blob.data() + i * single_img_size,
-                    preprocessed_imgs[i]->data, single_img_size);
-    }
-
+    // 直接包装外部输入内存（推理进程侧即共享内存输入区）：请求期间输入区不会被
+    // 覆盖（客户端在收到响应后才开始写下一批），免去中间 blob 的分配与 memcpy。
+    // 各图在输入区按 img_bytes 步长连续存放（客户端 resize 时写入），故以
+    // {bs, h, w, 3} 包装首图地址即可覆盖整批。
     ov::Tensor input_tensor(ov::element::u8,
                             {(size_t)bs, (size_t)height_, (size_t)width_, 3},
-                            blob.data());
+                            preprocessed_imgs[0]->data);
     auto& request = infer_requests_[batch_idx];
     request.set_input_tensor(input_tensor);
     request.infer();

@@ -45,8 +45,9 @@ struct PowerRunePipelineData {
 
     // ==================== 阶段2：推理 ====================
     struct Stage2Data {
-        std::shared_ptr<ov::Tensor> output_tensor;  // 该图所在 batch 的输出张量
-        int batch_index = 0;                         // 该图在此 batch 中的索引
+        // 推理输出张量（客户端直接 memcpy 填充，data 行优先 f32，
+        // rows/cols 为张量 shape[1]/shape[2]）
+        Infer::OutputBuffer output;
     } stage2;
 
     // ==================== 阶段3：后处理 ====================
@@ -95,7 +96,10 @@ struct PowerRunePipelineData {
  * @brief 能量机关感知流水线（事件驱动调度器版本，实现 IPipeline）
  *
  * 五阶段（各有独立工作线程，由 PipelineStage 模板管理）：
- *   1. 预处理 / 2. 推理 / 3. 后处理 / 4. 联合 PnP 位姿解算 + world 转换 /
+ *   1. 预处理（YoloPosePreprocessor 并行 resize）/
+ *   2. 推理（InferShmClient 经共享内存调用独立推理进程）/
+ *   3. 后处理（读取 PipelineData 自持输出缓冲）/
+ *   4. 联合 PnP 位姿解算 + world 转换 /
  *   5. YAxisFilter 滤波 + RollPredictor 拟合预测（含靶点预测函数快照）
  *
  * 可视化与预测目标输出均为输出模式（common/Output/）职责。

@@ -189,17 +189,19 @@ void Camera::grabLoop() {
                 if (stImageInfo.nFrameLen > 0) {
                     cv::Mat processedImage;
                     if (processImage(pData, stImageInfo, processedImage)) {
-                        if (isImageChanged(processedImage)) {
-                            lastValidImage = processedImage.clone();
-                            lastSuccessTime = steady_clock::now();
-                        }
+                        lastSuccessTime = steady_clock::now();
                         // 写入成员变量，始终覆盖并设置新帧标志。
                         // hasNewFrame_ 与时间戳在同一临界区内发布：getLatestFrame
                         // 全程持锁检查标志，写入新帧期间获取新帧会被阻塞，
                         // 杜绝"读到旧帧时间戳 / 半写状态"的竞态。
+                        //
+                        // 移动发布：processImage 保证返回自持缓冲（Bayer/RGB 转换
+                        // 产物自持；BGR/Mono 直接包装 SDK 缓冲的分支已改为 clone），
+                        // 直接移动所有权给 latestFrame_，再由 getLatestFrame 移动给
+                        // 消费者，整条路径无像素拷贝。
                         {
                             std::lock_guard<std::mutex> lock(frameMutex_);
-                            latestFrame_ = processedImage.clone();
+                            latestFrame_ = std::move(processedImage);
                             frameTimestamp_ = steady_clock::now();
                             hasNewFrame_ = true;
                         }
@@ -242,7 +244,7 @@ bool Camera::getLatestFrame(cv::Mat& frame, std::chrono::steady_clock::time_poin
     // 标志与时间戳在同一临界区发布/读取，见取流循环写入侧注释。
     std::lock_guard<std::mutex> lock(frameMutex_);
     if (!hasNewFrame_) return false;
-    latestFrame_.copyTo(frame);
+    frame = std::move(latestFrame_);   // 移动所有权，免去整帧 copyTo；latestFrame_ 由下一帧重新写入
     timestamp = frameTimestamp_;
     hasNewFrame_ = false;
     return true;
@@ -365,23 +367,7 @@ void Camera::disconnectDevice() {
     std::cout << "Device disconnected." << std::endl;
 }
 
-bool Camera::isImageChanged(const cv::Mat& newImage) {
-    if (lastValidImage.empty() && newImage.empty()) return false;
-    if (lastValidImage.empty() || newImage.empty()) return true;
-    if (lastValidImage.size() != newImage.size()) return true;
-    if (newImage.rows == 0 && newImage.cols == 0) return false;
-
-    cv::Mat diff;
-    cv::absdiff(lastValidImage, newImage, diff);
-    cv::Scalar sumDiff = cv::sum(diff);
-    for (int i = 0; i < sumDiff.channels; ++i) {
-        if (sumDiff[i] != 0) return true;
-    }
-    return false;
-}
-
-void Camera::parseIp(const std::string& ip, unsigned int& parsedIp) {
-    int parts[4];
+void Camera::parseIp(const std::string& ip, unsigned int& parsedIp) {    int parts[4];
     sscanf(ip.c_str(), "%d.%d.%d.%d", &parts[0], &parts[1], &parts[2], &parts[3]);
     parsedIp = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3];
 }
@@ -498,12 +484,16 @@ bool Camera::processImage(unsigned char* pData, MV_FRAME_OUT_INFO_EX& stImageInf
             if (stImageInfo.enPixelType == PixelType_Gvsp_RGB8_Packed)
                 cv::cvtColor(img, outputImage, cv::COLOR_RGB2BGR);
             else
-                outputImage = img;
+                // pData 为 SDK 缓冲，会被下一帧取流覆盖；发布改为移动语义后
+                // 必须返回自持缓冲，故此处 clone（仅此分支多一次拷贝，
+                // 原 grabLoop 的 clone + getLatestFrame 的 copyTo 已消除）。
+                outputImage = img.clone();
             return true;
         }
         
         case PixelType_Gvsp_Mono8:
-            outputImage = cv::Mat(stImageInfo.nHeight, stImageInfo.nWidth, CV_8UC1, pData);
+            // 同上：pData 会被下一帧覆盖，clone 为自持缓冲
+            outputImage = cv::Mat(stImageInfo.nHeight, stImageInfo.nWidth, CV_8UC1, pData).clone();
             return true;
             
         default:

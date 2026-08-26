@@ -42,9 +42,11 @@ public:
 
 private:
     void syncTree(const ExtraInputInfo& info);
-    // 渲染当前流水线模式的画面并返回（display_ 的写入由 update() 统一加锁）
-    cv::Mat renderOutpost(const PipelineResult& result, RobotController* rc);
-    cv::Mat renderPowerRune(const PipelineResult& result, RobotController* rc);
+    // 渲染当前流水线模式的画面到 render_buf_（仅可视化线程访问；create+copyTo
+    // 复用缓冲，避免每帧 clone 的分配/释放。像素拷贝仍需保留：result.frame 另被
+    // 主线程保存为原始画面，不可原地绘制）
+    void renderOutpost(const PipelineResult& result, RobotController* rc);
+    void renderPowerRune(const PipelineResult& result, RobotController* rc);
 
     // 当前渲染模式（主线程 setMode 写 / 可视化线程 update 读，需原子）
     std::atomic<PipelineMode> mode_{PipelineMode::OUTPOST};
@@ -53,6 +55,7 @@ private:
     OutpostVisualizer  outpost_vis_;
     PowerRuneVisualizer power_rune_vis_;
     FrameRateCounter fps_;
+    cv::Mat render_buf_;              // 渲染目标缓冲（可视化线程独占）
     cv::Mat display_;
     mutable std::mutex display_mtx_;   // 保护 display_（可视化线程写 / 主线程读）
     AimPredictor& aim_;

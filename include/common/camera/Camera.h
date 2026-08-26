@@ -80,7 +80,6 @@ private:
     
     // 图像相关
     std::atomic<std::chrono::steady_clock::time_point> lastFrameTime;
-    cv::Mat lastValidImage; // 用于检测图像变化
     
     // ── 帧存储与同步 ──
     // hasNewFrame_ 完全由 frameMutex_ 保护（写入侧与 getLatestFrame 均持锁访问），
@@ -115,9 +114,6 @@ private:
     // 初始化相机参数
     bool initCameraParams();
     bool initCameraCommonParams();
-    
-    // 检查图像是否有变化
-    bool isImageChanged(const cv::Mat& newImage);
     
     // 设置连接时间为当前时间
     void updateReconnectTime() {
