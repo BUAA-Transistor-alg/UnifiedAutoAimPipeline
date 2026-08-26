@@ -21,10 +21,12 @@ namespace Infer {
 
 class InferShmServer {
 public:
-    /// 推理函数：输入已预处理（模型输入尺寸）的 u8 BGR 图像指针，返回
-    /// 每个图对应的 InferenceOutput（同 batch 共享张量）——即推理器 runInference
+    /// 推理函数：输入已预处理（模型输入尺寸）的 u8 BGR 图像指针，把各 batch 输出
+    /// 张量直接写入 out_area（共享内存输出区，按 InferShm::alignedOutputBytes 对齐
+    /// 连续存放，容量 out_cap），返回每个图对应的 InferenceOutput（同 batch 共享
+    /// 张量）——即推理器 runInference 的零拷贝输出路径。
     using InferFn = std::function<std::vector<InferenceOutput>(
-        const std::vector<const cv::Mat*>&)>;
+        const std::vector<const cv::Mat*>&, char* out_area, size_t out_cap)>;
 
     /// @param shm_key  共享内存 Key（与客户端同 Key）
     /// @param infer_fn 推理函数（闭包捕获推理器）

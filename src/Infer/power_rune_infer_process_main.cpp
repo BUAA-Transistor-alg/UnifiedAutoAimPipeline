@@ -47,8 +47,8 @@ int main() {
         nullptr, cache_dir);
 
     Infer::InferShmServer server(cfg.powerRune.shmKey,
-        [&](const std::vector<const cv::Mat*>& imgs) {
-            return engine->runInference(imgs);
+        [&](const std::vector<const cv::Mat*>& imgs, char* out_area, size_t out_cap) {
+            return engine->runInference(imgs, out_area, out_cap);
         });
     server.run([]() { return g_running != 0; });
 

@@ -97,10 +97,12 @@ void InferShmServer::run(const std::function<bool()>& is_running) {
             ptrs.push_back(&mats.back());
         }
 
-        // 推理
-        std::vector<InferenceOutput> outputs = infer_fn_(ptrs);
+        // 推理：输出张量由引擎经 set_output_tensor 直接写入共享内存输出区
+        // （零拷贝，免去"插件缓冲 → memcpy → 输出区"），引擎按 64B 对齐块布局
+        std::vector<InferenceOutput> outputs =
+            infer_fn_(ptrs, outputArea(), InferShm::MAX_OUTPUT_BYTES);
 
-        // 写输出区：按张量身份分组合并 batch
+        // 记录输出元数据：各 batch 张量已由引擎写入输出区，这里不再拷贝
         shm_->result_batches = 0;
         char* out = outputArea();
         size_t offset = 0;
@@ -115,14 +117,18 @@ void InferShmServer::run(const std::function<bool()>& is_running) {
             size_t r = shape.size() > 1 ? shape[shape.size() - 2] : 1;
             size_t c = shape.size() > 0 ? shape[shape.size() - 1] : 1;
             size_t bytes = bs * r * c * sizeof(float);
+            size_t block = InferShm::alignedOutputBytes(bs, r, c);
             if (shm_->result_batches < InferShm::MAX_BATCHES &&
-                offset + bytes <= InferShm::MAX_OUTPUT_BYTES) {
-                std::memcpy(out + offset, outputs[i].first->data<float>(), bytes);
+                offset + block <= InferShm::MAX_OUTPUT_BYTES) {
+                // 零拷贝路径下数据应已位于 out+offset；仅作防御性校验，
+                // 万一引擎未按约定落位则回退显式拷贝
+                if (outputs[i].first->data() != static_cast<void*>(out + offset))
+                    std::memcpy(out + offset, outputs[i].first->data<float>(), bytes);
                 shm_->batch_size[shm_->result_batches] = (int)bs;
                 shm_->out_rows[shm_->result_batches]   = (int)r;
                 shm_->out_cols[shm_->result_batches]   = (int)c;
                 shm_->result_batches++;
-                offset += bytes;
+                offset += block;
             } else {
                 std::cerr << "[InferShmServer] output overflow, dropping batch" << std::endl;
             }

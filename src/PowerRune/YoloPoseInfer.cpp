@@ -44,8 +44,9 @@ YoloPoseInfer::YoloPoseInfer(const std::string& model_path_onnx,
           max_batch, std::move(shared_core), cache_dir)) {}
 
 std::vector<InferenceOutput> YoloPoseInfer::runInference(
-    const std::vector<const cv::Mat*>& preprocessed_imgs) {
-    return engine_->runInference(preprocessed_imgs);
+    const std::vector<const cv::Mat*>& preprocessed_imgs,
+    char* out_area, size_t out_cap) {
+    return engine_->runInference(preprocessed_imgs, out_area, out_cap);
 }
 
 // ==========================================================================

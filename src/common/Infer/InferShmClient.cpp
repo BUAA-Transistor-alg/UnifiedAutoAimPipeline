@@ -99,6 +99,8 @@ bool InferShmClient::runInference(
     // 4. 结果张量直接 memcpy 进调用方（PipelineData）提供的输出缓冲。
     //    输入区/输出区在同一块 SHM 中，本批数据在下一轮请求写入前保持有效，
     //    同步拷贝完成后即可安全被下一批覆盖（无需双缓冲）。
+    //    输出区布局与服务端一致：每 batch 块 64B 对齐（alignedOutputBytes），
+    //    块内各图按 r*c*4 步长连续存放。
     int nb = shm_->result_batches;
     if (nb < 0 || nb > InferShm::MAX_BATCHES) {
         std::cerr << "[InferShmClient] invalid result_batches: " << nb << std::endl;
@@ -121,7 +123,7 @@ bool InferShmClient::runInference(
             out->data.resize((size_t)r * c);   // 尺寸不变时复用容量，不重新分配
             std::memcpy(out->data.data(), src_out + offset + (size_t)k * per, per);
         }
-        offset += (size_t)bs * per;
+        offset += InferShm::alignedOutputBytes((size_t)bs, (size_t)r, (size_t)c);
     }
     return out_idx == outs.size();
 }

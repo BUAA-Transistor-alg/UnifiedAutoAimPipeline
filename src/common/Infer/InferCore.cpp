@@ -1,5 +1,6 @@
 // InferCore.cpp — 公共推理核心实现
 #include "common/Infer/InferCore.h"
+#include "common/Infer/InferShm.h"   // InferShm::alignedOutputBytes（输出区布局规则）
 #include "common/PathResolver.h"
 #include <iostream>
 #include <cstdio>
@@ -227,7 +228,7 @@ std::pair<std::string, std::string> InferEngine::convertOnnxToIR(
 // 执行一次确定 batch 的推理，返回该 batch 的输出张量
 std::shared_ptr<ov::Tensor> InferEngine::inferBatch(
     const std::vector<const cv::Mat*>& preprocessed_imgs,
-    int batch_idx) {
+    int batch_idx, char* out_ptr) {
     int bs = batch_idx + 1;  // batch_idx 0 → batch=1
     if (bs != static_cast<int>(preprocessed_imgs.size())) {
         std::cerr << "[ERROR] inferBatch: input size mismatch" << std::endl;
@@ -248,13 +249,35 @@ std::shared_ptr<ov::Tensor> InferEngine::inferBatch(
                             preprocessed_imgs[0]->data);
     auto& request = infer_requests_[batch_idx];
     request.set_input_tensor(input_tensor);
+
+    // 零拷贝输出：把输出张量直接绑定到调用方内存（推理进程侧即共享内存输出区），
+    // 插件在 infer() 时直接把结果写入该内存（CPU 零拷贝直写；GPU 为 D2H 直写），
+    // 免去"插件内部缓冲 → memcpy → 输出区"的一整份拷贝。模型输出形状是静态的
+    // （每种 batch 一个编译模型），可直接按编译输出形状包装外部内存。
+    if (out_ptr != nullptr) {
+        const ov::Shape& out_shape = compiled_models_[batch_idx].output().get_shape();
+        request.set_output_tensor(ov::Tensor(ov::element::f32, out_shape, out_ptr));
+    }
     request.infer();
 
+    // 个别插件/版本可能忽略用户提供的输出张量：校验数据实际落点，不一致则回退
+    // 显式拷贝。无论哪种情况，返回的张量都包装 out_ptr，保证调用方的布局假设成立。
+    if (out_ptr != nullptr) {
+        ov::Tensor actual = request.get_output_tensor();
+        if (actual.data() != static_cast<void*>(out_ptr)) {
+            std::cerr << "[InferCore] plugin ignored user output tensor, fallback copy"
+                      << std::endl;
+            std::memcpy(out_ptr, actual.data<float>(), actual.get_byte_size());
+        }
+        return std::make_shared<ov::Tensor>(
+            ov::element::f32, compiled_models_[batch_idx].output().get_shape(), out_ptr);
+    }
     return std::make_shared<ov::Tensor>(request.get_output_tensor());
 }
 
 std::vector<InferenceOutput> InferEngine::runInference(
-    const std::vector<const cv::Mat*>& preprocessed_imgs) {
+    const std::vector<const cv::Mat*>& preprocessed_imgs,
+    char* out_area, size_t out_cap) {
     std::vector<InferenceOutput> results;
     size_t total = preprocessed_imgs.size();
     if (total == 0)
@@ -273,6 +296,7 @@ std::vector<InferenceOutput> InferEngine::runInference(
 
     // 贪心拆分为最优 batch 组合：尽量用最大可用 batch，剩余部分取最大可能的 batch
     size_t cursor = 0;
+    size_t offset = 0;   // 输出区游标：与 InferShm 布局一致，每 batch 块 64B 对齐
     while (cursor < total) {
         size_t remaining = total - cursor;
         int take = static_cast<int>(std::min(remaining, max_usable_batch));
@@ -282,8 +306,21 @@ std::vector<InferenceOutput> InferEngine::runInference(
         for (int i = 0; i < take; ++i)
             batch.push_back(preprocessed_imgs[cursor + i]);
 
+        // 该 batch 模型的输出形状静态已知，推理前即可算出本块大小与写入位置
+        const ov::Shape& out_shape = compiled_models_[take - 1].output().get_shape();
+        size_t r = out_shape.size() > 1 ? out_shape[out_shape.size() - 2] : 1;
+        size_t c = out_shape.size() > 0 ? out_shape[out_shape.size() - 1] : 1;
+        size_t block = InferShm::alignedOutputBytes(take, r, c);
+
+        if (out_area != nullptr && offset + block > out_cap) {
+            std::cerr << "[InferCore] output area overflow (" << offset + block
+                      << " > " << out_cap << "), dropping remaining batch" << std::endl;
+            break;
+        }
+        char* out_ptr = out_area != nullptr ? out_area + offset : nullptr;
+
         auto t0 = std::chrono::steady_clock::now();
-        auto tensor = inferBatch(batch, take - 1);
+        auto tensor = inferBatch(batch, take - 1, out_ptr);
         auto us = std::chrono::duration_cast<std::chrono::microseconds>(
                       std::chrono::steady_clock::now() - t0).count();
         if (dbg) {
@@ -301,6 +338,7 @@ std::vector<InferenceOutput> InferEngine::runInference(
             results.emplace_back(tensor, i);
 
         cursor += take;
+        offset += block;
     }
 
     return results;

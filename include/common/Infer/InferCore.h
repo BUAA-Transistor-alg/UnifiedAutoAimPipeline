@@ -79,9 +79,16 @@ public:
                 const std::string& cache_dir = "");
 
     /// 主推理接口：接收已预处理（resize 到 width×height）的图像指针向量
+    /// @param out_area 可选的外部输出缓冲（推理进程侧即共享内存输出区）。
+    ///                 非空时输出张量经 InferRequest::set_output_tensor 直接绑定
+    ///                 到该内存（零拷贝输出：CPU 插件直写、GPU 插件 D2H 直写），
+    ///                 各 batch 块按 InferShm::alignedOutputBytes 对齐连续存放；
+    ///                 为空时回退到插件内部缓冲（旧行为）。
+    /// @param out_cap  out_area 容量（字节），用于防越界；out_area 为空时忽略
     /// @return 每个输入图对应一个 InferenceOutput（同一 batch 共享同一张量）
     std::vector<InferenceOutput> runInference(
-        const std::vector<const cv::Mat*>& preprocessed_imgs);
+        const std::vector<const cv::Mat*>& preprocessed_imgs,
+        char* out_area = nullptr, size_t out_cap = 0);
 
     int inputWidth() const { return width_; }
     int inputHeight() const { return height_; }
@@ -102,10 +109,12 @@ private:
     static std::pair<std::string, std::string> convertOnnxToIR(
         const std::string& onnx_path, const std::string& cache_dir = "");
 
-    /// 执行单次确定 batch 的推理，返回该 batch 的输出张量
+    /// 执行单次确定 batch 的推理。
+    /// @param out_ptr 非空时输出张量绑定到该内存（零拷贝）；为空时用插件内部缓冲
+    /// @return 该 batch 的输出张量（out_ptr 非空时必然包装 out_ptr）
     std::shared_ptr<ov::Tensor> inferBatch(
         const std::vector<const cv::Mat*>& preprocessed_imgs,
-        int batch_idx);
+        int batch_idx, char* out_ptr = nullptr);
 
     std::shared_ptr<ov::Core> core_;
     std::string cache_dir_;

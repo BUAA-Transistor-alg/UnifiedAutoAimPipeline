@@ -14,8 +14,13 @@
 // 协议（一次请求 = 一批图像）：
 //   client: 写入 batch_count / in_h / in_w + 输入图像区 → sem_post(req)
 //   server: sem_wait(req) → 包装图像 → runInference → 写结果区（各 batch 的
-//           f32 张量连续存放，batch_size/out_rows/out_cols 写入头） → sem_post(resp)
-//   client: sem_wait(resp) → 按 batch 重建 ov::Tensor（自持内存）→ 返回
+//           f32 张量按 64B 对齐块连续存放，batch_size/out_rows/out_cols 写入头）
+//           → sem_post(resp)
+//   client: sem_wait(resp) → 按 batch 对齐块定位并重建 ov::Tensor → 返回
+//
+// 输出区布局（服务端与客户端必须一致）：每个 batch 块 = alignedOutputBytes(bs,r,c)
+// 字节（64B 对齐），块内 bs 张图按 r*c*4 步长连续存放。64B 对齐是 CPU 插件对用户
+// 输出内存走 SIMD 快速路径的常规要求，对 GPU D2H 直写亦无副作用。
 //
 // 共享内存 Key 由 config 提供（outpost.inference.shm_key / power_rune.inference.shm_key）；
 // 信号量名由 Key 派生（/uap_infer_req_<key> / /uap_infer_resp_<key>）。
@@ -53,6 +58,13 @@ struct ShmLayout {
 inline size_t inputOffset()  { return sizeof(ShmLayout); }
 inline size_t outputOffset() { return inputOffset() + MAX_INPUT_BYTES; }
 inline size_t totalSize()    { return outputOffset() + MAX_OUTPUT_BYTES; }
+
+/// 单个 batch 输出块在输出区占用的字节数（64B 对齐，见文件头注释）。
+/// 引擎写入、服务端记录、客户端定位三处必须使用同一规则。
+inline size_t alignedOutputBytes(size_t bs, size_t r, size_t c) {
+    size_t raw = bs * r * c * sizeof(float);
+    return (raw + 63) & ~static_cast<size_t>(63);
+}
 
 inline std::string reqSemName(int key)  { return "/uap_infer_req_"  + std::to_string(key); }
 inline std::string respSemName(int key) { return "/uap_infer_resp_" + std::to_string(key); }

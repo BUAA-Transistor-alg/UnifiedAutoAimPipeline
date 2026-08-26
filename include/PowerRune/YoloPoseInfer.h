@@ -121,9 +121,12 @@ public:
                   const std::string& cache_dir = "");
 
     /// 主推理接口：接收已预处理（resize 到 input_width×input_height）的图像指针向量
+    /// @param out_area 可选外部输出缓冲（共享内存输出区）；非空时输出零拷贝直写
+    /// @param out_cap  out_area 容量（字节），out_area 为空时忽略
     /// @return 每个输入图对应一个 InferenceOutput（同一 batch 共享同一张量）
     std::vector<InferenceOutput> runInference(
-        const std::vector<const cv::Mat*>& preprocessed_imgs);
+        const std::vector<const cv::Mat*>& preprocessed_imgs,
+        char* out_area = nullptr, size_t out_cap = 0);
 
 private:
     std::unique_ptr<Infer::InferEngine> engine_;
