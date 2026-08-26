@@ -25,7 +25,7 @@ bool MkvAllIntraWriter::open(const std::string& filename, int width, int height,
     }
 
     // 2. 查找 H.264 编码器
-    AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+    const AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_H264);
     if (!codec) {
         std::cerr << "H.264 encoder not found" << std::endl;
         goto cleanup;
