@@ -73,7 +73,7 @@ struct ArmorPipelineData {
         std::vector<cv::Vec3f> world_positions;
         std::vector<cv::Vec3f> world_eulers;
         std::vector<std::vector<cv::Point2f>> reprojected_points;
-        std::vector<cv::Point2f> first_image_points;   // 第 0 物体 4 个 2D 关键点（原图坐标）
+        std::vector<std::vector<cv::Point2f>> all_image_points;  // 所有物体各 4 个 2D 关键点（原图坐标）
         bool init_pnp_ok = false;
         cv::Vec3f init_pos = cv::Vec3f(0, 0, 0);
         cv::Mat   init_R;   // 3x3 CV_32F（world 系）

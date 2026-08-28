@@ -6,6 +6,7 @@
 #include <string>
 #include <iostream>
 #include <cmath>
+#include <algorithm>
 
 namespace {
 
@@ -294,6 +295,8 @@ void ArmorPipeline::processStage4(DataDeque& data)
             cv::Point2f(obj.landmarks[4], obj.landmarks[5]),  // 右下
             cv::Point2f(obj.landmarks[6], obj.landmarks[7])   // 右上
         };
+        // 所有物体的观测关键点都存入 stage4，供 OutpostESEKF 阶段使用
+        d->stage4.all_image_points.push_back(image_points);
 
         cv::Vec3f position_cam, euler_cam;
         bool pnp_ok = s4_.camera_proj->solvePnP_Cam(
@@ -318,10 +321,8 @@ void ArmorPipeline::processStage4(DataDeque& data)
         world_positions.push_back(world_pos);
         world_eulers.push_back(world_euler);
 
-        // 第 0 物体：保存观测关键点 + 初始化 PnP（面 0 模型），供 OutpostESEKF 阶段使用
+        // 第 0 物体：初始化 PnP（面 0 模型），供 OutpostESEKF 阶段初始化使用
         if (i == 0) {
-            d->stage4.first_image_points = image_points;
-
             cv::Vec3f position_c, euler_c;
             bool init_pnp_ok = s4_.camera_proj->solvePnP_Cam(
                 ArmorModel::OUTPOST_POINTS_3D_LIST[0], image_points,
@@ -356,7 +357,7 @@ void ArmorPipeline::processStage5(DataDeque& data)
     tree.lockAndComputeCache();
 
     // ── 观测丢失计时：连续超过阈值未观测到物体则重置 OutpostESEKF ──
-    const bool has_obs = !d->stage4.first_image_points.empty();
+    const bool has_obs = !d->stage4.all_image_points.empty();
     if (has_obs) {
         s5_.last_observation_time = ts;
         s5_.has_observation_time = true;
@@ -378,7 +379,13 @@ void ArmorPipeline::processStage5(DataDeque& data)
         }
     } else {
         if (has_obs) {
-            s5_.esekf->update(std::vector<std::vector<cv::Point2f>>{d->stage4.first_image_points}, ts);
+            // 使用所有检测物体，但截断到 EKF 支持的最大观测数（3D 模型个数，即 3 个装甲面）
+            const size_t kMaxObs = ArmorModel::OUTPOST_POINTS_3D_LIST.size();
+            const size_t n = std::min(d->stage4.all_image_points.size(), kMaxObs);
+            std::vector<std::vector<cv::Point2f>> obs_points(
+                d->stage4.all_image_points.begin(),
+                d->stage4.all_image_points.begin() + n);
+            s5_.esekf->update(obs_points, ts);
         } else {
             s5_.esekf->predict(ts);   // 无观测，仅推进运动模型
         }

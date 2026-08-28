@@ -75,7 +75,7 @@ common:
     video_mode:
       # 测试最大帧率：true 时 VideoInputMode 的 getFrameDelay() 返回 0
       # （不做按视频帧率的节流），以测得视频输入 + 流水线的最大帧数/FPS。
-      test_max_fps: true
+      test_max_fps: false
       resolution:
         width: 1920                 # 图像宽（像素）
         height: 1080                # 图像高（像素）
