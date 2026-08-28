@@ -41,6 +41,8 @@ SequencePredictor::Item SequencePredictor::lerpItem(const Item& lo, const Item& 
     r.predict_time = lo.predict_time + t * (hi.predict_time - lo.predict_time);
     r.yaw = (float)((double)lo.yaw + t * ((double)hi.yaw - (double)lo.yaw));
     r.pitch = (float)((double)lo.pitch + t * ((double)hi.pitch - (double)lo.pitch));
+    r.gimbal_yaw = (float)((double)lo.gimbal_yaw + t * ((double)hi.gimbal_yaw - (double)lo.gimbal_yaw));
+    r.gimbal_pitch = (float)((double)lo.gimbal_pitch + t * ((double)hi.gimbal_pitch - (double)lo.gimbal_pitch));
     r.flight_time = lo.flight_time + t * (hi.flight_time - lo.flight_time);
     r.target_index = lo.target_index;
     return r;
@@ -55,6 +57,8 @@ SequencePredictor::Item SequencePredictor::extrapItem(const Item& A, const Item&
     r.predict_time = A.predict_time + s * (A.predict_time - P.predict_time);
     r.yaw = (float)((double)A.yaw + s * ((double)A.yaw - (double)P.yaw));
     r.pitch = (float)((double)A.pitch + s * ((double)A.pitch - (double)P.pitch));
+    r.gimbal_yaw = (float)((double)A.gimbal_yaw + s * ((double)A.gimbal_yaw - (double)P.gimbal_yaw));
+    r.gimbal_pitch = (float)((double)A.gimbal_pitch + s * ((double)A.gimbal_pitch - (double)P.gimbal_pitch));
     r.flight_time = A.flight_time + s * (A.flight_time - P.flight_time);
     r.target_index = A.target_index;
     return r;
@@ -120,6 +124,8 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
         item.predict_time = r.predict_time;
         item.yaw = r.gimbal.yaw + (float)chassis_yaw + (float)yaw_bias_;   // 叠加底盘 yaw 修正与 yaw 偏置
         item.pitch = r.gimbal.pitch + (float)pitch_bias_;   // 叠加 pitch 偏置
+        item.gimbal_yaw = r.gimbal.yaw;      // 原始关节角（相对底盘），供可视化复现需要的云台位姿
+        item.gimbal_pitch = r.gimbal.pitch;
         item.flight_time = r.gimbal.flight_time;
         item.target_index = r.target_index;
         return item;

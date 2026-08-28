@@ -51,6 +51,10 @@ private:
     // 当前渲染模式（主线程 setMode 写 / 可视化线程 update 读，需原子）
     std::atomic<PipelineMode> mode_{PipelineMode::ARMOR};
     RobotTfTree tree_;
+    // 需要的云台位姿专用树：每帧用当前底盘位姿 + 解算出的原始 yaw/pitch 关节角
+    // 复现"瞄准点对应的解算云台位姿"，计算该位姿下 cam 系 (0,1,0) 点在 world 系的
+    // 坐标（仅可视化线程访问，不复用 tree_ 以免打断当前画面的投影）
+    RobotTfTree required_pose_tree_;
     std::shared_ptr<CameraProjection> camera_proj_;
     ArmorVisualizer  armor_vis_;
     PowerRuneVisualizer power_rune_vis_;

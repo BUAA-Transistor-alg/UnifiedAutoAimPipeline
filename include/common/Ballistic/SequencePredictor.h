@@ -50,6 +50,9 @@ public:
         double predict_time = 0.0;   // 预测时间 = 额外预测时间 + 飞行时间（秒）
         float  yaw = 0.0f;           // 云台解算 yaw（已叠加底盘修正与 yaw 偏置）
         float  pitch = 0.0f;         // 云台解算 pitch（已叠加 pitch 偏置）
+        float  gimbal_yaw = 0.0f;    // 解算器原始云台 yaw（相对底盘关节角，未叠加底盘修正/偏置；
+                                     // 供可视化复现"需要的云台位姿"使用）
+        float  gimbal_pitch = 0.0f;  // 解算器原始云台 pitch（未叠加偏置）
         double flight_time = 0.0;    // 弹道飞行时间（秒）
         int    target_index = -1;    // 该点对应的目标索引（实际计算点为选中目标，插值/外推继承左侧）
     };
