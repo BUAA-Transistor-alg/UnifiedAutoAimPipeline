@@ -10,21 +10,22 @@
 
 namespace {
 
-// 配置文件 armor.outpost_esekf 段 → OutpostESEKF::Params（字段一一对应）
-OutpostESEKF::Params makeEsekfParams(const RobotConfig::ArmorParams::EsekfParams& p) {
+// 配置文件 armor 段 → OutpostESEKF::Params（字段一一对应）
+OutpostESEKF::Params makeEsekfParams(const RobotConfig::ArmorParams& p) {
     OutpostESEKF::Params r;
-    r.positionNoise        = p.positionNoise;
-    r.rotationNoise        = p.rotationNoise;
-    r.measurementNoise     = p.measurementNoise;
-    r.orientationZRegNoise = p.orientationZRegNoise;
-    r.dzNoise              = p.dzNoise;
-    r.dzSearchRange        = p.dzSearchRange;
-    r.dzLimit              = p.dzLimit;
-    r.initPositionNoise    = p.initPositionNoise;
-    r.initOrientationNoise = p.initOrientationNoise;
-    r.initYawRateNoise     = p.initYawRateNoise;
-    r.initDz2Noise         = p.initDz2Noise;
-    r.initDz3Noise         = p.initDz3Noise;
+    r.positionNoise        = p.esekf.positionNoise;
+    r.rotationNoise        = p.esekf.rotationNoise;
+    r.measurementNoise     = p.esekf.measurementNoise;
+    r.orientationZRegNoise = p.esekf.orientationZRegNoise;
+    r.dzNoise              = p.esekf.dzNoise;
+    r.dzSearchRange        = p.esekf.dzSearchRange;
+    r.dzLimit              = p.esekf.dzLimit;
+    r.initPositionNoise    = p.esekf.initPositionNoise;
+    r.initOrientationNoise = p.esekf.initOrientationNoise;
+    r.initYawRateNoise     = p.esekf.initYawRateNoise;
+    r.initDz2Noise         = p.esekf.initDz2Noise;
+    r.initDz3Noise         = p.esekf.initDz3Noise;
+    r.observationLostTimeoutSec = p.observationLostTimeoutSec;
     return r;
 }
 
@@ -54,7 +55,7 @@ ArmorPipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)
           ImageResolution{camera.width, camera.height})) {}
 
 ArmorPipeline::Stage5Ctx::Stage5Ctx(const RobotConfig::CameraParams& camera,
-                                      const RobotConfig::ArmorParams::EsekfParams& esekf_params)
+                                      const RobotConfig::ArmorParams& armor)
     : tree(std::make_shared<RobotTfTree>()),
       camera_proj(std::make_shared<CameraProjection>(
           camera.cameraMatrix, camera.distCoeffs,
@@ -62,7 +63,7 @@ ArmorPipeline::Stage5Ctx::Stage5Ctx(const RobotConfig::CameraParams& camera,
       esekf(std::make_unique<OutpostESEKF>(tree, camera_proj,
                                     ArmorModel::OUTPOST_POINTS_3D_LIST,
                                     ArmorModel::OUTPOST_TARGET_CENTER_3D_LIST,
-                                    makeEsekfParams(esekf_params))) {}
+                                    makeEsekfParams(armor))) {}
 
 // ==================== 构造 ====================
 
@@ -74,7 +75,7 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
     , s1_(RobotConfig::instance().armor.inputWidth,
           RobotConfig::instance().armor.inputHeight)
     , s4_(camera)
-    , s5_(camera, RobotConfig::instance().armor.esekf)
+    , s5_(camera, RobotConfig::instance().armor)
 {
     const RobotConfig& cfg = RobotConfig::instance();
     const RobotConfig::PipelineParams& pipe = cfg.armor.pipeline;
@@ -348,46 +349,15 @@ void ArmorPipeline::processStage5(DataDeque& data)
     tree.setPitch((float)info.pitch_angle);
     tree.lockAndComputeCache();
 
-    // ── 观测丢失计时：连续超过阈值未观测到目标则重置 OutpostESEKF ──
-    // 仅 label 6（装甲板）类别的观测算作 OutpostESEKF 的有效观测
+    // ── OutpostESEKF 统一帧处理 ──
+    // 仅 label 6（装甲板）类别的观测算作 OutpostESEKF 的有效观测；
+    // 观测超时重置 / 初始化 / 更新（观测截断）/ 无观测仅预测均由
+    // OutpostESEKF::processFrame 内部自动分派
     const auto& armor_cat = d->stage4.categories[ArmorDetect::ARMOR_CLASS];
-    const bool has_obs = !armor_cat.all_image_points.empty();
-    if (has_obs) {
-        s5_.last_observation_time = ts;
-        s5_.has_observation_time = true;
-    }
-    const double timeout = RobotConfig::instance().armor.observationLostTimeoutSec;
-    if (s5_.has_observation_time &&
-        std::chrono::duration<double>(ts - s5_.last_observation_time).count() > timeout) {
-        s5_.esekf->reset();
-        s5_.esekf_initialized = false;
-        s5_.has_observation_time = false;
-    }
-
-    // ── OutpostESEKF：初始化 / 更新 / 仅预测 ──
-    if (!s5_.esekf_initialized) {
-        // 初始化：传入 label 6 首个装甲板的图像关键点，
-        // 位姿信息（PnP + 世界系转换）在 OutpostESEKF::init 内部计算
-        if (has_obs)
-            s5_.esekf_initialized = s5_.esekf->init(armor_cat.all_image_points[0], ts);
-    } else {
-        if (has_obs) {
-            // 更新 OutpostESEKF 时仅使用 label 6（装甲板）类别的观测，
-            // 截断到 EKF 支持的最大观测数（3D 模型个数，即 3 个装甲面）
-            const size_t kMaxObs = ArmorModel::OUTPOST_POINTS_3D_LIST.size();
-            const size_t n = std::min(armor_cat.all_image_points.size(), kMaxObs);
-            std::vector<std::vector<cv::Point2f>> obs_points(
-                armor_cat.all_image_points.begin(),
-                armor_cat.all_image_points.begin() + n);
-            s5_.esekf->update(obs_points, ts);
-        } else {
-            s5_.esekf->predict(ts);   // 无装甲板观测，仅推进运动模型
-        }
-    }
+    d->stage5.esekf_initialized = s5_.esekf->processFrame(armor_cat.all_image_points, ts);
 
     // ── 输出本帧滤波结果（供输出模式使用） ──
-    d->stage5.esekf_initialized = s5_.esekf_initialized;
-    if (s5_.esekf_initialized) {
+    if (d->stage5.esekf_initialized) {
         d->stage5.ekf_world_points = s5_.esekf->getWorldPoints();
         d->stage5.ekf_pos = s5_.esekf->getPosition();
         d->stage5.ekf_R64 = s5_.esekf->getRotationMatrix();
@@ -554,10 +524,9 @@ void ArmorPipeline::clear()
             output_queue_.clear();
         }
 
-        // 重置 OutpostESEKF 与观测计时状态（stage5 已空闲，无竞争）
+        // 重置 OutpostESEKF 与观测计时状态（stage5 已空闲，无竞争；
+        // 初始化标志 / 观测计时状态随 reset() 一并复位）
         s5_.esekf->reset();
-        s5_.esekf_initialized = false;
-        s5_.has_observation_time = false;
 
         // 队列计数归零
         for (auto& qs : queue_sizes_) qs.store(0);

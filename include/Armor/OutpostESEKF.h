@@ -34,12 +34,14 @@ public:
         double initYawRateNoise;     // 初始化旋转速度不确定性（P(6,6)）
         double initDz2Noise;         // 初始化 dz2 不确定性（P(7,7)）
         double initDz3Noise;         // 初始化 dz3 不确定性（P(8,8)）
+        double observationLostTimeoutSec; // 连续观测丢失多久后重置滤波器（秒）
 
         Params()
             : positionNoise(100.0), rotationNoise(10.0), measurementNoise(400.0),
               orientationZRegNoise(1e-4), dzNoise(0.1), dzSearchRange(0.5), dzLimit(0.3),
               initPositionNoise(1.0), initOrientationNoise(0.1), initYawRateNoise(1.0),
-              initDz2Noise(0.01), initDz3Noise(0.01) {}
+              initDz2Noise(0.01), initDz3Noise(0.01),
+              observationLostTimeoutSec(2.0) {}
     };
 
     OutpostESEKF(std::shared_ptr<RobotTfTree> tf_tree,
@@ -61,6 +63,24 @@ public:
     void reset();
     void update(const std::vector<std::vector<cv::Point2f>>& points_2d_list, const TimePoint& t);
     void predict(const TimePoint& t);
+
+    /**
+     * @brief 统一帧处理：自动完成观测超时重置 / 初始化 / 更新 / 仅预测。
+     *
+     * 封装原 ArmorPipeline::processStage5 中的分派逻辑（reset / init / update /
+     * predict 的自动选择），调用方只需传入本帧的全部观测与时间戳：
+     *  - 观测缺失（all_image_points 为空）：若已初始化则仅 predict 推进运动模型；
+     *  - 连续观测丢失超过 observationLostTimeoutSec：reset 并重新进入未初始化状态；
+     *  - 未初始化且有观测：以首个观测 init（所需位姿在 init 内部解算）；
+     *  - 已初始化且有观测：观测截断到模型个数后 update。
+     * 超时计时状态（last_observation_time / has_observation_time）与初始化标志
+     * 均为滤波器内部状态，随 reset() 一并复位。
+     * @param all_image_points 本帧全部 2D 关键点观测列表（可为空）
+     * @param t 本帧时间戳
+     * @return 处理结束后滤波器是否处于已初始化状态
+     */
+    bool processFrame(const std::vector<std::vector<cv::Point2f>>& all_image_points,
+                      const TimePoint& t);
 
     std::vector<cv::Point3f> getWorldPoints() const;
 
@@ -147,6 +167,12 @@ private:
     bool               dz2_initialized_;
     bool               dz3_initialized_;
     TimePoint          last_time_;
+
+    // processFrame 统一帧处理维护的跨帧状态（随 reset() 一并复位）：
+    bool               initialized_;            // 滤波器是否已初始化
+    TimePoint          last_observation_time_;  // 最近一次观测时刻（观测缺失时推进超时判断）
+    bool               has_observation_time_;   // 是否收到过至少一次观测
+    double             observation_lost_timeout_; // 观测丢失重置阈值（秒，取自 Params）
 
     Eigen::Matrix<double, 9, 9> P_;
 

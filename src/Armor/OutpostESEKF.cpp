@@ -20,6 +20,9 @@ OutpostESEKF::OutpostESEKF(std::shared_ptr<RobotTfTree> tf_tree,
       yaw_rate_(0.0),
       dz2_(0.0), dz3_(0.0),
       dz2_initialized_(false), dz3_initialized_(false),
+      initialized_(false),
+      has_observation_time_(false),
+      observation_lost_timeout_(params.observationLostTimeoutSec),
       position_noise_(params.positionNoise),
       rotation_noise_(params.rotationNoise),
       measurement_noise_(params.measurementNoise),
@@ -80,8 +83,44 @@ void OutpostESEKF::reset() {
     dz3_ = 0.0;
     dz2_initialized_ = false;
     dz3_initialized_ = false;
+    initialized_ = false;
+    last_observation_time_ = TimePoint();
+    has_observation_time_ = false;
     last_time_ = TimePoint();
     P_.setIdentity();
+}
+
+bool OutpostESEKF::processFrame(const std::vector<std::vector<cv::Point2f>>& all_image_points,
+                                const TimePoint& t) {
+    const bool has_obs = !all_image_points.empty();
+
+    // ── 观测丢失计时：连续超过阈值未观测到目标则重置 ──
+    if (has_obs) {
+        last_observation_time_ = t;
+        has_observation_time_ = true;
+    }
+    if (has_observation_time_ &&
+        std::chrono::duration<double>(t - last_observation_time_).count() > observation_lost_timeout_) {
+        reset();   // 复位后初始化标志 / 观测计时均为 false，下方按未初始化处理
+    }
+
+    // ── 初始化 / 更新 / 仅预测 ──
+    if (!initialized_) {
+        // 初始化：传入首个观测的图像关键点，位姿信息（PnP + 世界系转换）在 init 内部计算
+        if (has_obs)
+            initialized_ = init(all_image_points[0], t);
+    } else {
+        if (has_obs) {
+            // 更新时观测截断到 EKF 支持的最大观测数（3D 模型个数，即 3 个装甲面）
+            const size_t n = std::min(all_image_points.size(), points_3d_list_.size());
+            std::vector<std::vector<cv::Point2f>> obs_points(
+                all_image_points.begin(), all_image_points.begin() + n);
+            update(obs_points, t);
+        } else {
+            predict(t);   // 无观测，仅推进运动模型
+        }
+    }
+    return initialized_;
 }
 
 void OutpostESEKF::update(const std::vector<std::vector<cv::Point2f>>& points_2d_list,

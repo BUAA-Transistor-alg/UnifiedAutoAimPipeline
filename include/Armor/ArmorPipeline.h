@@ -7,9 +7,10 @@
 //   4. PnP + 坐标转换  — 每物体按装甲板种类（类别 label 0~8）分类：solvePnP + world
 //                        转换 + 重投影；结果按类别打包存入 vector<CategoryData>
 //                        （索引 = 类别，含该类别观测关键点与 world_pos/world_euler）
-//   5. OutpostESEKF           — 误差状态卡尔曼滤波（初始化 / update / predict / 观测超时重置）；
-//                               初始化传入 label 6 首个装甲板的图像关键点（位姿在 init
-//                               内部解算），观测仅使用 label 6 类别的关键点
+//   5. OutpostESEKF           — 误差状态卡尔曼滤波；本阶段仅把 label 6（装甲板）
+//                               类别的观测关键点与时间戳交给 OutpostESEKF::processFrame，
+//                               由其统一完成观测超时重置 / 初始化 / update / 仅预测
+//                               （初始化位姿在 init 内部解算，观测截断亦在其内部处理）
 //
 // 弹道解算、控制序列生成与可视化均已移出流水线，由输出模式（common/Output/）
 // 负责；本流水线只输出感知结果（PipelineResult::armor）。
@@ -205,12 +206,9 @@ private:
     struct Stage5Ctx {
         std::shared_ptr<RobotTfTree> tree;
         std::shared_ptr<CameraProjection> camera_proj;
-        std::unique_ptr<OutpostESEKF> esekf;
-        bool esekf_initialized = false;
-        std::chrono::steady_clock::time_point last_observation_time;
-        bool has_observation_time = false;
+        std::unique_ptr<OutpostESEKF> esekf;   // 初始化标志 / 观测计时为滤波器内部状态
         explicit Stage5Ctx(const RobotConfig::CameraParams& camera,
-                           const RobotConfig::ArmorParams::EsekfParams& esekf_params);
+                           const RobotConfig::ArmorParams& armor);
     } s5_;
 
     // ==================== PipelineStage 实例 ====================
