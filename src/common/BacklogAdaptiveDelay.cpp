@@ -12,7 +12,7 @@
 #include <chrono>
 
 // 构造：直接信任传入的 Config。参数合法性（目标非负、非负性、增益非负）已由
-// RobotConfig::load（src/common/RobotConfig.cpp）从 config.yaml 校验，此处不设
+// RobotConfig::load（src/common/RobotConfig.cpp）从机器配置文件校验，此处不设
 // 默认值、不做静默修正。
 BacklogAdaptiveDelay::BacklogAdaptiveDelay(const Config& config) : cfg_(config) {}
 

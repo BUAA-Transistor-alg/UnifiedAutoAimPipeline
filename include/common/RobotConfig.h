@@ -1,13 +1,19 @@
-// RobotConfig.h — 全局参数配置（从项目根目录 config/config.yaml 读取）
+// RobotConfig.h — 全局参数配置（机器配置文件，config/robots/*.yaml）
 //
-// ⚠ 重要约定（给后续修改者）：config.yaml 中的所有参数均为必填，本文件及
+// config 读取规则（v2）：
+//   config/selector.yaml          —— 机器配置选择器（仅含 active_config 一个条目）
+//   config/robots/<active_config>.yaml —— 当前机器的完整参数（如 Infantry1.yaml）
+// RobotConfig::instance() 先读选择器再加载对应机器配置文件；切换机器只需修改
+// selector.yaml 的 active_config，无需改代码或重新编译。
+//
+// ⚠ 重要约定（给后续修改者）：机器配置文件中的所有参数均为必填，本文件及
 //   RobotConfig.cpp 中不设任何默认值/回退值——缺段或缺字段时 RobotConfig::load
 //   直接抛异常退出，绝不静默采用默认值。新增配置项时必须同步：
-//   1) 在 config/config.yaml 对应段中添加字段并写明含义；
+//   1) 在 config/robots/<active_config>.yaml 对应段中添加字段并写明含义；
 //   2) 在 RobotConfig.h 对应结构体中添加成员（无默认初始化）；
 //   3) 在 src/common/RobotConfig.cpp 中通过 requireScalar 等读取。
 //
-// config.yaml 顶层分为三个大类：
+// 机器配置文件顶层分为三个大类：
 //   - common      ：两个流水线共用的参数（tf 偏移 / 相机内参 / 弹道 / MPC / 输入控制器 /
 //                    min_delay_seconds 等）
 //   - armor     ：Armor 流水线独占参数（推理模型 / 批量 / 观测丢失超时）
@@ -38,7 +44,7 @@ public:
     };
 
     // 相机参数（分辨率 + 内参 + 畸变；相机模式额外含 IP/曝光/增益/extra_info_delay）
-    // ⚠ 给后续修改者：本结构体所有字段均无默认值，必须由 config.yaml 提供：
+    // ⚠ 给后续修改者：本结构体所有字段均无默认值，必须由机器配置文件提供：
     //   - 相机模式（common.input_mode.camera_mode）必填 device_ip / net_ip /
     //     exposure / gain / extra_info_delay；
     //   - 视频/交互模式（common.input_mode.video_mode）必填 test_max_fps；
@@ -201,7 +207,7 @@ public:
         // 积压总数，以 targetBacklog 为目标做 PI 直接输出
         // （extra_delay = gainP*e + ∫gainI*e·dt，抗饱和，无 EMA、无速率上限），
         // 得到取帧线程的额外延迟。小量级增益下稳态无极限环震荡。
-        // ⚠ 给后续修改者：本结构体所有字段均无默认值，必须由 config.yaml 的
+        // ⚠ 给后续修改者：本结构体所有字段均无默认值，必须由机器配置文件的
         //   common.backlog_adaptive_delay 段提供（缺段/缺字段时 RobotConfig::load
         //   直接抛异常退出），解析见 src/common/RobotConfig.cpp，取值校验也在那里。
         struct BacklogAdaptiveDelayParams {
@@ -220,7 +226,7 @@ public:
         double       minDelaySeconds;           // 两个流水线共用的提取帧最小延迟（秒）
 
         // 录制参数（必填段，config: common.recording；--record 开启录制时生效）
-        // ⚠ 无默认值：output_dir / min_free_space_mb 必须由 config.yaml 提供。
+        // ⚠ 无默认值：output_dir / min_free_space_mb 必须由机器配置文件提供。
         struct RecordingParams {
             std::string outputDir;      // 录制输出目录（相对项目根目录或以 / 开头为绝对路径）
             int64_t minFreeSpaceBytes;  // 剩余空间阈值（字节，低于该值停止写入；
@@ -236,7 +242,8 @@ public:
     // 从指定 yaml 文件加载配置；文件缺失或格式错误抛出 std::runtime_error。
     static RobotConfig load(const std::string& yamlPath);
 
-    // 懒加载单例：首次调用时读取 PathResolver::resolvePath("config/config.yaml")。
+    // 懒加载单例：首次调用时经机器配置选择器 config/selector.yaml 定位并读取
+    // 当前机器配置文件（config/robots/<active_config>.yaml）。
     static RobotConfig& instance();
 };
 

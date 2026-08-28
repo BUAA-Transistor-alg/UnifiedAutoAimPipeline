@@ -1,0 +1,15 @@
+# config/selector.yaml — 机器配置选择器
+#
+# 指定当前使用 config/robots/ 目录下哪一台机器的配置文件（本文件仅有这一个条目）。
+# 切换机器（如 Infantry1 → Infantry2）时只需修改 active_config 为对应文件名
+# （不含 .yaml 后缀），无需改代码、无需重新编译，重启程序即生效。
+#
+# 读取规则（v2）：
+#   1) C++：RobotConfig::instance() 先读本选择器，再加载
+#      config/robots/<active_config>.yaml（见 src/common/RobotConfig.cpp）；
+#   2) Python：path_resolver.py 的 resolve_machine_config_path() 与 C++ 保持一致，
+#      供 launch_all.py / analyze_record.py 使用。
+#
+# 以下几个选项供快速复制
+# huhu233PC Infantry1 Infantry1 
+active_config: huhu233PC

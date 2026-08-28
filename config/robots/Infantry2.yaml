@@ -1,12 +1,4 @@
 # =============================================================
-# 全局参数配置（项目根目录 config/config.yaml）
-# 顶层分为三个大类：
-#   - common      ：两个流水线（Armor / PowerRune）共用的参数
-#   - armor     ：Armor 流水线独占参数
-#   - power_rune  ：PowerRune 流水线独占参数
-# 相对路径（model_path 等）以项目根目录为基准，经 PathResolver 解析。
-# 修改后无需重新编译，重启程序即生效。
-#
 # ⚠ 重要约定（给后续修改者）：本文件所有参数均为必填，C++ 代码（RobotConfig.h /
 #   RobotConfig.cpp）中不设任何默认值——缺段或缺字段时程序启动直接报错退出，
 #   绝不静默采用默认值。新增/删除配置项时必须同步修改 include/common/RobotConfig.h

@@ -8,7 +8,7 @@
 #include "common/RobotConfig.h"
 
 GimbalSolver::GimbalSolver() : tree_(std::make_shared<RobotTfTree>()) {
-    // 偏移 / 弹丸 / 搜索参数均来自 RobotConfig（config/config.yaml）
+    // 偏移 / 弹丸 / 搜索参数均来自 RobotConfig（机器配置文件）
     const RobotConfig& cfg = RobotConfig::instance();
     ballistic_ = std::make_shared<BallisticSolver>(
         cfg.common.gimbal.bulletDiameter, cfg.common.gimbal.bulletMass, cfg.common.gimbal.integrationStep);

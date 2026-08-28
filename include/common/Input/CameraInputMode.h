@@ -20,7 +20,7 @@
  * - 时间戳由 Camera::getLatestFrame 在成功取帧时刻打上（steady_clock）；
  * - extra_info 来自「延迟状态队列」：后台线程持续调用 rc.getState()（~1kHz），
  *   把采样时刻与对应 ExtraInputInfo 压入队列，并保持队头数据 = 相对当前时刻
- *   extra_info_delay 前的数据（extra_info_delay 来自 config.yaml
+ *   extra_info_delay 前的数据（extra_info_delay 来自机器配置文件
  *   common.input_mode.camera_mode.extra_info_delay，必填；0.0 = 最新状态），且至少保留一个数据；
  *   成功取帧时返回队头数据（该帧 + 时间戳 + 延迟对齐的 tf 状态三者对应）；
  *   底盘 xyz 填 0；
@@ -53,7 +53,7 @@ private:
     Camera& camera_;
     RobotController& rc_;
 
-    double extra_info_delay_ = 0.0;          // 秒，来自 config.yaml common.input_mode.camera_mode.extra_info_delay
+    double extra_info_delay_ = 0.0;          // 秒，来自机器配置文件 common.input_mode.camera_mode.extra_info_delay
     std::thread state_thread_;               // 后台采样线程
     std::atomic<bool> state_thread_exit_{false};
     std::deque<DelayedState> state_queue_;   // 时间升序；队头为相对当前时刻 delay 前的数据

@@ -21,8 +21,8 @@ struct PoseDetection {
 namespace PowerRune {
 
 // ---- 共享参数 ----
-// 输入分辨率 INPUT_WIDTH × INPUT_HEIGHT 不再硬编码为 512×512：由 config.yaml
-// 的 power_rune.inference.resolution 提供（见 PowerRunePipeline 构造）。
+// 输入分辨率 INPUT_WIDTH × INPUT_HEIGHT 不再硬编码为 512×512：由机器配置文件
+// （config/robots/*.yaml）的 power_rune.inference.resolution 提供（见 PowerRunePipeline 构造）。
 constexpr int MAX_DET       = 300;
 constexpr int NUM_KEYPOINTS = 32;
 constexpr int NUM_CLASSES   = 8;   // 类别数（当前模型 8 分类）

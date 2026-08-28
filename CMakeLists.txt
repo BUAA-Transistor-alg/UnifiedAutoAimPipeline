@@ -22,7 +22,7 @@ find_package(Threads REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Ceres REQUIRED)
 
-# yaml-cpp（config/config.yaml 解析）
+# yaml-cpp（config/robots/*.yaml 机器配置文件解析）
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(YAMLCPP REQUIRED yaml-cpp)
 

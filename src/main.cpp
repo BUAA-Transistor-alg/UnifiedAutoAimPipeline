@@ -89,7 +89,7 @@ static void printUsage(const char* prog) {
               << "  -i, --interactive               交互式图片输入 (等价 --input interactive)\n"
               << "  -r, --record                    开启录制：每帧保存为 MKV 视频 + 时间戳 + 完整\n"
               << "                                   extra_info txt（输出目录与剩余空间阈值见\n"
-              << "                                   config/config.yaml 的 common.recording）\n"
+              << "                                   机器配置文件（config/robots/*.yaml）的 common.recording）\n"
               << "      --skip-unaccepted           回放视频时跳过录制中未成功加入流水线的帧\n"
               << "                                   （需 -e 指定 v2 格式的 extra info 文件）\n"
               << "  -h, --help                      显示帮助\n"

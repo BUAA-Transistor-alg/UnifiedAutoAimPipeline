@@ -1,0 +1,240 @@
+# =============================================================
+# ⚠ 重要约定（给后续修改者）：本文件所有参数均为必填，C++ 代码（RobotConfig.h /
+#   RobotConfig.cpp）中不设任何默认值——缺段或缺字段时程序启动直接报错退出，
+#   绝不静默采用默认值。新增/删除配置项时必须同步修改 include/common/RobotConfig.h
+#   与 src/common/RobotConfig.cpp。
+# =============================================================
+
+# ════════════════════════════════════════════════════════════
+# common — 两个流水线共用参数
+# ════════════════════════════════════════════════════════════
+common:
+  # 两个流水线共用的提取帧最小延迟（秒，输出队列帧龄须达到该值后 tryPopFrame 才返回）
+  min_delay_seconds: 0.1
+
+  # ── 队列积压自适应额外延迟（可选功能，BacklogAdaptiveDelay，v6 PID 式 PI）──
+  # 开启后：处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列的积压
+  # 总数（input + inter0..inter3），记为 non_output_backlog，据此自适应调整取帧
+  # 线程（输入线程）的额外延迟，缓解流水线积压/丢帧。控制结构为
+  # 「PI 直接输出 + 抗饱和」
+  # 各字段含义（给后续修改者，改动后仅需重启程序，无需重新编译）：
+  #   enabled                ：功能总开关（true 开启 / false 关闭）
+  #   target_backlog         ：目标积压（设定点，须 >= 1）
+  #   max_extra_delay_seconds：额外延迟上限（秒，须 >= 0）
+  #   gain_p                 ：PI 比例增益（秒/单位积压，须 >= 0）：越大校正越
+  #                            快但越容易抖。
+  #   gain_i                 ：PI 积分增益（秒/单位积压/秒，须 >= 0）：决定
+  #                            收敛到平衡点的速度（稳态延迟由它维持）。
+  backlog_adaptive_delay:
+    enabled: true                # 功能总开关
+    target_backlog: 3            # 目标积压（设定点，建议 3）
+    max_extra_delay_seconds: 0.05 # 额外延迟上限（秒）
+    gain_p: 0.001             # PI 比例增益（秒/单位积压）
+    gain_i: 0.01             # PI 积分增益（秒/单位积压/秒）
+
+  # ── 推理进程启动策略（bool）──
+  #   false：启动时由 launch_all.py 启动全部推理进程
+  #     （armor_infer_process / power_rune_infer_process），无推理任务时在后台
+  #     闲置（阻塞等待共享内存请求，不占 CPU）；
+  #   true：仅启动当前流水线所需的推理进程（由主程序按需启动），切换流水线时
+  #     立即关闭所有不再需要的进程（释放其 GPU 显存），再启动新流水线所需进程
+  #     （新进程需重新编译模型，就绪前该流水线推理返回空结果，界面保持响应）。
+  infer_process_lazy: true
+
+  # ── 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择 ──
+  input_mode:
+    # camera_mode：--input camera（实机相机）。
+    camera_mode:
+      # 相机输入模式（CameraInputMode）extra_info 延迟（秒）：
+      # 后台线程持续采样 RobotController::getState() 并维护延迟队列，返回给流水线的
+      # extra_info 为相对当前时刻 extra_info_delay 前的队头数据（0.0 = 最新状态）
+      extra_info_delay: 0.016527
+      device_ip: "192.168.10.10"    # 相机设备 IP
+      net_ip: "192.168.10.25"       # 本机网口 IP
+      exposure: 2000.0              # 曝光时间（微秒）
+      gain: 16.0                    # 增益
+      resolution:
+        width: 1280                 # 图像宽（像素）
+        height: 1080                # 图像高（像素）
+      # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
+      camera_matrix: # 相机内参矩阵
+        [1.31275979e+03, 0.00000000e+00, 6.47480874e+02,
+         0.00000000e+00, 1.31284175e+03, 5.14705128e+02,
+         0.00000000e+00, 0.00000000e+00, 1.00000000e+00]
+      dist_coeffs: [-0.08239928, 0.22293589, -0.00081181, 0.00018714, -0.21702634] # 畸变系数
+
+    # video_mode：--input video / interactive（录制视频 / 交互图片，无网络/曝光参数）。
+    video_mode:
+      # 测试最大帧率：true 时 VideoInputMode 的 getFrameDelay() 返回 0
+      # （不做按视频帧率的节流），以测得视频输入 + 流水线的最大帧数/FPS。
+      test_max_fps: false
+      resolution:
+        width: 1920                 # 图像宽（像素）
+        height: 1080                # 图像高（像素）
+      # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
+      camera_matrix: [650.0, 0.0, 960.0,
+                      0.0, 650.0, 540.0,
+                      0.0, 0.0, 1.0]
+      # 畸变系数（k1, k2, p1, p2, k3）
+      dist_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
+
+  # ── 录制参数（--record 开启录制时生效）──
+  recording:
+    output_dir: "recordings"        # 录制输出目录（相对项目根目录；以 / 开头为绝对路径）
+    min_free_space_mb: 16384         # 剩余空间低于该值（MB）时停止写入（0 = 不检查）
+
+  # ── 变换树各节点相对其父节点的固定偏移（单位：米）──
+  # tf: # 小步参数
+  #   yaw_joint_z_offset: 0.32      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
+  #   pitch_joint_y_offset: 0.0     # pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）
+  #   imu_offset_x: 0.0             # imu 相对 head 的 x 偏移 // head 节点实际上为 picth轴 和 一个垂直于picth轴且经过yaw轴的面 的交点位置
+  #   imu_offset_y: -0.03           # imu 相对 head 的 y 偏移
+  #   imu_offset_z: 0.13            # imu 相对 head 的 z 偏移
+  #   camera_offset_x: 0.0          # camera 相对 head 的 x 偏移
+  #   camera_offset_y: 0.0          # camera 相对 head 的 y 偏移
+  #   camera_offset_z: 0.1          # camera 相对 head 的 z 偏移
+  #   muzzle_offset_x: 0.0          # muzzle 相对 head 的 x 偏移
+  #   muzzle_offset_y: 0.15         # muzzle 相对 head 的 y 偏移
+  #   muzzle_offset_z: 0.0          # muzzle 相对 head 的 z 偏移
+  tf: # 大步参数 # 粗略估计
+    yaw_joint_z_offset: 0.40      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
+    pitch_joint_y_offset: 0.01     # pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）
+    imu_offset_x: 0.0             # imu 相对 head 的 x 偏移 // head 节点实际上为 picth轴 和 一个垂直于picth轴且经过yaw轴的面 的交点位置
+    imu_offset_y: 0.02           # imu 相对 head 的 y 偏移
+    imu_offset_z: 0.10            # imu 相对 head 的 z 偏移
+    camera_offset_x: 0.05          # camera 相对 head 的 x 偏移
+    camera_offset_y: 0.15          # camera 相对 head 的 y 偏移
+    camera_offset_z: 0.05          # camera 相对 head 的 z 偏移
+    muzzle_offset_x: 0.0          # muzzle 相对 head 的 x 偏移
+    muzzle_offset_y: 0.20         # muzzle 相对 head 的 y 偏移
+    muzzle_offset_z: 0.02          # muzzle 相对 head 的 z 偏移
+
+  # ── 云台解算参数 ──
+  gimbal:
+    bullet_diameter: 0.017       # 弹丸直径（米）
+    bullet_mass: 0.0032          # 弹丸质量（kg）
+    bullet_velocity: 20.0        # 默认弹丸初速（m/s，可在运行时通过 setBulletVelocity 覆盖）
+    integration_step: 0.01       # 弹道积分步长（秒）
+    distance_threshold: 0.05     # 弹道最近点距离阈值（米），最短距离超过则解算失效
+    distance_iterate_threshold: 0.01  # 迭代触发阈值（米）：首轮最近距离大于该值则触发 yaw-pitch 迭代优化；最终距离小于 distance_threshold 才算成功
+    stop_z: -3.0                 # 弹道计算截止高度（world 系，米），弹丸低于该高度即停止积分
+    pitch_min: -0.5236 # -30°             # pitch 搜索下界（弧度）
+    pitch_max: 0.7854 # 45°               # pitch 搜索上界（弧度）
+    pitch_search_step: 0.01745 # 1°      # pitch 粗搜索步长（弧度）
+
+  # ── 预测弹道解算参数 ──
+  predicted_ballistic:
+    extra_predict_time: 0.0      # 额外预测时间（秒），叠加在弹道飞行时间之上 # 待调
+    max_iterations: 5             # 飞行时间迭代上限
+    time_error_tolerance: 0.005    # 迭代提前停止的时间误差容差（秒）
+
+  # ── RobotController（TorqueController 子模组）构造参数 ──
+  robot_controller:
+    sequence_mode: true         # 序列输入模式（true=序列 set / false=单目标 set）
+    dt_control: 0.01            # 控制周期（秒，100Hz）
+    mpc_pred_n: 20              # MPC 预测步数
+    J: 0.024986                 # yaw 轴转动惯量
+    tau_c: 0.122514             # 库仑摩擦
+    b: 0.025648                   # 粘滞摩擦系数
+    tau_d: 0.0                  # 常数扰动
+    max_torque: 1.0             # 最大力矩（N·m）
+    max_torque_rate: 40.0       # 最大力矩变化率（N·m/s）
+    Q: 5.0                      # MPC 状态代价
+    R: 0.01                     # MPC 控制代价
+    Rd: 0.1                     # MPC 控制变化率代价
+    max_iter: 30                # MPC 迭代上限
+    integral_gain: 1.0         # yaw 力矩积分补偿比例系数
+    # ── MCU 数据线性映射标定参数（McuDataPreprocessor::LinearParams，当前标定默认值）──
+    send_pitch_scale: 20.523245    # imu_euler_pitch → pitch_target_angle（发送）
+    send_pitch_offset: 0.475049    # 发送偏移
+    recv_pitch_scale: 1.122635     # mcu_pitch_angle → imu_euler_pitch（接收）
+    recv_pitch_offset: -0.170755   # 接收偏移
+
+  # ── 预测序列参数（序列输入模式：预测序列生成与消费）──
+  predict_sequence:
+    prediction_points: 5             # M：预测点数（实际精确弹道解算的点数）
+    interpolation_refine: 5          # K：插值细化倍数（相邻实际计算点之间细分的返回点间隔数）
+                                     # 原划分序列点数 = (M-1)*K+1 = 21，间隔恰为 dt_control，
+                                     # 首末点必为实际计算点
+    exact_lead_points: 3             # n：前导精确点数——在序列最前面拼接 n 个逐点精确弹道
+                                     # 解算的前导点（不用插值），0 = 关闭（行为与原版一致）。
+                                     # 返回序列 = [前导精确点] + [原划分序列]，
+                                     # 总返回点数 = (M-1)*K+1+n，精确解算点共 M+n 个，
+                                     # 时间间隔全程均匀为 dt_control。
+                                     # 原划分首段（紧邻窗口 n+1..n+K-1）需要外推时参考点改用
+                                     # items[n-1]（须与段左端点同目标，否则复制左端点），
+                                     # 其余段仍用原规则。取值范围 n >= 0。
+                                     # 例：M=6、K=4、n=3 → 索引 0,1,2 为前导精确点；
+                                     # 索引 3 起为原划分序列（实际点 3,7,11,15,19,23，共 24 点）。
+    pitch_seq_lead: 5               # m：pitch 序列提前数（必须小于总返回点数 (M-1)*K+1+n），pitch 序列截取第 m 个之后
+    fire_seq_lead: 5                 # o：fire 序列提前数，fire 序列截取第 o 个之后
+    pitch_bias: 0.0             # pitch 轴偏置（弧度），输出时叠加
+    yaw_bias: 0.012                    # yaw 轴偏置（弧度），输出时叠加
+    fire_angle_lower_limit: 0.0  # 0° # fire 判定角度阈值下限（弧度）
+    fire_angle_length: 0.05          # fire 判定弧长（米）：动态阈值 = length / 目标与 yaw 原点 xy 距离
+
+# ════════════════════════════════════════════════════════════
+# armor — Armor 流水线独占参数
+# ════════════════════════════════════════════════════════════
+armor:
+  inference:
+    model_path: "Model/Armor/0526_dynamic.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
+    device: "GPU"                          # 推理设备（CPU / GPU / ...）
+    max_batch: 1                           # 推理最大批量（动态 batch 1..max_batch；值越大编译/预热越多，须 ≤ 模型可支持上限）
+    shm_key: 23301                         # 共享内存 Key（与 armor_infer_process 通信，两进程须一致）
+    resolution:                            # YOLO 推理输入分辨率（像素），须与模型输入一致
+      width: 640                           # 输入图像宽（像素）
+      height: 640                          # 输入图像高（像素）
+  observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 OutpostESEKF（秒）
+
+  # ── 流水线缓冲队列与批量参数（armor.pipeline）──
+  # 缓冲队列长度 + 可批处理阶段（1 预处理 / 2 推理 / 3 后处理）的最大批量。
+  # 阶段4（PnP）/ 阶段5（OutpostESEKF）为单帧处理，批量固定为 1。
+  pipeline:
+    # 6 个缓冲队列最大长度（[输入, 阶段间×4, 输出]）；队列满时新帧直接丢弃。
+    queue_max_sizes: [10, 10, 10, 10, 10, 10]
+    preprocess_batch: 4    # 阶段1 预处理最大批量
+    inference_batch: 1     # 阶段2 推理最大批量（动态批量 1..inference_batch；
+                           #   须 ≤ inference.max_batch，且 ≤ 共享内存容量 4）
+    postprocess_batch: 4   # 阶段3 后处理最大批量
+
+  # ── OutpostESEKF 误差状态扩展卡尔曼滤波参数 ──
+  outpost_esekf:
+    position_noise: 100.0         # 位置过程噪声（Q 位置块）
+    rotation_noise: 10.0          # 姿态过程噪声（Q 姿态块）
+    measurement_noise: 40.0      # 观测噪声（重投影误差 R）
+    orientation_z_reg_noise: 0.0001  # 姿态 z 轴正则化观测噪声
+    dz_noise: 0.1                 # dz 偏移过程噪声（Q(7,7)/Q(8,8)）
+    dz_search_range: 0.5          # dz 黄金分割搜索范围（米）
+    dz_limit: 0.3                 # dz 偏移限幅（米，|dz| 上限）
+    init_position_noise: 1.0      # 初始化位置噪声系数（P 位置块）
+    init_orientation_noise: 0.1   # 初始化姿态噪声系数（P 姿态块）
+    init_yaw_rate_noise: 1.0      # 初始化旋转速度不确定性（P(6,6)）
+    init_dz2_noise: 0.01          # 初始化 dz2 不确定性（P(7,7)）
+    init_dz3_noise: 0.01          # 初始化 dz3 不确定性（P(8,8)）
+
+# ════════════════════════════════════════════════════════════
+# power_rune — PowerRune 流水线独占参数
+# ════════════════════════════════════════════════════════════
+power_rune:
+  inference:
+    model_path: "Model/PowerRune/power_rune.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
+    device: "GPU"                                       # 推理设备（CPU / GPU / ...）
+    max_batch: 1                # 推理最大批量
+    shm_key: 23302              # 共享内存 Key（与 power_rune_infer_process 通信，两进程须一致）
+    resolution:                                         # YOLO 推理输入分辨率（像素），须与模型输入一致
+      width: 512                                        # 输入图像宽（像素）
+      height: 512                                       # 输入图像高（像素）
+    manual_nms: false            # true: 模型为无 NMS 的原始输出，需手动 NMS；false: NMS 已内嵌
+    conf_threshold: 0.5         # 置信度阈值
+
+  # ── 流水线缓冲队列与批量参数（power_rune.pipeline）──
+  # 缓冲队列长度 + 可批处理阶段（1 预处理 / 2 推理 / 3 后处理）的最大批量。
+  # 阶段4（位姿解算）/ 阶段5（滤波+预测）为单帧处理，批量固定为 1。
+  pipeline:
+    # 6 个缓冲队列最大长度（[输入, 阶段间×4, 输出]）；队列满时新帧直接丢弃。
+    queue_max_sizes: [10, 10, 10, 10, 10, 10]
+    preprocess_batch: 4    # 阶段1 预处理最大批量
+    inference_batch: 1     # 阶段2 推理最大批量（动态批量 1..inference_batch；
+                           #   须 ≤ inference.max_batch，且 ≤ 共享内存容量 4）
+    postprocess_batch: 4   # 阶段3 后处理最大批量

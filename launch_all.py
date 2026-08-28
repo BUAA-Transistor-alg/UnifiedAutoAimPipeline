@@ -32,7 +32,11 @@ import time
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 BIN = os.path.join(ROOT, "bin")
-CONFIG = os.path.join(ROOT, "config", "config.yaml")
+
+# config 读取规则 v2：机器配置选择器 config/selector.yaml → 机器配置文件
+# config/robots/<active_config>.yaml（与 C++ RobotConfig::instance() 一致）
+sys.path.insert(0, os.path.join(ROOT, "python"))
+from path_resolver import resolve_machine_config_path  # noqa: E402
 
 INFER_PROCS = [
     ("armor_infer_process", "armor"),
@@ -52,11 +56,24 @@ def _on_signal(signum, frame):
     g_stop = True
 
 
-def read_shm_keys():
-    """从 config/config.yaml 读取所有 shm_key（armor / power_rune 各一个）。"""
-    keys = []
+def get_config_path():
+    """返回当前机器配置文件路径（config/selector.yaml → config/robots/<active_config>.yaml）；
+    解析失败时打印错误并返回 None（与旧版读取失败行为一致）。"""
     try:
-        with open(CONFIG, "r", encoding="utf-8") as f:
+        return resolve_machine_config_path()
+    except Exception as e:
+        print(f"[launch_all] 解析机器配置失败: {e}", file=sys.stderr)
+        return None
+
+
+def read_shm_keys():
+    """从机器配置文件读取所有 shm_key（armor / power_rune 各一个）。"""
+    keys = []
+    cfg = get_config_path()
+    if not cfg:
+        return keys
+    try:
+        with open(cfg, "r", encoding="utf-8") as f:
             text = f.read()
         keys = [int(k) for k in re.findall(r"^\s*shm_key:\s*(\d+)", text, re.MULTILINE)]
     except Exception as e:
@@ -65,10 +82,13 @@ def read_shm_keys():
 
 
 def read_lazy_infer_mode():
-    """读取 config common.infer_process_lazy（true 时推理进程由主程序按需启停，
+    """读取机器配置文件 common.infer_process_lazy（true 时推理进程由主程序按需启停，
     本脚本不再预启动推理进程）。"""
+    cfg = get_config_path()
+    if not cfg:
+        return False
     try:
-        with open(CONFIG, "r", encoding="utf-8") as f:
+        with open(cfg, "r", encoding="utf-8") as f:
             text = f.read()
         m = re.search(r"^\s*infer_process_lazy:\s*(\w+)", text, re.MULTILINE)
         if m:

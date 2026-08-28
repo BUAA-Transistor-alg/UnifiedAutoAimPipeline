@@ -118,7 +118,7 @@ private:
     std::shared_ptr<RobotTfTree>     tree_;      // 内部专用坐标系树（偏移来自 RobotConfig）
     std::shared_ptr<BallisticSolver> ballistic_; // 弹道解算器（弹丸参数来自 RobotConfig）
     mutable TaskPool pool_;        // 线程池：并行加速 pitch 粗搜索评估（始终保持并行）
-    // 以下参数均在构造函数中从 RobotConfig（config/config.yaml）读取，代码中不写默认值
+    // 以下参数均在构造函数中从 RobotConfig（机器配置文件）读取，代码中不写默认值
     double bullet_velocity_;               // 默认弹丸初速（m/s）
     double distance_threshold_;            // 成功阈值（米）：最终最近距离不超过该值才算解算成功
     double distance_iterate_threshold_;    // 迭代触发阈值（米）：首轮距离大于该值则触发迭代优化

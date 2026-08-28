@@ -6,7 +6,8 @@
   对比棋盘格 PnP 欧拉角 yaw 与录制的 imu_euler_yaw，绘制同一张图上的两条曲线
   及误差曲线（结果图默认保存为 `<record_dir>/checkerboard_imu_yaw_comparison.png`）。
 - `path_resolver.py` — `include/common/PathResolver.h` 的 Python 翻译版
-  （独立文件，`analyze_record.py` 通过它定位项目根目录与 config/config.yaml）。
+  （独立文件，`analyze_record.py` 通过它定位项目根目录与机器配置文件
+  config/robots/<active_config>.yaml，选择规则见 config/selector.yaml）。
 
 ## 用法
 

@@ -46,8 +46,8 @@ std::vector<double> requireList(const YAML::Node& section, const std::string& ke
 }
 
 // 解析一套相机参数（common.input_mode.camera_mode / video_mode）。
-// ⚠ 不设任何默认值：每个模式段中的所有参数都必须显式出现在 config.yaml，
-//   缺字段即抛异常。
+// ⚠ 不设任何默认值：每个模式段中的所有参数都必须显式出现在机器配置文件
+//   （config/robots/*.yaml），缺字段即抛异常。
 void parseCameraParams(const YAML::Node& camNode, const std::string& name,
                        RobotConfig::CameraParams& out, bool cameraMode) {
     const YAML::Node& res = camNode["resolution"];
@@ -119,7 +119,8 @@ void parsePipelineParams(const YAML::Node& node, const std::string& name,
 } // namespace
 
 
-// ⚠ 给后续修改者：所有参数均无代码默认值，必须由 config.yaml 提供；
+// ⚠ 给后续修改者：所有参数均无代码默认值，必须由机器配置文件
+//   （config/robots/<active_config>.yaml）提供；
 //   缺段或缺字段直接抛异常（不静默采用默认值）。
 RobotConfig RobotConfig::load(const std::string& yamlPath) {
     YAML::Node root;
@@ -185,7 +186,7 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     //     为 µs；e 为积压总数与目标的差，无 EMA 平滑），钳位
     //     [0, max_extra_delay_seconds]（抗饱和，无速率上限）。稳态时积压
     //     收敛到 target_backlog，误差归零。
-    //   若要在 config.yaml 中新增本功能的参数，需同步修改
+    //   若要在机器配置文件中新增本功能的参数，需同步修改
     //   RobotConfig::BacklogAdaptiveDelayParams 与本段解析。
     const YAML::Node& bad = cm["backlog_adaptive_delay"];
     if (!bad || !bad.IsMap())
@@ -377,8 +378,43 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     return cfg;
 }
 
+// ── 机器配置路径解析（config 读取规则 v2）──
+//   1) 读取机器配置选择器 config/selector.yaml 的 active_config 条目；
+//   2) 返回 config/robots/<active_config>.yaml 的绝对路径。
+// 选择器缺失 / 条目缺失或非法时抛出 std::runtime_error。
+std::string resolveMachineConfigPath() {
+    const std::string selectorPath = PathResolver::resolvePath("config/selector.yaml");
+    YAML::Node selector;
+    try {
+        selector = YAML::LoadFile(selectorPath);
+    } catch (const YAML::Exception& e) {
+        throw std::runtime_error("RobotConfig: 无法解析机器配置选择器 '" + selectorPath +
+                                 "': " + e.what());
+    }
+    const YAML::Node& nameNode = selector["active_config"];
+    if (!nameNode || !nameNode.IsDefined()) {
+        throw std::runtime_error("RobotConfig: 机器配置选择器 '" + selectorPath +
+                                 "' 缺少 'active_config' 条目（应填写 config/robots/ 下"
+                                 "的配置文件名，不含 .yaml 后缀）");
+    }
+    std::string name;
+    try {
+        name = nameNode.as<std::string>();
+    } catch (const YAML::Exception& e) {
+        throw std::runtime_error("RobotConfig: 机器配置选择器 'active_config' 类型错误: " +
+                                 std::string(e.what()));
+    }
+    // 仅允许纯文件名（不含路径分隔符 / ..），避免越出 config/robots/ 目录
+    if (name.empty() || name.find('/') != std::string::npos ||
+        name.find('\\') != std::string::npos || name.find("..") != std::string::npos) {
+        throw std::runtime_error("RobotConfig: 机器配置选择器 'active_config' 非法: '" + name + "'");
+    }
+    return PathResolver::resolvePath("config/robots/" + name + ".yaml");
+}
+
 RobotConfig& RobotConfig::instance() {
-    // 懒加载：首次调用时自动读取项目根目录 config/config.yaml
-    static RobotConfig cfg = load(PathResolver::resolvePath("config/config.yaml"));
+    // 懒加载：首次调用时经机器配置选择器 config/selector.yaml 定位当前机器配置文件
+    // （config/robots/<active_config>.yaml），规则见 resolveMachineConfigPath()。
+    static RobotConfig cfg = load(resolveMachineConfigPath());
     return cfg;
 }

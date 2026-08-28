@@ -4,8 +4,8 @@
 #include "common/RobotConfig.h"
 
 RobotTfTree::RobotTfTree() {
-    // 构造时自动读取项目根目录 config/config.yaml（相对路径经 PathResolver 解析），
-    // 各节点偏移不再硬编码，修改配置文件即可调整。
+    // 构造时自动读取机器配置文件（config/robots/<active_config>.yaml，相对路径
+    // 经 PathResolver 解析），各节点偏移不再硬编码，修改配置文件即可调整。
     const RobotConfig& cfg = RobotConfig::instance();
     const RobotConfig::TfOffsets& o = cfg.common.tf;
 

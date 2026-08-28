@@ -47,7 +47,7 @@ public:
     };
 
     // gimbal：云台角度解算器（内部树需由调用方同步当前底盘位姿与 yaw/pitch 关节角）。
-    // 飞行时间迭代上限与时间误差容差直接从 RobotConfig（config/config.yaml 的
+    // 飞行时间迭代上限与时间误差容差直接从 RobotConfig（机器配置文件的
     // predicted_ballistic 配置段）读取，不在外部传入。
     explicit PredictedBallisticSolver(std::shared_ptr<GimbalSolver> gimbal);
 

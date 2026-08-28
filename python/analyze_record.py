@@ -9,7 +9,7 @@ analyze_record.py — 解析 Record 模式录制数据 + 视频，对比棋盘�
 
     <record_dir>   Record 模式输出会话目录（record_YYYYmmdd_HHMMSS），内含
                    video_*.mkv 与 frame_info_*.txt
-    --mode         config.yaml 中使用的相机参数段（camera_mode / video_mode，默认 camera）
+    --mode        机器配置文件中使用的相机参数段（camera_mode / video_mode，默认 camera）
     --precision    自动搜索 shift 的小数精度（默认 0.1，即按 0.1 帧步长细化）
     --show         额外调用 matplotlib 交互显示
     --output       结果图保存路径（默认 <record_dir>/checkerboard_imu_yaw_comparison.png）
@@ -34,8 +34,8 @@ analyze_record.py — 解析 Record 模式录制数据 + 视频，对比棋盘�
   5. 平均 dt：取最终公共段（计算范围）对应文本行内所有帧 dt 的均值；
      结果图标题与汇总输出中同时显示使用的最优 shift 与 shift × 平均 dt（时间量）。
 
-相机内参/畸变从 config/config.yaml 解析（经 python/path_resolver.py 的 Python 版
-PathResolver 定位项目根目录）。
+相机内参/畸变从机器配置文件解析（config/selector.yaml → config/robots/<active_config>.yaml，
+经 python/path_resolver.py 的 Python 版 PathResolver 定位项目根目录）。
 """
 
 import argparse
@@ -53,7 +53,7 @@ import yaml
 
 # 使脚本可直接运行（python3 python/analyze_record.py）也能被 import
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from path_resolver import resolve_path  # noqa: E402
+from path_resolver import resolve_machine_config_path  # noqa: E402
 
 # ==================== 棋盘格参数（与 dist.py 相同） ====================
 CHESSBOARD_SIZE = (11, 8)   # 棋盘格角点数目
@@ -80,10 +80,10 @@ def pnp_rvec_to_euler(rvec):
 
 
 def load_camera_params(mode):
-    """从 config/config.yaml 解析相机内参/畸变（mode: camera | video，对应配置段
+    """从机器配置文件解析相机内参/畸变（mode: camera | video，对应配置段
     common.input_mode.camera_mode / common.input_mode.video_mode）。"""
     section = f"{mode}_mode"
-    cfg_path = resolve_path("config/config.yaml")
+    cfg_path = resolve_machine_config_path()
     if not os.path.isfile(cfg_path):
         raise RuntimeError(f"找不到配置文件: {cfg_path}")
     with open(cfg_path, "r", encoding="utf-8") as f:
@@ -396,7 +396,7 @@ def main():
     parser = argparse.ArgumentParser(description="解析 Record 模式录制数据，对比棋盘格 PnP yaw 与 IMU yaw")
     parser.add_argument("record_dir", help="Record 会话目录（record_YYYYmmdd_HHMMSS，含 video_* 与 frame_info_*）")
     parser.add_argument("--mode", choices=["camera", "video"], default="camera",
-                        help="config.yaml 中使用的相机参数段（默认 camera_mode）")
+                        help="机器配置文件中使用的相机参数段（默认 camera_mode）")
     parser.add_argument("--precision", type=float, default=0.01,
                         help="自动搜索 shift 的小数精度（默认 0.01 帧）")
     parser.add_argument("--show", action="store_true", help="额外交互显示图像")

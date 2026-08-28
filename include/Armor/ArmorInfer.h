@@ -1,7 +1,7 @@
 // ArmorInfer.h — 装甲板检测推理封装（预处理/推理使用公共 InferCore，解码为 Armor 特有）
 //
-// 模型：输入 (bs, 3, H, W)，输出 (bs, num_anchors, 22)；输入分辨率由 config.yaml
-// 的 armor.inference.resolution 提供（当前模型 640×640 → 25200 anchors，
+// 模型：输入 (bs, 3, H, W)，输出 (bs, num_anchors, 22)；输入分辨率由机器配置文件
+// （config/robots/*.yaml）的 armor.inference.resolution 提供（当前模型 640×640 → 25200 anchors，
 // 512×512 → 16128，320×320 → 6300；anchor 数随分辨率变化，后处理按输出形状动态读取）：
 //   col 0-7    4 个关键点 xy（左上/左下/右下/右上）
 //   col 8      obj 置信度（需 sigmoid）
