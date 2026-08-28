@@ -285,6 +285,11 @@ void ArmorPipeline::processStage4(DataDeque& data)
     auto& world_eulers     = d->stage4.world_eulers;
     auto& reprojected      = d->stage4.reprojected_points;
 
+    // 按装甲板种类（类别 label 0~8）组织 stage4 数据：外层 vector 索引 = 类别，
+    // 每帧重置为 NUM_CLASSES 个槽位（槽内为默认值：空观测、初始化 PnP 未成功）
+    d->stage4.categories.clear();
+    d->stage4.categories.resize(ArmorDetect::NUM_CLASSES);
+
     for (size_t i = 0; i < objects.size(); ++i) {
         const auto& obj = objects[i];
 
@@ -295,8 +300,10 @@ void ArmorPipeline::processStage4(DataDeque& data)
             cv::Point2f(obj.landmarks[4], obj.landmarks[5]),  // 右下
             cv::Point2f(obj.landmarks[6], obj.landmarks[7])   // 右上
         };
-        // 所有物体的观测关键点都存入 stage4，供 OutpostESEKF 阶段使用
-        d->stage4.all_image_points.push_back(image_points);
+        // 按装甲板种类分类：该物体的观测与初始化 PnP 结果写入对应类别
+        // （obj.label 0~8）的槽位，供 OutpostESEKF 等下游阶段按类别使用
+        auto& cat = d->stage4.categories[obj.label];
+        cat.all_image_points.push_back(image_points);
 
         cv::Vec3f position_cam, euler_cam;
         bool pnp_ok = s4_.camera_proj->solvePnP_Cam(
@@ -321,8 +328,9 @@ void ArmorPipeline::processStage4(DataDeque& data)
         world_positions.push_back(world_pos);
         world_eulers.push_back(world_euler);
 
-        // 第 0 物体：初始化 PnP（面 0 模型），供 OutpostESEKF 阶段初始化使用
-        if (i == 0) {
+        // 各类别首个物体：初始化 PnP（面 0 模型），结果存入该类别的
+        // init_pnp_ok/init_pos/init_R，供 OutpostESEKF 等阶段使用
+        if (!cat.init_pnp_ok) {
             cv::Vec3f position_c, euler_c;
             bool init_pnp_ok = s4_.camera_proj->solvePnP_Cam(
                 ArmorModel::OUTPOST_POINTS_3D_LIST[0], image_points,
@@ -332,9 +340,9 @@ void ArmorPipeline::processStage4(DataDeque& data)
                 cv::Vec3f pos_center = tree.transformPoint(RobotTfTree::CAMERA, RobotTfTree::WORLD, position_c);
                 cv::Vec3f euler_center = tree.transformEuler(RobotTfTree::CAMERA, RobotTfTree::WORLD, euler_c);
                 cv::Mat R_center = CoordinateTransform::eulerToRotationMatrix(euler_center);
-                d->stage4.init_pnp_ok = true;
-                d->stage4.init_pos    = pos_center;
-                d->stage4.init_R      = R_center;
+                cat.init_pnp_ok = true;
+                cat.init_pos    = pos_center;
+                cat.init_R      = R_center;
             }
         }
     }
@@ -356,8 +364,10 @@ void ArmorPipeline::processStage5(DataDeque& data)
     tree.setPitch((float)info.pitch_angle);
     tree.lockAndComputeCache();
 
-    // ── 观测丢失计时：连续超过阈值未观测到物体则重置 OutpostESEKF ──
-    const bool has_obs = !d->stage4.all_image_points.empty();
+    // ── 观测丢失计时：连续超过阈值未观测到目标则重置 OutpostESEKF ──
+    // 仅 label 6（装甲板）类别的观测算作 OutpostESEKF 的有效观测
+    const auto& armor_cat = d->stage4.categories[ArmorDetect::ARMOR_CLASS];
+    const bool has_obs = !armor_cat.all_image_points.empty();
     if (has_obs) {
         s5_.last_observation_time = ts;
         s5_.has_observation_time = true;
@@ -372,22 +382,24 @@ void ArmorPipeline::processStage5(DataDeque& data)
 
     // ── OutpostESEKF：初始化 / 更新 / 仅预测 ──
     if (!s5_.esekf_initialized) {
-        if (d->stage4.init_pnp_ok) {
-            s5_.esekf->init(cv::Vec3d(d->stage4.init_pos[0], d->stage4.init_pos[1], d->stage4.init_pos[2]),
-                            d->stage4.init_R, ts);
+        if (armor_cat.init_pnp_ok) {
+            const cv::Vec3f& ip = armor_cat.init_pos;
+            s5_.esekf->init(cv::Vec3d(ip[0], ip[1], ip[2]),
+                            armor_cat.init_R, ts);
             s5_.esekf_initialized = true;
         }
     } else {
         if (has_obs) {
-            // 使用所有检测物体，但截断到 EKF 支持的最大观测数（3D 模型个数，即 3 个装甲面）
+            // 更新 OutpostESEKF 时仅使用 label 6（装甲板）类别的观测，
+            // 截断到 EKF 支持的最大观测数（3D 模型个数，即 3 个装甲面）
             const size_t kMaxObs = ArmorModel::OUTPOST_POINTS_3D_LIST.size();
-            const size_t n = std::min(d->stage4.all_image_points.size(), kMaxObs);
+            const size_t n = std::min(armor_cat.all_image_points.size(), kMaxObs);
             std::vector<std::vector<cv::Point2f>> obs_points(
-                d->stage4.all_image_points.begin(),
-                d->stage4.all_image_points.begin() + n);
+                armor_cat.all_image_points.begin(),
+                armor_cat.all_image_points.begin() + n);
             s5_.esekf->update(obs_points, ts);
         } else {
-            s5_.esekf->predict(ts);   // 无观测，仅推进运动模型
+            s5_.esekf->predict(ts);   // 无装甲板观测，仅推进运动模型
         }
     }
 

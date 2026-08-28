@@ -28,7 +28,8 @@ constexpr int NUM_COLOR     = 4;
 constexpr int NUM_CLASSES   = 9;
 
 // 类别映射（模型训练标签）：0-5 哨兵/1~5号机器人，6 装甲板，7-8 基地/基地大装甲。
-// 识别流程仅保留装甲板类别（label 6）的装甲板，其余类别直接丢弃。
+// 后处理保留所有类别（label 0~8），类别分类由下游流水线 processStage4 按 obj.label
+// 处理；ARMOR_CLASS（label 6 装甲板）用于 OutpostESEKF 等仅关注装甲板的目标。
 constexpr int ARMOR_CLASS = 6;
 
 // 检测结果
