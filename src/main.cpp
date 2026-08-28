@@ -831,11 +831,11 @@ int main(int argc, char** argv) {
         while (ballistic_slot.take(req)) {
             if (req.result) {
                 // 弹道解算：按流水线模式选择目标策略（与原 process_thread 内逻辑一致）
-                if (req.result->armor.esekf_initialized && req.result->armor.predictor) {
+                if (req.result->armor.target_valid && req.result->armor.target_predictor) {
                     sequence_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
-                    sequence_predictor.predict(req.st, *req.result->armor.predictor,
+                    sequence_predictor.predict(req.st, *req.result->armor.target_predictor,
                                           shared_frame_timestamp.load(std::memory_order_acquire),
-                                          req.result->armor.predictor_timestamp);
+                                          req.result->armor.target_predictor_timestamp);
                 } else if (req.result->power_rune.target_predictor) {
                     sequence_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::LOWEST_Z);
                     sequence_predictor.predict(req.st, *req.result->power_rune.target_predictor,

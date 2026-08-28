@@ -5,6 +5,8 @@
 #include <cmath>
 #include <utility>
 
+#include "common/TransformTree/CoordinateTransform.h"
+
 namespace sp_ekf {
 
 namespace {
@@ -92,10 +94,18 @@ bool ClassEKF::processFrame(const std::vector<cv::Vec3f>& world_pos,
     }
 
     // 帧末统一刷新 state 快照：仅当原接口 ready()（TRACKING 且目标存在）时
-    // 用 state() 保存后验状态，并返回 state 是否可用。
+    // 用 state() 保存后验状态，并返回 state 是否可用；同步导出车体中心坐标与
+    // 旋转矩阵（与 OutpostESEKF 的 getPosition/getRotationMatrix 形式一致）。
     if (predictor_ && predictor_->ready()) {
         state_ = predictor_->state();
         state_available_ = true;
+        position_ = cv::Vec3d(state_.center_x / kMillimetersPerMeter,
+                              state_.center_y / kMillimetersPerMeter,
+                              state_.center_z / kMillimetersPerMeter);
+        // 车体仅跟踪绕世界系 z 轴的 yaw（pitch/roll 无观测），旋转矩阵 = Rz(yaw)
+        cv::Mat R32 = CoordinateTransform::eulerToRotationMatrix(
+            static_cast<float>(state_.yaw), 0.0f, 0.0f);
+        R32.convertTo(R_, CV_64F);
     } else {
         state_available_ = false;
     }
@@ -141,6 +151,8 @@ void ClassEKF::reset() {
     if (predictor_) predictor_->clear();
     last_obs_ts_ = TimePoint{};
     state_available_ = false;
+    position_ = cv::Vec3d(0, 0, 0);
+    R_ = cv::Mat();
 }
 
 }  // namespace sp_ekf

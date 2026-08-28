@@ -84,6 +84,17 @@ public:
     /// state() / predict() / debugState() 等公开接口取结果，勿触碰其内部类型。
     const SuperPowerPredictor* predictor() const { return predictor_.get(); }
 
+    /// state 是否有效（最近一帧 predictor_->ready()，见 processFrame 返回值）。
+    bool stateAvailable() const { return state_available_; }
+
+    /// 车体中心世界坐标（米）。仅 state 有效时有效（先查 stateAvailable()）。
+    const cv::Vec3d& getPosition() const { return position_; }
+
+    /// 车体当前角度（yaw）对应的旋转矩阵（CV_64F，world 系）。
+    /// 仅 state 有效时有效（先查 stateAvailable()）；与 OutpostESEKF::getRotationMatrix
+    /// 形式一致，只是仅含绕世界系 z 轴的旋转（车体 yaw）。
+    cv::Mat getRotationMatrix() const { return R_; }
+
 private:
     // 按 jointUpdateEnabled 构造原接口（SuperPowerPredictor）的 YAML 配置节点，
     // 其余字段沿用其内置默认（普通四装甲）；门控参数取 PairUpdateConfig 默认值。
@@ -95,6 +106,8 @@ private:
     TimePoint last_obs_ts_;                    // 最近一次观测帧时间戳（超时自动销毁判定用）
     EKFTargetState state_;                     // 最近一帧 ready() 时保存的滤波后验（原接口 state()）
     bool state_available_ = false;             // state_ 是否有效（最近一帧 predictor_->ready()）
+    cv::Vec3d position_ = cv::Vec3d(0, 0, 0);  // state 有效时的车体中心（world，米，state_ mm→m）
+    cv::Mat   R_;                              // state 有效时的车体旋转矩阵（CV_64F，由 yaw 构造）
 };
 
 }  // namespace sp_ekf

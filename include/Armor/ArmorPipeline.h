@@ -7,15 +7,12 @@
 //   4. PnP + 坐标转换  — 每物体按装甲板种类（类别 label 0~8）分类：solvePnP + world
 //                        转换 + 重投影；结果按类别打包存入 vector<CategoryData>
 //                        （索引 = 类别，含该类别观测关键点与 world_pos/world_euler）
-//   5. OutpostESEKF           — 误差状态卡尔曼滤波；本阶段仅把 label 6（装甲板）
-//                               类别的观测关键点与时间戳交给 OutpostESEKF::processFrame，
-//                               由其统一完成观测超时重置 / 初始化 / update / 仅预测
-//                               （初始化位姿在 init 内部解算，观测截断亦在其内部处理）。
-//                               此外为 label 0~5 每一类各维护一个移植的 SuperPower
-//                               EKF 封装（sp_ekf::ClassEKF，见 Armor/EKF/）：每类用
-//                               该类自己的数据各调用一次 processFrame，由封装内部
-//                               自行判断 初始化 / predict+update / 超时自动销毁；
-//                               暂不输出。
+//   5. 目标滤波          — 本阶段同时运行 OutpostESEKF（label 6 装甲板，输入为观测
+//                               关键点 + 时间戳）与 label 0~5 每类一个的移植 SuperPower
+//                               EKF（sp_ekf::ClassEKF，见 Armor/EKF/；输入为各类的
+//                               world_pos/world_euler）。两者均视为有效候选，取车体中心
+//                               距底盘系原点（world 系）最近的一类作为本帧使用结果，
+//                               写入 stage5（target_valid/target_label/target_pos/…）。
 //
 // 弹道解算、控制序列生成与可视化均已移出流水线，由输出模式（common/Output/）
 // 负责；本流水线只输出感知结果（PipelineResult::armor）。
@@ -29,6 +26,7 @@
 #include "Armor/ArmorInfer.h"
 #include "Armor/OutpostESEKF.h"
 #include "Armor/EKF/SuperPowerClassEKF.h"   // 移植 EKF 封装：label 0~5 每类一个 ClassEKF（sp_ekf）
+#include "Armor/EKF/FirstObjectTracker.h"   // 首物体位姿保持：label 7~8 各一个 FirstObjectTracker（sp_ekf）
 #include "common/CameraProjection.h"
 #include "common/TransformTree/RobotTfTree.h"
 #include "Armor/ArmorModel.h"
@@ -97,15 +95,20 @@ struct ArmorPipelineData {
         std::vector<std::vector<cv::Point2f>> reprojected_points;
     } stage4;
 
-    // ==================== 阶段5：OutpostESEKF ====================
+    // ==================== 阶段5：目标滤波（OutpostESEKF / 移植 EKF / 首物体位姿，多选一） ====================
     struct Stage5Data {
-        bool esekf_initialized = false;
-        std::vector<cv::Point3f> ekf_world_points;   // 12 个世界关键点（getWorldPoints）
-        cv::Vec3d ekf_pos = cv::Vec3d(0, 0, 0);
-        cv::Mat   ekf_R64;                            // CV_64F
-        std::vector<cv::Point3f> pred_center_points; // 预测目标中心关键点 t+0（world）
-        std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> predictor;  // 快照
-        std::chrono::steady_clock::time_point predictor_timestamp;  // 快照对应帧的时间戳（dt 零点）
+        // 本帧使用的目标滤波结果：在有效的候选（OutpostESEKF=label 6、移植 EKF=
+        // label 0~5、首物体位姿=label 7~8）中，取车体中心距底盘系原点（world 系）
+        // 最近的那一类。
+        bool target_valid = false;                    // 所选目标滤波是否有效
+        int  target_label = -1;                       // 所选目标类别：0~5=ClassEKF，6=OutpostESEKF，7~8=首物体；-1=无
+        TargetFilterType target_filter_type = TargetFilterType::NONE;  // 使用的目标对应的滤波器种类
+        std::vector<cv::Point3f> target_world_points;  // 所选目标世界关键点（esekf：12 点；ClassEKF：4 块装甲；首物体：1 点）
+        cv::Vec3d target_pos = cv::Vec3d(0, 0, 0);    // 所选目标车体中心（world，米）
+        cv::Mat   target_R64;                          // 所选目标旋转矩阵（CV_64F）
+        std::vector<cv::Point3f> target_pred_center_points;  // 预测目标关键点 t+0（world）
+        std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> target_predictor;  // 快照
+        std::chrono::steady_clock::time_point target_predictor_timestamp;  // 快照对应帧的时间戳（dt 零点）
     } stage5;
 };
 
@@ -221,6 +224,10 @@ private:
         // 该类自己的数据（stage4.categories[label]）调用一次 processFrame，
         // 初始化 / predict+update / 超时自动销毁 均由封装内部自行判断。
         std::array<sp_ekf::ClassEKF, NUM_CLASS_EKF> class_ekfs;
+
+        // ── 首物体位姿保持：label 7~8（基地/基地大装甲）各一个 ──
+        // 只保存每帧第一个有效物体的位姿；最小识别帧数 + 重置时间均在内部维护。
+        std::array<sp_ekf::FirstObjectTracker, 2> first_object_trackers;  // 索引 = label - BASE_CLASS
 
         explicit Stage5Ctx(const RobotConfig::CameraParams& camera,
                            const RobotConfig::ArmorParams& armor);

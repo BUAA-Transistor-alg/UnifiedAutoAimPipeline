@@ -34,13 +34,13 @@ struct ArmorVisualizationData {
         std::vector<std::vector<cv::Point2f>> reprojected_points;  // PnP 角点重投影（图像坐标）
     } raw_pose;
 
-    // ---- OutpostESEKF 滤波数据 ----
+    // ---- 目标滤波数据（OutpostESEKF 或移植 EKF 选出的最近目标）----
     struct FilteredPoseData {
         bool valid = false;
         cv::Vec3d pos = cv::Vec3d(0, 0, 0);              // 滤波位置（world）
         cv::Mat   R64;                                   // 滤波旋转矩阵（CV_64F）
-        std::vector<cv::Point3f> world_points;           // EKF 世界关键点（12 个）
-        std::vector<cv::Point3f> pred_center_points;     // 预测目标中心关键点 t+0（world）
+        std::vector<cv::Point3f> world_points;           // 目标世界关键点（esekf：12 个；ClassEKF：4 块装甲）
+        std::vector<cv::Point3f> pred_center_points;     // 预测目标关键点 t+0（world）
     } filtered_pose;
 
     // ---- 瞄准/控制序列数据（来自生成控制序列阶段） ----

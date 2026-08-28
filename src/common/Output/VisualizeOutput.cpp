@@ -165,13 +165,13 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, RobotController*
     vis.raw_pose.reprojected_points = p.reprojected_points;
     vis.raw_pose.valid = !p.objects.empty();
 
-    vis.filtered_pose.valid = p.esekf_initialized;
-    vis.filtered_pose.pos = p.ekf_pos;
-    vis.filtered_pose.R64 = p.ekf_R64;
-    vis.filtered_pose.world_points = p.ekf_world_points;
-    vis.filtered_pose.pred_center_points = p.pred_center_points;
+    vis.filtered_pose.valid = p.target_valid;
+    vis.filtered_pose.pos = p.target_pos;
+    vis.filtered_pose.R64 = p.target_R64;
+    vis.filtered_pose.world_points = p.target_world_points;
+    vis.filtered_pose.pred_center_points = p.target_pred_center_points;
 
-    // 瞄准点由 GimbalOutput 计算；本模式不计算，仅绘制 OutpostESEKF 预测中心
+    // 瞄准点由 GimbalOutput 计算；本模式不计算，仅绘制目标滤波预测中心
     vis.aim.auto_aim_enable = false;
 
     vis.robot_state = rc ? rc->getState() : RobotController::State{};

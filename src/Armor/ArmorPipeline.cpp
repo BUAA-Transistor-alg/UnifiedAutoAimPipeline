@@ -7,6 +7,7 @@
 #include <iostream>
 #include <cmath>
 #include <algorithm>
+#include <limits>
 
 namespace {
 
@@ -70,6 +71,12 @@ ArmorPipeline::Stage5Ctx::Stage5Ctx(const RobotConfig::CameraParams& camera,
     class_params.observationLostTimeoutSec = armor.observationLostTimeoutSec;
     for (auto& class_ekf : class_ekfs) {
         class_ekf = sp_ekf::ClassEKF(class_params);
+    }
+    // label 7~8 各一个首物体位姿保持：重置时间同样复用 observation_lost_timeout
+    sp_ekf::FirstObjectTracker::Params first_object_params;
+    first_object_params.resetTimeoutSec = armor.observationLostTimeoutSec;
+    for (auto& tracker : first_object_trackers) {
+        tracker = sp_ekf::FirstObjectTracker(first_object_params);
     }
 }
 
@@ -357,35 +364,101 @@ void ArmorPipeline::processStage5(DataDeque& data)
     tree.setPitch((float)info.pitch_angle);
     tree.lockAndComputeCache();
 
-    // ── OutpostESEKF 统一帧处理 ──
-    // 仅 label 6（装甲板）类别的观测算作 OutpostESEKF 的有效观测；
+    // ── OutpostESEKF 统一帧处理（label 6 装甲板）──
     // 观测超时重置 / 初始化 / 更新（观测截断）/ 无观测仅预测均由
     // OutpostESEKF::processFrame 内部自动分派
     const auto& armor_cat = d->stage4.categories[ArmorDetect::ARMOR_CLASS];
-    d->stage5.esekf_initialized = s5_.esekf->processFrame(armor_cat.all_image_points, ts);
+    const bool esekf_initialized = s5_.esekf->processFrame(armor_cat.all_image_points, ts);
 
-    // ── 输出本帧滤波结果（供输出模式使用） ──
-    if (d->stage5.esekf_initialized) {
-        d->stage5.ekf_world_points = s5_.esekf->getWorldPoints();
-        d->stage5.ekf_pos = s5_.esekf->getPosition();
-        d->stage5.ekf_R64 = s5_.esekf->getRotationMatrix();
-        d->stage5.predictor = s5_.esekf->capturePosePredictor();
-        d->stage5.predictor_timestamp = ts;   // 快照的 dt 零点 = 本帧时间戳
-        d->stage5.pred_center_points = (*d->stage5.predictor)(0.0);
-    }
-
-    // ── 移植 SuperPower EKF：label 0~5 每类一个（暂不输出）──
+    // ── 移植 SuperPower EKF：label 0~5 每类一个 ──
     // 每类使用其对应的数据（stage4.categories[label]）调用一次其对应的封装实例
     // （s5_.class_ekfs[label]），初始化 / predict+update / 超时自动销毁 均由
     // ClassEKF::processFrame 内部自行判断，此处不再展开任何更新逻辑。
     for (int label = 0; label < NUM_CLASS_EKF; ++label) {
         const auto& cat = d->stage4.categories[label];
         s5_.class_ekfs[label].processFrame(cat.world_pos, cat.world_euler, ts);
-        // 获取本类预测器快照（state 可用时非空，签名为
-        // std::vector<cv::Point3f>(double dt)，返回 4 块装甲世界坐标（米））；
-        // 暂时不保存到任何地方，仅打通调用链
-        auto class_predictor = s5_.class_ekfs[label].capturePosePredictor();
-        (void)class_predictor;
+    }
+
+    // ── 首物体位姿保持：label 7~8（基地/基地大装甲）──
+    for (int label = ArmorDetect::BASE_CLASS; label <= ArmorDetect::BASE_LARGE_CLASS; ++label) {
+        const auto& cat = d->stage4.categories[label];
+        s5_.first_object_trackers[label - ArmorDetect::BASE_CLASS]
+            .processFrame(cat.world_pos, cat.world_euler, ts);
+    }
+
+    // ── 选择本帧使用的目标滤波结果 ──
+    // 有效候选：OutpostESEKF（esekf_initialized）、label 0~5 移植 EKF
+    // （state_available_）、label 7~8 首物体（valid()）；取车体中心距底盘系原点
+    // （world 系，chassis_x/y/z）最近的那一类，stage5 输出全部使用其结果。
+    const cv::Vec3d chassis_origin(info.chassis_x, info.chassis_y, info.chassis_z);
+    int best_label = -1;
+    double best_dist = std::numeric_limits<double>::infinity();
+    if (esekf_initialized) {
+        const double dist = cv::norm(s5_.esekf->getPosition() - chassis_origin);
+        if (dist < best_dist) {
+            best_dist = dist;
+            best_label = ArmorDetect::ARMOR_CLASS;   // 6：OutpostESEKF
+        }
+    }
+    for (int label = 0; label < NUM_CLASS_EKF; ++label) {
+        if (!s5_.class_ekfs[label].stateAvailable()) continue;
+        const double dist = cv::norm(s5_.class_ekfs[label].getPosition() - chassis_origin);
+        if (dist < best_dist) {
+            best_dist = dist;
+            best_label = label;
+        }
+    }
+    for (int label = ArmorDetect::BASE_CLASS; label <= ArmorDetect::BASE_LARGE_CLASS; ++label) {
+        const sp_ekf::FirstObjectTracker& tracker =
+            s5_.first_object_trackers[label - ArmorDetect::BASE_CLASS];
+        if (!tracker.valid()) continue;
+        const double dist = cv::norm(tracker.getPosition() - chassis_origin);
+        if (dist < best_dist) {
+            best_dist = dist;
+            best_label = label;
+        }
+    }
+
+    d->stage5.target_valid = (best_label >= 0);
+    d->stage5.target_label = best_label;
+    d->stage5.target_filter_type = TargetFilterType::NONE;
+    if (best_label == ArmorDetect::ARMOR_CLASS) {
+        // OutpostESEKF（label 6 装甲板）结果
+        d->stage5.target_filter_type = TargetFilterType::OUTPOST_ESEKF;
+        d->stage5.target_world_points = s5_.esekf->getWorldPoints();
+        d->stage5.target_pos = s5_.esekf->getPosition();
+        d->stage5.target_R64 = s5_.esekf->getRotationMatrix();
+        d->stage5.target_predictor = s5_.esekf->capturePosePredictor();
+        d->stage5.target_predictor_timestamp = ts;   // 快照的 dt 零点 = 本帧时间戳
+        d->stage5.target_pred_center_points = (*d->stage5.target_predictor)(0.0);
+    } else if (best_label >= 0 && best_label < NUM_CLASS_EKF) {
+        // 移植 EKF（label 0~5）结果：车体中心 / 旋转矩阵 / 4 块装甲位置预测器
+        d->stage5.target_filter_type = TargetFilterType::CLASS_EKF;
+        const sp_ekf::ClassEKF& class_ekf = s5_.class_ekfs[best_label];
+        d->stage5.target_pos = class_ekf.getPosition();
+        d->stage5.target_R64 = class_ekf.getRotationMatrix();
+        d->stage5.target_predictor = class_ekf.capturePosePredictor();  // state 可用时非空
+        d->stage5.target_predictor_timestamp = ts;
+        if (d->stage5.target_predictor) {
+            const std::vector<cv::Point3f> pts = (*d->stage5.target_predictor)(0.0);
+            d->stage5.target_pred_center_points = pts;
+            d->stage5.target_world_points = pts;   // 4 块装甲位置（world，米）
+        }
+    } else if (best_label >= ArmorDetect::BASE_CLASS &&
+               best_label <= ArmorDetect::BASE_LARGE_CLASS) {
+        // 首物体位姿保持（label 7~8）结果：位置 / 旋转矩阵 / 1 点预测器
+        d->stage5.target_filter_type = TargetFilterType::FIRST_OBJECT;
+        const sp_ekf::FirstObjectTracker& tracker =
+            s5_.first_object_trackers[best_label - ArmorDetect::BASE_CLASS];
+        d->stage5.target_pos = tracker.getPosition();
+        d->stage5.target_R64 = tracker.getRotationMatrix();
+        d->stage5.target_predictor = tracker.capturePosePredictor();  // valid() 时非空
+        d->stage5.target_predictor_timestamp = ts;
+        if (d->stage5.target_predictor) {
+            const std::vector<cv::Point3f> pts = (*d->stage5.target_predictor)(0.0);
+            d->stage5.target_pred_center_points = pts;
+            d->stage5.target_world_points = pts;   // 1 个点（world，米）
+        }
     }
 }
 
@@ -471,15 +544,17 @@ void ArmorPipeline::fillPerception(ArmorPipelineData* d, ArmorPerception& out)
     out.world_eulers = d->stage4.world_eulers;
     out.reprojected_points = d->stage4.reprojected_points;
 
-    out.esekf_initialized = d->stage5.esekf_initialized;
-    out.ekf_pos = d->stage5.ekf_pos;
-    out.ekf_R64 = d->stage5.ekf_R64;
-    out.ekf_world_points = d->stage5.ekf_world_points;
-    out.pred_center_points = d->stage5.pred_center_points;
-    if (d->stage5.predictor) {
-        out.predictor = std::move(d->stage5.predictor);
+    out.target_valid = d->stage5.target_valid;
+    out.target_label = d->stage5.target_label;
+    out.target_filter_type = d->stage5.target_filter_type;
+    out.target_pos = d->stage5.target_pos;
+    out.target_R64 = d->stage5.target_R64;
+    out.target_world_points = d->stage5.target_world_points;
+    out.target_pred_center_points = d->stage5.target_pred_center_points;
+    if (d->stage5.target_predictor) {
+        out.target_predictor = std::move(d->stage5.target_predictor);
     }
-    out.predictor_timestamp = d->stage5.predictor_timestamp;
+    out.target_predictor_timestamp = d->stage5.target_predictor_timestamp;
     out.detection_count = d->stage3.objects.size();
     out.valid = true;
 }
@@ -552,6 +627,10 @@ void ArmorPipeline::clear()
         // 一并销毁所有移植 EKF 封装（label 0~5），下次观测重新初始化
         for (auto& class_ekf : s5_.class_ekfs) {
             class_ekf.reset();
+        }
+        // 一并重置首物体位姿保持（label 7~8）
+        for (auto& tracker : s5_.first_object_trackers) {
+            tracker.reset();
         }
 
         // 队列计数归零
