@@ -67,7 +67,7 @@ common:
     video_mode:
       # 测试最大帧率：true 时 VideoInputMode 的 getFrameDelay() 返回 0
       # （不做按视频帧率的节流），以测得视频输入 + 流水线的最大帧数/FPS。
-      test_max_fps: true
+      test_max_fps: false
       resolution:
         width: 1920                 # 图像宽（像素）
         height: 1080                # 图像高（像素）
@@ -84,30 +84,18 @@ common:
     min_free_space_mb: 16384         # 剩余空间低于该值（MB）时停止写入（0 = 不检查）
 
   # ── 变换树各节点相对其父节点的固定偏移（单位：米）──
-  # tf: # 小步参数
-  #   yaw_joint_z_offset: 0.32      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
-  #   pitch_joint_y_offset: 0.0     # pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）
-  #   imu_offset_x: 0.0             # imu 相对 head 的 x 偏移 // head 节点实际上为 picth轴 和 一个垂直于picth轴且经过yaw轴的面 的交点位置
-  #   imu_offset_y: -0.03           # imu 相对 head 的 y 偏移
-  #   imu_offset_z: 0.13            # imu 相对 head 的 z 偏移
-  #   camera_offset_x: 0.0          # camera 相对 head 的 x 偏移
-  #   camera_offset_y: 0.0          # camera 相对 head 的 y 偏移
-  #   camera_offset_z: 0.1          # camera 相对 head 的 z 偏移
-  #   muzzle_offset_x: 0.0          # muzzle 相对 head 的 x 偏移
-  #   muzzle_offset_y: 0.15         # muzzle 相对 head 的 y 偏移
-  #   muzzle_offset_z: 0.0          # muzzle 相对 head 的 z 偏移
-  tf: # 大步参数 # 粗略估计
-    yaw_joint_z_offset: 0.40      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
-    pitch_joint_y_offset: 0.01     # pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）
+  tf:
+    yaw_joint_z_offset: 0.0      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
+    pitch_joint_y_offset: 0.0     # pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）
     imu_offset_x: 0.0             # imu 相对 head 的 x 偏移 // head 节点实际上为 picth轴 和 一个垂直于picth轴且经过yaw轴的面 的交点位置
-    imu_offset_y: 0.02           # imu 相对 head 的 y 偏移
-    imu_offset_z: 0.10            # imu 相对 head 的 z 偏移
-    camera_offset_x: 0.05          # camera 相对 head 的 x 偏移
-    camera_offset_y: 0.15          # camera 相对 head 的 y 偏移
-    camera_offset_z: 0.05          # camera 相对 head 的 z 偏移
+    imu_offset_y: 0.0           # imu 相对 head 的 y 偏移
+    imu_offset_z: 0.0            # imu 相对 head 的 z 偏移
+    camera_offset_x: 0.0          # camera 相对 head 的 x 偏移
+    camera_offset_y: 0.0          # camera 相对 head 的 y 偏移
+    camera_offset_z: 0.0          # camera 相对 head 的 z 偏移
     muzzle_offset_x: 0.0          # muzzle 相对 head 的 x 偏移
-    muzzle_offset_y: 0.20         # muzzle 相对 head 的 y 偏移
-    muzzle_offset_z: 0.02          # muzzle 相对 head 的 z 偏移
+    muzzle_offset_y: 0.0         # muzzle 相对 head 的 y 偏移
+    muzzle_offset_z: 0.0          # muzzle 相对 head 的 z 偏移
 
   # ── 云台解算参数 ──
   gimbal:
@@ -169,7 +157,7 @@ common:
     pitch_seq_lead: 5               # m：pitch 序列提前数（必须小于总返回点数 (M-1)*K+1+n），pitch 序列截取第 m 个之后
     fire_seq_lead: 5                 # o：fire 序列提前数，fire 序列截取第 o 个之后
     pitch_bias: 0.0             # pitch 轴偏置（弧度），输出时叠加
-    yaw_bias: 0.012                    # yaw 轴偏置（弧度），输出时叠加
+    yaw_bias: 0.0                    # yaw 轴偏置（弧度），输出时叠加
     fire_angle_lower_limit: 0.0  # 0° # fire 判定角度阈值下限（弧度）
     fire_angle_length: 0.05          # fire 判定弧长（米）：动态阈值 = length / 目标与 yaw 原点 xy 距离
 

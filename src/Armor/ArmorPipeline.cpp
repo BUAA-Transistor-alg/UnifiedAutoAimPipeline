@@ -63,7 +63,15 @@ ArmorPipeline::Stage5Ctx::Stage5Ctx(const RobotConfig::CameraParams& camera,
       esekf(std::make_unique<OutpostESEKF>(tree, camera_proj,
                                     ArmorModel::OUTPOST_POINTS_3D_LIST,
                                     ArmorModel::OUTPOST_TARGET_CENTER_3D_LIST,
-                                    makeEsekfParams(armor))) {}
+                                    makeEsekfParams(armor))) {
+    // label 0~5 每类一个封装 EKF：无观测超时自动销毁阈值统一复用
+    // armor.observation_lost_timeout（与 OutpostESEKF 同一配置）
+    sp_ekf::ClassEKF::Params class_params;
+    class_params.observationLostTimeoutSec = armor.observationLostTimeoutSec;
+    for (auto& class_ekf : class_ekfs) {
+        class_ekf = sp_ekf::ClassEKF(class_params);
+    }
+}
 
 // ==================== 构造 ====================
 
@@ -365,6 +373,20 @@ void ArmorPipeline::processStage5(DataDeque& data)
         d->stage5.predictor_timestamp = ts;   // 快照的 dt 零点 = 本帧时间戳
         d->stage5.pred_center_points = (*d->stage5.predictor)(0.0);
     }
+
+    // ── 移植 SuperPower EKF：label 0~5 每类一个（暂不输出）──
+    // 每类使用其对应的数据（stage4.categories[label]）调用一次其对应的封装实例
+    // （s5_.class_ekfs[label]），初始化 / predict+update / 超时自动销毁 均由
+    // ClassEKF::processFrame 内部自行判断，此处不再展开任何更新逻辑。
+    for (int label = 0; label < NUM_CLASS_EKF; ++label) {
+        const auto& cat = d->stage4.categories[label];
+        s5_.class_ekfs[label].processFrame(cat.world_pos, cat.world_euler, ts);
+        // 获取本类预测器快照（state 可用时非空，签名为
+        // std::vector<cv::Point3f>(double dt)，返回 4 块装甲世界坐标（米））；
+        // 暂时不保存到任何地方，仅打通调用链
+        auto class_predictor = s5_.class_ekfs[label].capturePosePredictor();
+        (void)class_predictor;
+    }
 }
 
 // ==================== 事件驱动调度器 ====================
@@ -527,6 +549,10 @@ void ArmorPipeline::clear()
         // 重置 OutpostESEKF 与观测计时状态（stage5 已空闲，无竞争；
         // 初始化标志 / 观测计时状态随 reset() 一并复位）
         s5_.esekf->reset();
+        // 一并销毁所有移植 EKF 封装（label 0~5），下次观测重新初始化
+        for (auto& class_ekf : s5_.class_ekfs) {
+            class_ekf.reset();
+        }
 
         // 队列计数归零
         for (auto& qs : queue_sizes_) qs.store(0);

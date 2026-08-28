@@ -84,18 +84,6 @@ common:
     min_free_space_mb: 16384         # 剩余空间低于该值（MB）时停止写入（0 = 不检查）
 
   # ── 变换树各节点相对其父节点的固定偏移（单位：米）──
-  # tf: # 小步参数
-  #   yaw_joint_z_offset: 0.32      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
-  #   pitch_joint_y_offset: 0.0     # pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）
-  #   imu_offset_x: 0.0             # imu 相对 head 的 x 偏移 // head 节点实际上为 picth轴 和 一个垂直于picth轴且经过yaw轴的面 的交点位置
-  #   imu_offset_y: -0.03           # imu 相对 head 的 y 偏移
-  #   imu_offset_z: 0.13            # imu 相对 head 的 z 偏移
-  #   camera_offset_x: 0.0          # camera 相对 head 的 x 偏移
-  #   camera_offset_y: 0.0          # camera 相对 head 的 y 偏移
-  #   camera_offset_z: 0.1          # camera 相对 head 的 z 偏移
-  #   muzzle_offset_x: 0.0          # muzzle 相对 head 的 x 偏移
-  #   muzzle_offset_y: 0.15         # muzzle 相对 head 的 y 偏移
-  #   muzzle_offset_z: 0.0          # muzzle 相对 head 的 z 偏移
   tf: # 大步参数 # 粗略估计
     yaw_joint_z_offset: 0.40      # yaw 关节沿 z 轴偏移（相对 chassis）（实际上为pitch轴关节相对底盘最低点高度）
     pitch_joint_y_offset: 0.01     # pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）

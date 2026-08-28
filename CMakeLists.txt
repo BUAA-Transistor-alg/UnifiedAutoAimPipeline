@@ -97,6 +97,13 @@ set(ARMOR_SOURCES
     src/Armor/ArmorInfer.cpp
     src/Armor/ArmorVisualizer.cpp
     src/Armor/ArmorPipeline.cpp
+    # 移植自 transistor_rm2027_algorithm_visual_ws 的 SuperPower EKF 预测系统
+    # （SuperPowerEKF/Target/Tracker/Predictor；label 0~5 每类一个封装 ClassEKF）
+    src/Armor/EKF/SuperPowerEKF.cpp
+    src/Armor/EKF/SuperPowerTarget.cpp
+    src/Armor/EKF/SuperPowerTracker.cpp
+    src/Armor/EKF/SuperPowerPredictor.cpp
+    src/Armor/EKF/SuperPowerClassEKF.cpp
 )
 
 # ── PowerRune 源文件 ──

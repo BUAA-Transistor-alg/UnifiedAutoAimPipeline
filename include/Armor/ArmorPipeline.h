@@ -10,7 +10,12 @@
 //   5. OutpostESEKF           — 误差状态卡尔曼滤波；本阶段仅把 label 6（装甲板）
 //                               类别的观测关键点与时间戳交给 OutpostESEKF::processFrame，
 //                               由其统一完成观测超时重置 / 初始化 / update / 仅预测
-//                               （初始化位姿在 init 内部解算，观测截断亦在其内部处理）
+//                               （初始化位姿在 init 内部解算，观测截断亦在其内部处理）。
+//                               此外为 label 0~5 每一类各维护一个移植的 SuperPower
+//                               EKF 封装（sp_ekf::ClassEKF，见 Armor/EKF/）：每类用
+//                               该类自己的数据各调用一次 processFrame，由封装内部
+//                               自行判断 初始化 / predict+update / 超时自动销毁；
+//                               暂不输出。
 //
 // 弹道解算、控制序列生成与可视化均已移出流水线，由输出模式（common/Output/）
 // 负责；本流水线只输出感知结果（PipelineResult::armor）。
@@ -23,6 +28,7 @@
 #include "common/PipelineStage.h"
 #include "Armor/ArmorInfer.h"
 #include "Armor/OutpostESEKF.h"
+#include "Armor/EKF/SuperPowerClassEKF.h"   // 移植 EKF 封装：label 0~5 每类一个 ClassEKF（sp_ekf）
 #include "common/CameraProjection.h"
 #include "common/TransformTree/RobotTfTree.h"
 #include "Armor/ArmorModel.h"
@@ -110,6 +116,8 @@ class ArmorPipeline : public IPipeline {
 public:
     static constexpr int NUM_STAGES = 5;
     static constexpr int NUM_QUEUES = NUM_STAGES + 1;  // 6 个缓冲队列
+    // 移植 EKF 覆盖的类别范围：label 0~5（哨兵/1~5号机器人），每类一个滤波槽
+    static constexpr int NUM_CLASS_EKF = 6;
     // 各阶段批量不再在此硬编码，改由 config 提供：
     //   armor.pipeline.preprocess_batch   阶段1 预处理最大批量
     //   armor.pipeline.inference_batch    阶段2 推理最大批量（≤ inference.max_batch）
@@ -202,11 +210,18 @@ private:
         explicit Stage4Ctx(const RobotConfig::CameraParams& camera);
     } s4_;
 
-    /// 阶段5上下文：OutpostESEKF（独立变换树 + 相机投影 + 跨帧滤波状态）
+    /// 阶段5上下文：OutpostESEKF + 移植 EKF（独立变换树 + 相机投影 + 跨帧滤波状态）
     struct Stage5Ctx {
         std::shared_ptr<RobotTfTree> tree;
         std::shared_ptr<CameraProjection> camera_proj;
         std::unique_ptr<OutpostESEKF> esekf;   // 初始化标志 / 观测计时为滤波器内部状态
+
+        // ── 移植自 transistor_rm2027_algorithm_visual_ws 的 SuperPower EKF ──
+        // label 0~5 每一类装甲板一个封装实例（索引 = 类别 label）；每帧每类用
+        // 该类自己的数据（stage4.categories[label]）调用一次 processFrame，
+        // 初始化 / predict+update / 超时自动销毁 均由封装内部自行判断。
+        std::array<sp_ekf::ClassEKF, NUM_CLASS_EKF> class_ekfs;
+
         explicit Stage5Ctx(const RobotConfig::CameraParams& camera,
                            const RobotConfig::ArmorParams& armor);
     } s5_;
