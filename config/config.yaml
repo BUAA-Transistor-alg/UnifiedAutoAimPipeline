@@ -47,7 +47,7 @@ common:
   #   true：仅启动当前流水线所需的推理进程（由主程序按需启动），切换流水线时
   #     立即关闭所有不再需要的进程（释放其 GPU 显存），再启动新流水线所需进程
   #     （新进程需重新编译模型，就绪前该流水线推理返回空结果，界面保持响应）。
-  infer_process_lazy: true
+  infer_process_lazy: false
 
   # ── 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择 ──
   input_mode:
@@ -228,7 +228,7 @@ power_rune:
   inference:
     model_path: "Model/PowerRune/power_rune.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
     device: "GPU"                                       # 推理设备（CPU / GPU / ...）
-    max_batch: 1                # 推理最大批量
+    max_batch: 4                # 推理最大批量
     shm_key: 23302              # 共享内存 Key（与 power_rune_infer_process 通信，两进程须一致）
     resolution:                                         # YOLO 推理输入分辨率（像素），须与模型输入一致
       width: 512                                        # 输入图像宽（像素）
@@ -243,6 +243,6 @@ power_rune:
     # 6 个缓冲队列最大长度（[输入, 阶段间×4, 输出]）；队列满时新帧直接丢弃。
     queue_max_sizes: [10, 10, 10, 10, 10, 10]
     preprocess_batch: 4    # 阶段1 预处理最大批量
-    inference_batch: 1     # 阶段2 推理最大批量（动态批量 1..inference_batch；
+    inference_batch: 4     # 阶段2 推理最大批量（动态批量 1..inference_batch；
                            #   须 ≤ inference.max_batch，且 ≤ 共享内存容量 4）
     postprocess_batch: 4   # 阶段3 后处理最大批量
