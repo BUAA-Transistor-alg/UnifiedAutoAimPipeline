@@ -18,7 +18,7 @@
 # ════════════════════════════════════════════════════════════
 common:
   # 两个流水线共用的提取帧最小延迟（秒，输出队列帧龄须达到该值后 tryPopFrame 才返回）
-  min_delay_seconds: 0.2
+  min_delay_seconds: 0.1
 
   # ── 队列积压自适应额外延迟（可选功能，BacklogAdaptiveDelay，v6 PID 式 PI）──
   # 开启后：处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列的积压
@@ -47,7 +47,7 @@ common:
   #   true：仅启动当前流水线所需的推理进程（由主程序按需启动），切换流水线时
   #     立即关闭所有不再需要的进程（释放其 GPU 显存），再启动新流水线所需进程
   #     （新进程需重新编译模型，就绪前该流水线推理返回空结果，界面保持响应）。
-  infer_process_lazy: false
+  infer_process_lazy: true
 
   # ── 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择 ──
   input_mode:
@@ -56,7 +56,7 @@ common:
       # 相机输入模式（CameraInputMode）extra_info 延迟（秒）：
       # 后台线程持续采样 RobotController::getState() 并维护延迟队列，返回给流水线的
       # extra_info 为相对当前时刻 extra_info_delay 前的队头数据（0.0 = 最新状态）
-      extra_info_delay: 0.020069
+      extra_info_delay: 0.016527
       device_ip: "192.168.10.10"    # 相机设备 IP
       net_ip: "192.168.10.25"       # 本机网口 IP
       exposure: 2000.0              # 曝光时间（微秒）
@@ -66,10 +66,10 @@ common:
         height: 1080                # 图像高（像素）
       # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
       camera_matrix: # 相机内参矩阵
-        [1.31280460e+03, 0.00000000e+00, 6.38736364e+02, 
-        0.00000000e+00, 1.31309593e+03, 5.34133502e+02, 
-        0.00000000e+00, 0.00000000e+00, 1.00000000e+00]
-      dist_coeffs: [-0.05392145, -0.02516686, -0.00222499, -0.00149047,  0.43693918] # 畸变系数
+        [1.31275979e+03, 0.00000000e+00, 6.47480874e+02,
+         0.00000000e+00, 1.31284175e+03, 5.14705128e+02,
+         0.00000000e+00, 0.00000000e+00, 1.00000000e+00]
+      dist_coeffs: [-0.08239928, 0.22293589, -0.00081181, 0.00018714, -0.21702634] # 畸变系数
 
     # video_mode：--input video / interactive（录制视频 / 交互图片，无网络/曝光参数）。
     video_mode:
@@ -132,7 +132,7 @@ common:
 
   # ── 预测弹道解算参数 ──
   predicted_ballistic:
-    extra_predict_time: 0.07      # 额外预测时间（秒），叠加在弹道飞行时间之上 # 待调
+    extra_predict_time: 0.0      # 额外预测时间（秒），叠加在弹道飞行时间之上 # 待调
     max_iterations: 5             # 飞行时间迭代上限
     time_error_tolerance: 0.005    # 迭代提前停止的时间误差容差（秒）
 
@@ -176,7 +176,7 @@ common:
                                      # 索引 3 起为原划分序列（实际点 3,7,11,15,19,23，共 24 点）。
     pitch_seq_lead: 5               # m：pitch 序列提前数（必须小于总返回点数 (M-1)*K+1+n），pitch 序列截取第 m 个之后
     fire_seq_lead: 5                 # o：fire 序列提前数，fire 序列截取第 o 个之后
-    pitch_bias: 0.023             # pitch 轴偏置（弧度），输出时叠加
+    pitch_bias: 0.0             # pitch 轴偏置（弧度），输出时叠加
     yaw_bias: 0.012                    # yaw 轴偏置（弧度），输出时叠加
     fire_angle_lower_limit: 0.0  # 0° # fire 判定角度阈值下限（弧度）
     fire_angle_length: 0.05          # fire 判定弧长（米）：动态阈值 = length / 目标与 yaw 原点 xy 距离
@@ -228,7 +228,7 @@ power_rune:
   inference:
     model_path: "Model/PowerRune/power_rune.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
     device: "GPU"                                       # 推理设备（CPU / GPU / ...）
-    max_batch: 4                # 推理最大批量
+    max_batch: 1                # 推理最大批量
     shm_key: 23302              # 共享内存 Key（与 power_rune_infer_process 通信，两进程须一致）
     resolution:                                         # YOLO 推理输入分辨率（像素），须与模型输入一致
       width: 512                                        # 输入图像宽（像素）
@@ -243,6 +243,6 @@ power_rune:
     # 6 个缓冲队列最大长度（[输入, 阶段间×4, 输出]）；队列满时新帧直接丢弃。
     queue_max_sizes: [10, 10, 10, 10, 10, 10]
     preprocess_batch: 4    # 阶段1 预处理最大批量
-    inference_batch: 4     # 阶段2 推理最大批量（动态批量 1..inference_batch；
+    inference_batch: 1     # 阶段2 推理最大批量（动态批量 1..inference_batch；
                            #   须 ≤ inference.max_batch，且 ≤ 共享内存容量 4）
     postprocess_batch: 4   # 阶段3 后处理最大批量
