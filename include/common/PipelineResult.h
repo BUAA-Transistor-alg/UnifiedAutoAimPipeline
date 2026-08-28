@@ -16,25 +16,25 @@
 #include <opencv2/opencv.hpp>
 
 #include "common/Input/IInputMode.h"
-#include "Outpost/OpenvinoInfer.h"
-#include "PowerRune/YoloPoseInfer.h"
+#include "Armor/ArmorInfer.h"
+#include "PowerRune/PowerRuneInfer.h"
 #include "PowerRune/RollPredictor.h"
 
 // ============================================================================
-// Outpost 感知结果（Outpost 流水线填充）
+// Armor 感知结果（Armor 流水线填充）
 // ============================================================================
-struct OutpostPerception {
+struct ArmorPerception {
     bool valid = false;
 
     // ── 阶段3：检测 ──
-    std::vector<OutpostDetect::Object> objects;
+    std::vector<ArmorDetect::Object> objects;
 
     // ── 阶段4：PnP + 坐标转换 ──
     std::vector<cv::Vec3f> world_positions;                       // 每物体世界坐标
     std::vector<cv::Vec3f> world_eulers;                          // 每物体世界欧拉角
     std::vector<std::vector<cv::Point2f>> reprojected_points;     // PnP 角点重投影（图像坐标）
 
-    // ── 阶段5：ESEKF ──
+    // ── 阶段5：OutpostESEKF ──
     bool esekf_initialized = false;
     cv::Vec3d ekf_pos = cv::Vec3d(0, 0, 0);
     cv::Mat   ekf_R64;                                           // CV_64F
@@ -110,7 +110,7 @@ struct PipelineResult {
     cv::Mat frame;                      // 原始帧（移动自流水线数据，供可视化输出模式绘制）
 
     // 按当前流水线模式二选一填充
-    OutpostPerception   outpost;
+    ArmorPerception   armor;
     PowerRunePerception power_rune;
 };
 

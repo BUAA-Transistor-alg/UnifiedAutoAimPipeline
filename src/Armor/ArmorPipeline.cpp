@@ -1,5 +1,5 @@
-// OutpostPipeline.cpp — 前哨站感知流水线实现（5 阶段，输出 PipelineResult）
-#include "Outpost/OutpostPipeline.h"
+// ArmorPipeline.cpp — 装甲板感知流水线实现（5 阶段，输出 PipelineResult）
+#include "Armor/ArmorPipeline.h"
 #include "common/PathResolver.h"
 #include "common/RobotConfig.h"
 
@@ -9,9 +9,9 @@
 
 namespace {
 
-// 配置文件 outpost.esekf 段 → ESEKF::Params（字段一一对应）
-ESEKF::Params makeEsekfParams(const RobotConfig::OutpostParams::EsekfParams& p) {
-    ESEKF::Params r;
+// 配置文件 armor.outpost_esekf 段 → OutpostESEKF::Params（字段一一对应）
+OutpostESEKF::Params makeEsekfParams(const RobotConfig::ArmorParams::EsekfParams& p) {
+    OutpostESEKF::Params r;
     r.positionNoise        = p.positionNoise;
     r.rotationNoise        = p.rotationNoise;
     r.measurementNoise     = p.measurementNoise;
@@ -31,71 +31,71 @@ ESEKF::Params makeEsekfParams(const RobotConfig::OutpostParams::EsekfParams& p) 
 
 // ==================== 阶段上下文构造 ====================
 
-// 构造本流水线所用的推理器（模型编译 + 预热；由 outpost_infer_process 的 main 调用）
-std::unique_ptr<OutpostDetect::OutpostInfer> OutpostPipeline::createInfer()
+// 构造本流水线所用的推理器（模型编译 + 预热；由 armor_infer_process 的 main 调用）
+std::unique_ptr<ArmorDetect::ArmorInfer> ArmorPipeline::createInfer()
 {
     const RobotConfig& cfg = RobotConfig::instance();
     // 模型路径（相对项目根目录，经 PathResolver 解析；以 / 开头为绝对路径）
-    std::string model_path = (!cfg.outpost.modelPath.empty() && cfg.outpost.modelPath[0] == '/')
-        ? cfg.outpost.modelPath
-        : PathResolver::resolvePath(cfg.outpost.modelPath);
+    std::string model_path = (!cfg.armor.modelPath.empty() && cfg.armor.modelPath[0] == '/')
+        ? cfg.armor.modelPath
+        : PathResolver::resolvePath(cfg.armor.modelPath);
     // 本进程专属模型缓存目录（ONNX→IR 转换产物存放处，不存在时自动创建）
-    std::string cache_dir = PathResolver::resolvePath("cache/outpost");
-    return std::make_unique<OutpostDetect::OutpostInfer>(
-        model_path, cfg.outpost.device,
-        cfg.outpost.inputWidth, cfg.outpost.inputHeight, cfg.outpost.maxBatch,
+    std::string cache_dir = PathResolver::resolvePath("cache/armor");
+    return std::make_unique<ArmorDetect::ArmorInfer>(
+        model_path, cfg.armor.device,
+        cfg.armor.inputWidth, cfg.armor.inputHeight, cfg.armor.maxBatch,
         nullptr, cache_dir);
 }
 
-OutpostPipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)
+ArmorPipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)
     : camera_proj(std::make_shared<CameraProjection>(
           camera.cameraMatrix, camera.distCoeffs,
           ImageResolution{camera.width, camera.height})) {}
 
-OutpostPipeline::Stage5Ctx::Stage5Ctx(const RobotConfig::CameraParams& camera,
-                                      const RobotConfig::OutpostParams::EsekfParams& esekf_params)
+ArmorPipeline::Stage5Ctx::Stage5Ctx(const RobotConfig::CameraParams& camera,
+                                      const RobotConfig::ArmorParams::EsekfParams& esekf_params)
     : tree(std::make_shared<RobotTfTree>()),
       camera_proj(std::make_shared<CameraProjection>(
           camera.cameraMatrix, camera.distCoeffs,
           ImageResolution{camera.width, camera.height})),
-      esekf(std::make_unique<ESEKF>(tree, camera_proj,
-                                    OutpostModel::OUTPOST_POINTS_3D_LIST,
-                                    OutpostModel::OUTPOST_TARGET_CENTER_3D_LIST,
+      esekf(std::make_unique<OutpostESEKF>(tree, camera_proj,
+                                    ArmorModel::OUTPOST_POINTS_3D_LIST,
+                                    ArmorModel::OUTPOST_TARGET_CENTER_3D_LIST,
                                     makeEsekfParams(esekf_params))) {}
 
 // ==================== 构造 ====================
 
-OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
+ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
                                  float min_delay_seconds,
                                  const RobotConfig::CameraParams& camera)
     : queue_max_sizes_(queue_max_sizes)
     , min_delay_seconds_(min_delay_seconds)
-    , s1_(RobotConfig::instance().outpost.inputWidth,
-          RobotConfig::instance().outpost.inputHeight)
+    , s1_(RobotConfig::instance().armor.inputWidth,
+          RobotConfig::instance().armor.inputHeight)
     , s4_(camera)
-    , s5_(camera, RobotConfig::instance().outpost.esekf)
+    , s5_(camera, RobotConfig::instance().armor.esekf)
 {
     const RobotConfig& cfg = RobotConfig::instance();
-    const RobotConfig::PipelineParams& pipe = cfg.outpost.pipeline;
+    const RobotConfig::PipelineParams& pipe = cfg.armor.pipeline;
 
-    // 推理器在独立进程 outpost_infer_process 中（仅推理一步；预处理/后处理在本
+    // 推理器在独立进程 armor_infer_process 中（仅推理一步；预处理/后处理在本
     // 进程），本阶段经共享内存通信调用，推理进程未启动时阻塞等待。
-    s2_.client = std::make_unique<Infer::InferShmClient>(cfg.outpost.shmKey);
-    s3_.postprocessor = std::make_unique<OutpostDetect::OutpostPostprocessor>(
-        cfg.outpost.inputWidth, cfg.outpost.inputHeight);
+    s2_.client = std::make_unique<Infer::InferShmClient>(cfg.armor.shmKey);
+    s3_.postprocessor = std::make_unique<ArmorDetect::ArmorPostprocessor>(
+        cfg.armor.inputWidth, cfg.armor.inputHeight);
 
     // 模型路径（仅用于打印 banner；推理器构造见 createInfer，由 main 调用）
-    std::string model_path = (!cfg.outpost.modelPath.empty() && cfg.outpost.modelPath[0] == '/')
-        ? cfg.outpost.modelPath
-        : PathResolver::resolvePath(cfg.outpost.modelPath);
+    std::string model_path = (!cfg.armor.modelPath.empty() && cfg.armor.modelPath[0] == '/')
+        ? cfg.armor.modelPath
+        : PathResolver::resolvePath(cfg.armor.modelPath);
 
     std::cout << "========================================" << std::endl;
-    std::cout << "Outpost Pipeline (5 stages)" << std::endl;
+    std::cout << "Armor Pipeline (5 stages)" << std::endl;
     std::cout << "----------------------------------------" << std::endl;
     std::cout << "    Model: " << model_path << std::endl;
-    std::cout << "    Device: " << cfg.outpost.device << std::endl;
-    std::cout << "    Input resolution: " << cfg.outpost.inputWidth << "x" << cfg.outpost.inputHeight << std::endl;
-    std::cout << "    Inference model max batch: " << cfg.outpost.maxBatch << std::endl;
+    std::cout << "    Device: " << cfg.armor.device << std::endl;
+    std::cout << "    Input resolution: " << cfg.armor.inputWidth << "x" << cfg.armor.inputHeight << std::endl;
+    std::cout << "    Inference model max batch: " << cfg.armor.maxBatch << std::endl;
     std::cout << "    Stage batch (preprocess/infer/postprocess): "
               << pipe.preprocessBatch << "/" << pipe.inferenceBatch << "/"
               << pipe.postprocessBatch << std::endl;
@@ -157,7 +157,7 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
         stage4_.launch(cfg);
     }
 
-    // ---- 阶段5：ESEKF ----
+    // ---- 阶段5：OutpostESEKF ----
     {
         PipelineStage<DataDeque>::Config cfg;
         cfg.input_queue  = &inter_queues_[3];
@@ -171,12 +171,12 @@ OutpostPipeline::OutpostPipeline(const std::array<int, NUM_QUEUES>& queue_max_si
     }
 
     // 阶段线程启动后再启动调度器
-    scheduler_thread_ = std::thread(&OutpostPipeline::schedulerLoop, this);
+    scheduler_thread_ = std::thread(&ArmorPipeline::schedulerLoop, this);
 }
 
 // ==================== 析构 ====================
 
-OutpostPipeline::~OutpostPipeline()
+ArmorPipeline::~ArmorPipeline()
 {
     scheduler_exit_.store(true);
     {
@@ -196,9 +196,9 @@ OutpostPipeline::~OutpostPipeline()
 
 // ==================== 阶段处理函数 ====================
 
-void OutpostPipeline::processStage1(DataDeque& data)
+void ArmorPipeline::processStage1(DataDeque& data)
 {
-    std::vector<OutpostPipelineData*> ptrs;
+    std::vector<ArmorPipelineData*> ptrs;
     ptrs.reserve(data.size());
     for (auto& d : data) ptrs.push_back(d.get());
 
@@ -213,9 +213,9 @@ void OutpostPipeline::processStage1(DataDeque& data)
     s1_.preprocessor.preprocess(frame_ptrs, preprocessed_ptrs);
 }
 
-void OutpostPipeline::processStage2(DataDeque& data)
+void ArmorPipeline::processStage2(DataDeque& data)
 {
-    std::vector<OutpostPipelineData*> ptrs;
+    std::vector<ArmorPipelineData*> ptrs;
     ptrs.reserve(data.size());
     for (auto& d : data) ptrs.push_back(d.get());
 
@@ -231,19 +231,19 @@ void OutpostPipeline::processStage2(DataDeque& data)
     for (auto* d : ptrs)
         outs.push_back(&d->stage2.output);
 
-    // 推理器在独立进程（outpost_infer_process）中：经共享内存通信调用，
+    // 推理器在独立进程（armor_infer_process）中：经共享内存通信调用，
     // 推理进程未启动时此处阻塞等待
     if (!s2_.client->runInference(preprocessed_ptrs, outs))
         return;   // 通信失败：丢弃本批
 }
 
-void OutpostPipeline::processStage3(DataDeque& data)
+void ArmorPipeline::processStage3(DataDeque& data)
 {
-    std::vector<OutpostPipelineData*> ptrs;
+    std::vector<ArmorPipelineData*> ptrs;
     ptrs.reserve(data.size());
     for (auto& d : data) ptrs.push_back(d.get());
 
-    std::vector<OutpostDetect::BatchOutput> outputs;
+    std::vector<ArmorDetect::BatchOutput> outputs;
     std::vector<int> orig_ws, orig_hs;
     outputs.reserve(ptrs.size());
     orig_ws.reserve(ptrs.size());
@@ -255,7 +255,7 @@ void OutpostPipeline::processStage3(DataDeque& data)
         orig_hs.push_back(d->initial.frame.rows);
     }
 
-    std::vector<std::vector<OutpostDetect::Object>> results;
+    std::vector<std::vector<ArmorDetect::Object>> results;
     s3_.postprocessor->postprocessBatch(outputs, orig_ws, orig_hs,
                                         /*detect_color=*/2,
                                         conf_threshold_, nms_threshold_, results);
@@ -264,10 +264,10 @@ void OutpostPipeline::processStage3(DataDeque& data)
         ptrs[i]->stage3.objects = std::move(results[i]);
 }
 
-void OutpostPipeline::processStage4(DataDeque& data)
+void ArmorPipeline::processStage4(DataDeque& data)
 {
     if (data.empty()) return;
-    OutpostPipelineData* d = data.front().get();
+    ArmorPipelineData* d = data.front().get();
     const ExtraInputInfo& info = d->initial.extra_info;
 
     // 同步本阶段独立变换树（ExtraInputInfo = StrictPose + 底盘 xyz）
@@ -297,7 +297,7 @@ void OutpostPipeline::processStage4(DataDeque& data)
 
         cv::Vec3f position_cam, euler_cam;
         bool pnp_ok = s4_.camera_proj->solvePnP_Cam(
-            OutpostModel::OBJECT_POINTS_3D_LOCAL, image_points,
+            ArmorModel::SMALL_ARMOR_POINTS_3D_LOCAL, image_points,
             {cv::SOLVEPNP_IPPE, cv::SOLVEPNP_ITERATIVE},
             position_cam, euler_cam);
 
@@ -311,20 +311,20 @@ void OutpostPipeline::processStage4(DataDeque& data)
             std::vector<cv::Point2f> reprojected_pts;
             std::vector<cv::Point3f> reprojected_pts_3d_cam =
                 CoordinateTransform::transformPoints(position_cam, euler_cam,
-                                                     OutpostModel::OBJECT_POINTS_3D_LOCAL);
+                                                     ArmorModel::SMALL_ARMOR_POINTS_3D_LOCAL);
             s4_.camera_proj->projectPoints_Cam(reprojected_pts_3d_cam, reprojected_pts);
             reprojected.push_back(std::move(reprojected_pts));
         }
         world_positions.push_back(world_pos);
         world_eulers.push_back(world_euler);
 
-        // 第 0 物体：保存观测关键点 + 初始化 PnP（面 0 模型），供 ESEKF 阶段使用
+        // 第 0 物体：保存观测关键点 + 初始化 PnP（面 0 模型），供 OutpostESEKF 阶段使用
         if (i == 0) {
             d->stage4.first_image_points = image_points;
 
             cv::Vec3f position_c, euler_c;
             bool init_pnp_ok = s4_.camera_proj->solvePnP_Cam(
-                OutpostModel::OUTPOST_POINTS_3D_LIST[0], image_points,
+                ArmorModel::OUTPOST_POINTS_3D_LIST[0], image_points,
                 {cv::SOLVEPNP_IPPE, cv::SOLVEPNP_ITERATIVE},
                 position_c, euler_c);
             if (init_pnp_ok) {
@@ -339,14 +339,14 @@ void OutpostPipeline::processStage4(DataDeque& data)
     }
 }
 
-void OutpostPipeline::processStage5(DataDeque& data)
+void ArmorPipeline::processStage5(DataDeque& data)
 {
     if (data.empty()) return;
-    OutpostPipelineData* d = data.front().get();
+    ArmorPipelineData* d = data.front().get();
     const ExtraInputInfo& info = d->initial.extra_info;
     const auto& ts = d->initial.frame_timestamp;
 
-    // 同步本阶段独立变换树（ESEKF 内部投影依赖）
+    // 同步本阶段独立变换树（OutpostESEKF 内部投影依赖）
     RobotTfTree& tree = *s5_.tree;
     tree.unlock();
     tree.setChassisPosition((float)info.chassis_x, (float)info.chassis_y, (float)info.chassis_z);
@@ -355,13 +355,13 @@ void OutpostPipeline::processStage5(DataDeque& data)
     tree.setPitch((float)info.pitch_angle);
     tree.lockAndComputeCache();
 
-    // ── 观测丢失计时：连续超过阈值未观测到物体则重置 ESEKF ──
+    // ── 观测丢失计时：连续超过阈值未观测到物体则重置 OutpostESEKF ──
     const bool has_obs = !d->stage4.first_image_points.empty();
     if (has_obs) {
         s5_.last_observation_time = ts;
         s5_.has_observation_time = true;
     }
-    const double timeout = RobotConfig::instance().outpost.observationLostTimeoutSec;
+    const double timeout = RobotConfig::instance().armor.observationLostTimeoutSec;
     if (s5_.has_observation_time &&
         std::chrono::duration<double>(ts - s5_.last_observation_time).count() > timeout) {
         s5_.esekf->reset();
@@ -369,7 +369,7 @@ void OutpostPipeline::processStage5(DataDeque& data)
         s5_.has_observation_time = false;
     }
 
-    // ── ESEKF：初始化 / 更新 / 仅预测 ──
+    // ── OutpostESEKF：初始化 / 更新 / 仅预测 ──
     if (!s5_.esekf_initialized) {
         if (d->stage4.init_pnp_ok) {
             s5_.esekf->init(cv::Vec3d(d->stage4.init_pos[0], d->stage4.init_pos[1], d->stage4.init_pos[2]),
@@ -398,7 +398,7 @@ void OutpostPipeline::processStage5(DataDeque& data)
 
 // ==================== 事件驱动调度器 ====================
 
-void OutpostPipeline::wakeScheduler()
+void ArmorPipeline::wakeScheduler()
 {
     {
         std::lock_guard<std::mutex> lock(scheduler_mtx_);
@@ -407,7 +407,7 @@ void OutpostPipeline::wakeScheduler()
     scheduler_cv_.notify_one();
 }
 
-void OutpostPipeline::tryAdvanceStages()
+void ArmorPipeline::tryAdvanceStages()
 {
     stage1_.tryAdvance();
     stage2_.tryAdvance();
@@ -429,7 +429,7 @@ void OutpostPipeline::tryAdvanceStages()
     }
 }
 
-void OutpostPipeline::schedulerLoop()
+void ArmorPipeline::schedulerLoop()
 {
     while (true) {
         {
@@ -449,11 +449,11 @@ void OutpostPipeline::schedulerLoop()
 
 // ==================== 外部接口 ====================
 
-bool OutpostPipeline::addFrame(cv::Mat frame,
+bool ArmorPipeline::addFrame(cv::Mat frame,
                                const std::chrono::steady_clock::time_point& frame_timestamp,
                                const ExtraInputInfo& extra_info)
 {
-    auto data = std::make_unique<OutpostPipelineData>();
+    auto data = std::make_unique<ArmorPipelineData>();
     data->initial.frame = std::move(frame);
     data->initial.frame_timestamp = frame_timestamp;
     data->initial.extra_info = extra_info;
@@ -471,7 +471,7 @@ bool OutpostPipeline::addFrame(cv::Mat frame,
     return true;            // 成功加入输入缓冲队列
 }
 
-void OutpostPipeline::fillPerception(OutpostPipelineData* d, OutpostPerception& out)
+void ArmorPipeline::fillPerception(ArmorPipelineData* d, ArmorPerception& out)
 {
     out.objects = d->stage3.objects;
     out.world_positions = d->stage4.world_positions;
@@ -491,7 +491,7 @@ void OutpostPipeline::fillPerception(OutpostPipelineData* d, OutpostPerception& 
     out.valid = true;
 }
 
-PipelineResult OutpostPipeline::tryPopFrame(const std::chrono::steady_clock::time_point& timestamp)
+PipelineResult ArmorPipeline::tryPopFrame(const std::chrono::steady_clock::time_point& timestamp)
 {
     PipelineResult result;
 
@@ -512,7 +512,7 @@ PipelineResult OutpostPipeline::tryPopFrame(const std::chrono::steady_clock::tim
         result.frame_timestamp = front->initial.frame_timestamp;
         result.extra_info = front->initial.extra_info;
         result.frame = std::move(front->initial.frame);
-        fillPerception(front.get(), result.outpost);
+        fillPerception(front.get(), result.armor);
         result.valid = true;
         output_queue_.pop_front();
         // 输出队列腾出空间：唤醒调度器推进各阶段（尤其输出队列满导致阶段5停顿时）
@@ -522,7 +522,7 @@ PipelineResult OutpostPipeline::tryPopFrame(const std::chrono::steady_clock::tim
     return result;
 }
 
-void OutpostPipeline::clear()
+void ArmorPipeline::clear()
 {
     {
         // 与调度器推进互斥：期间不拉新批、不动中段队列；worker 仍可跑完当前批。
@@ -553,7 +553,7 @@ void OutpostPipeline::clear()
             output_queue_.clear();
         }
 
-        // 重置 ESEKF 与观测计时状态（stage5 已空闲，无竞争）
+        // 重置 OutpostESEKF 与观测计时状态（stage5 已空闲，无竞争）
         s5_.esekf->reset();
         s5_.esekf_initialized = false;
         s5_.has_observation_time = false;

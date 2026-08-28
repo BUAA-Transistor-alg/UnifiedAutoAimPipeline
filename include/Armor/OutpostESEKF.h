@@ -1,8 +1,8 @@
-// ESEKF.h — 误差状态扩展卡尔曼滤波 (Error-State Extended Kalman Filter)
+// OutpostESEKF.h — 误差状态扩展卡尔曼滤波 (Error-State Extended Kalman Filter)
 // 名义状态：三维坐标 + 方向四元数 + 绕世界系 z 轴的旋转速度 ω_z + 两个 z 偏移 dz2/dz3
 // 误差状态 (9 维)：[δp(3); δθ(3); δω_z(1); δdz2(1); δdz3(1)]
-#ifndef ESEKF_HPP
-#define ESEKF_HPP
+#ifndef OUTPOST_ESEKF_HPP
+#define OUTPOST_ESEKF_HPP
 
 #include <chrono>
 #include <functional>
@@ -16,11 +16,11 @@
 #include "common/TransformTree/RobotTfTree.h"
 #include "common/CameraProjection.h"
 
-class ESEKF {
+class OutpostESEKF {
 public:
     using TimePoint = std::chrono::steady_clock::time_point;
 
-    // 滤波可调参数（默认值与历史硬编码值一致；运行时由 config/outpost.esekf 覆盖）
+    // 滤波可调参数（默认值与历史硬编码值一致；运行时由 config/armor.outpost_esekf 覆盖）
     struct Params {
         double positionNoise;        // 位置过程噪声（Q 位置块）
         double rotationNoise;        // 姿态过程噪声（Q 姿态块）
@@ -42,7 +42,7 @@ public:
               initDz2Noise(0.01), initDz3Noise(0.01) {}
     };
 
-    ESEKF(std::shared_ptr<RobotTfTree> tf_tree,
+    OutpostESEKF(std::shared_ptr<RobotTfTree> tf_tree,
           std::shared_ptr<CameraProjection> camera_proj,
           const std::vector<std::vector<cv::Point3f>>& points_3d_list,
           const std::vector<cv::Point3f>& target_centers_3d_list,
@@ -60,7 +60,7 @@ public:
      *
      * 仿照 RollPredictor::capturePredictor：返回的 function 内部复制了调用时刻的
      * 所有状态（位置、姿态四元数、绕世界系 z 轴的旋转速度 ω_z、dz2/dz3 偏移以及
-     * 目标中心关键点），不随 ESEKF 后续 update/predict 而改变。
+     * 目标中心关键点），不随 OutpostESEKF 后续 update/predict 而改变。
      * 预测运动模型与 predict(dt) 一致：位置不变，仅绕世界系 z 轴以 ω_z 恒速旋转。
      *
      * @return 签名为 std::vector<cv::Point3f>(double dt) 的函数：传入预测时间 dt（秒，
@@ -155,4 +155,4 @@ private:
     double init_dz3_noise_;
 };
 
-#endif // ESEKF_HPP
+#endif // OUTPOST_ESEKF_HPP

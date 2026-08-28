@@ -1,24 +1,24 @@
-// OutpostModel.h — 前哨站 3D 模型关键点（从 test/main.cpp 挪出，供 PnP 与 ESEKF 阶段共用）
+// ArmorModel.h — 装甲板 3D 模型关键点（从 test/main.cpp 挪出，供 PnP 与 OutpostESEKF 阶段共用）
 //
-// 前哨站：3 个装甲面绕中心轴旋转，每面由 4 个角点组成（小装甲板尺寸
+// 装甲板：3 个装甲面绕中心轴旋转，每面由 4 个角点组成（小装甲板尺寸
 // w=0.133m 宽, h=0.05m 高），面 1 倾斜 15° 并沿 y 偏移 -0.275m，
 // 三面绕 x 轴（世界 z 轴）间隔 120° 布置。
-#ifndef OUTPOST_MODEL_H
-#define OUTPOST_MODEL_H
+#ifndef ARMOR_MODEL_H
+#define ARMOR_MODEL_H
 
 #include <vector>
 #include <opencv2/opencv.hpp>
 
 #include "common/TransformTree/CoordinateTransform.h"
 
-namespace OutpostModel {
+namespace ArmorModel {
 
 // 物体 3D 尺寸（w=0.133m 宽, h=0.05m 高）
 constexpr float OBJ_W = 0.133f;
 constexpr float OBJ_H = 0.050f;
 
 // 物体四个角点（局部坐标系，逆时针顺序）
-inline const std::vector<cv::Point3f> OBJECT_POINTS_3D_LOCAL = {
+inline const std::vector<cv::Point3f> SMALL_ARMOR_POINTS_3D_LOCAL = {
     cv::Point3f(-OBJ_W/2.0f, 0.0f,  OBJ_H/2.0f),  // 左上
     cv::Point3f(-OBJ_W/2.0f, 0.0f, -OBJ_H/2.0f),  // 左下
     cv::Point3f( OBJ_W/2.0f, 0.0f, -OBJ_H/2.0f),  // 右下
@@ -64,7 +64,7 @@ inline std::vector<cv::Point3f> flattenPointCloud(
     return result;
 }
 
-// ── 构造前哨站全体坐标：3 个装甲面的 3D 关键点列表 ──
+// ── 构造装甲板全体坐标：3 个装甲面的 3D 关键点列表 ──
 inline std::vector<std::vector<cv::Point3f>> buildOutpostPoints3D(
     const std::vector<cv::Point3f>& small_armor_points_3d_local) {
     std::vector<std::vector<cv::Point3f>> outpost_points_3d_list;
@@ -89,7 +89,7 @@ inline std::vector<std::vector<cv::Point3f>> buildOutpostPoints3D(
 
 // 3 个装甲面（每面 4 角点）局部 3D 关键点
 inline const std::vector<std::vector<cv::Point3f>> OUTPOST_POINTS_3D_LIST =
-    buildOutpostPoints3D(OBJECT_POINTS_3D_LOCAL);
+    buildOutpostPoints3D(SMALL_ARMOR_POINTS_3D_LOCAL);
 // 扁平化（12 个点）
 inline const std::vector<cv::Point3f> FLATTEN_OUTPOST_POINTS_3D_LIST =
     flattenPointCloud(OUTPOST_POINTS_3D_LIST);
@@ -97,6 +97,6 @@ inline const std::vector<cv::Point3f> FLATTEN_OUTPOST_POINTS_3D_LIST =
 inline const std::vector<cv::Point3f> OUTPOST_TARGET_CENTER_3D_LIST =
     flattenPointCloud(buildOutpostPoints3D(TARGET_CENTER_3D_LOCAL));
 
-} // namespace OutpostModel
+} // namespace ArmorModel
 
-#endif // OUTPOST_MODEL_H
+#endif // ARMOR_MODEL_H

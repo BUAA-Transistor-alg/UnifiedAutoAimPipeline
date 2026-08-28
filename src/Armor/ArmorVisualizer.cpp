@@ -1,13 +1,13 @@
-// OutpostVisualizer.cpp — 前哨站自瞄可视化实现（全部绘制逻辑从 test/main.cpp 抽取）
-#include "Outpost/OutpostVisualizer.h"
+// ArmorVisualizer.cpp — 装甲板自瞄可视化实现（全部绘制逻辑从 test/main.cpp 抽取）
+#include "Armor/ArmorVisualizer.h"
 
 #include <iomanip>
 #include <sstream>
 
 #include "common/TransformTree/CoordinateTransform.h"
 
-void OutpostVisualizer::render(cv::Mat& image,
-                               const OutpostVisualizationData& data,
+void ArmorVisualizer::render(cv::Mat& image,
+                               const ArmorVisualizationData& data,
                                const RobotTfTree& tf_tree,
                                const CameraProjection& camera_proj) const {
     // ── 1. 每物体 PnP 角点重投影 + 序号 ──
@@ -15,7 +15,7 @@ void OutpostVisualizer::render(cv::Mat& image,
         drawReprojectedPoints(image, (int)i, data.raw_pose.reprojected_points[i]);
     }
 
-    // ── 2. ESEKF 滤波结果 ──
+    // ── 2. OutpostESEKF 滤波结果 ──
     if (data.filtered_pose.valid) {
         // EKF 世界关键点投影（红）
         drawEskfProjectedPoints(image, data.filtered_pose.world_points, tf_tree, camera_proj);
@@ -41,11 +41,8 @@ void OutpostVisualizer::render(cv::Mat& image,
     }
 
     // ── 4. 通信信息 / 温度 / FPS ──
-    // 以下三项改由 main（输出模式窗口覆盖层）统一绘制，保证 Outpost / PowerRune
+    // 以下三项改由 main（输出模式窗口覆盖层）统一绘制，保证 Armor / PowerRune
     // 两个流水线的可视化行为一致（串口信息 + 帧数统计 + 热键提醒）：
-    // drawCommInfo(image, data.robot_state);
-    // drawYawTemperature(image, (int)data.robot_state.mcu.yaw_temperature, data.robot_state.mcu.valid);
-    // drawFps(image, data.fps, data.frame_timestamp);
 
     // ── 5. 检测结果（最上层） ──
     drawDetectionResults(image, data.detection.objects);
@@ -56,155 +53,7 @@ void OutpostVisualizer::render(cv::Mat& image,
     }
 }
 
-// ============================================================================
-// 静态工具函数（原样复制自 test/main.cpp）
-// ============================================================================
-
-void OutpostVisualizer::drawCommInfo(cv::Mat& img, const RobotController::State& st) {
-    // 起始 y = 80（30 + 50）：整体下移 50px，避开外部显示线程左上角的 info 文字（y≈60）
-    int y = 80;
-    int lineH = 18;
-    cv::Scalar color(0, 255, 0);
-    int font = cv::FONT_HERSHEY_SIMPLEX;
-    double scale = 0.45;
-    int thick = 1;
-
-    auto put = [&](const std::string& text) {
-        cv::putText(img, text, cv::Point(8, y), font, scale, color, thick);
-        y += lineH;
-    };
-
-    put("--- MCU ---");
-    if (st.mcu.valid) {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(3);
-        oss << "bullet: " << st.mcu.bullet_velocity
-            << "  pitch: " << st.mcu.pitch_angle
-            << "  yaw: " << st.mcu.yaw_angle;
-        put(oss.str());
-        oss.str(""); oss << "yaw_omega: " << st.mcu.yaw_omega
-                         << "  imu_yaw: " << st.mcu.chassis_imu_yaw
-                         << "  imu_omega: " << st.mcu.chassis_imu_omega;
-        put(oss.str());
-        oss.str(""); oss << "mark: " << (int)st.mcu.mark
-                         << "  color: " << (int)st.mcu.color
-                         << "  aim: " << (int)st.mcu.auto_aim_switch;
-        put(oss.str());
-        oss.str(""); oss << "temp: " << (int)st.mcu.yaw_temperature;
-        put(oss.str());
-    } else {
-        put("(no data)");
-    }
-
-    put("--- IMU ---");
-    if (st.imu.valid) {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(4);
-        oss << "gyro: " << st.imu.gx << " " << st.imu.gy << " " << st.imu.gz;
-        put(oss.str());
-        oss.str(""); oss << "acc: " << st.imu.ax << " " << st.imu.ay << " " << st.imu.az;
-        put(oss.str());
-        oss.str(""); oss << "euler: " << st.imu.euler_yaw
-                         << " " << st.imu.euler_pitch
-                         << " " << st.imu.euler_roll;
-        put(oss.str());
-        oss.str(""); oss << "dt: " << st.imu.dt_one_tenth_ms;
-        put(oss.str());
-    } else {
-        put("(no data)");
-    }
-
-    put("--- FUSED ---");
-    if (st.fused.valid) {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(4);
-        oss << "yaw_pos: " << st.fused.yaw_pos
-            << "  yaw_rate: " << st.fused.yaw_rate;
-        put(oss.str());
-        oss.str(""); oss << "chassis_yaw: " << st.fused.chassis_yaw
-                         << "  pitch: " << st.fused.chassis_pitch
-                         << "  roll: " << st.fused.chassis_roll;
-        put(oss.str());
-    } else {
-        put("(no data)");
-    }
-
-    put("--- STRICT ---");
-    {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(4);
-        oss << "imu_euler: " << st.strict.imu_euler_yaw
-            << " " << st.strict.imu_euler_pitch
-            << " " << st.strict.imu_euler_roll;
-        put(oss.str());
-        oss.str(""); oss << "yaw_pos: " << st.strict.yaw_pos
-                         << "  pitch: " << st.strict.pitch_angle;
-        put(oss.str());
-        oss.str(""); oss << "chassis: " << st.strict.chassis_yaw
-                         << " " << st.strict.chassis_pitch
-                         << " " << st.strict.chassis_roll;
-        put(oss.str());
-    }
-
-    put("--- MPC ---");
-    {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(4);
-        oss << "target_yaw: " << st.mpc.yaw_target_angle
-            << "  target_vel: " << st.mpc.yaw_target_velocity
-            << "  torque: " << st.mpc.yaw_torque;
-        put(oss.str());
-        oss.str(""); oss << "delayed: " << st.mpc.delayed_target
-                         << "  integral: " << st.mpc.integral;
-        put(oss.str());
-    }
-}
-
-void OutpostVisualizer::drawYawTemperature(cv::Mat& img, int temp, bool valid) {
-    std::ostringstream oss;
-    oss << "Yaw Motor Temp: ";
-    if (valid) oss << temp << " C";
-    else       oss << "N/A";
-
-    cv::Scalar color = cv::Scalar(0, 255, 0);
-    if (valid) {
-        if (temp >= 70)      color = cv::Scalar(0, 0, 255);    // 红：过热
-        else if (temp >= 50) color = cv::Scalar(0, 255, 255);  // 黄：偏高
-    }
-
-    int font = cv::FONT_HERSHEY_SIMPLEX;
-    double scale = 0.7;
-    int thick = 2;
-    int baseline = 0;
-    cv::Size sz = cv::getTextSize(oss.str(), font, scale, thick, &baseline);
-    cv::Point org((img.cols - sz.width) / 2, 30);   // 顶部居中
-    cv::putText(img, oss.str(), org, font, scale, color, thick);
-}
-
-void OutpostVisualizer::drawFps(cv::Mat& img, double fps,
-                                const std::chrono::steady_clock::time_point& ts) {
-    using namespace std::chrono;
-    int y = 30;
-    cv::Scalar color(0, 255, 255);
-    int font = cv::FONT_HERSHEY_SIMPLEX;
-
-    // FPS
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(1) << "FPS: " << fps;
-    int baseline = 0;
-    cv::Size textSize = cv::getTextSize(oss.str(), font, 0.7, 2, &baseline);
-    cv::putText(img, oss.str(), cv::Point(img.cols - textSize.width - 10, y), font, 0.7, color, 2);
-    y += 22;
-
-    // 帧时间戳 (epoch seconds)
-    auto epoch = duration_cast<duration<double>>(ts.time_since_epoch()).count();
-    oss.str("");
-    oss << std::fixed << std::setprecision(3) << "TS: " << epoch;
-    textSize = cv::getTextSize(oss.str(), font, 0.45, 1, &baseline);
-    cv::putText(img, oss.str(), cv::Point(img.cols - textSize.width - 10, y), font, 0.45, color, 1);
-}
-
-void OutpostVisualizer::drawWorldPose(cv::Mat& img, int objIdx,
+void ArmorVisualizer::drawWorldPose(cv::Mat& img, int objIdx,
                                       const cv::Vec3f& world_pos, const cv::Vec3f& world_euler) {
     int x0 = 608;   // 原 8，右移 600 避开统一覆盖层（串口信息/热键提醒）
     int y0 = img.rows - 80;
@@ -227,7 +76,7 @@ void OutpostVisualizer::drawWorldPose(cv::Mat& img, int objIdx,
     cv::putText(img, oss.str(), cv::Point(x0, y0 + lineH), font, scale, color, thick);
 }
 
-void OutpostVisualizer::drawEskfPose(cv::Mat& img, const cv::Vec3f& filtered_pos,
+void ArmorVisualizer::drawEskfPose(cv::Mat& img, const cv::Vec3f& filtered_pos,
                                      const cv::Vec3f& filtered_euler) {
     int x0 = 608;   // 原 8，右移 600 避开统一覆盖层（串口信息/热键提醒）
     int lineH = 16;
@@ -250,7 +99,7 @@ void OutpostVisualizer::drawEskfPose(cv::Mat& img, const cv::Vec3f& filtered_pos
     cv::putText(img, oss.str(), cv::Point(x0, y0 + lineH), font, scale, color, thick);
 }
 
-void OutpostVisualizer::drawReprojectedPoints(cv::Mat& img, int objIdx,
+void ArmorVisualizer::drawReprojectedPoints(cv::Mat& img, int objIdx,
                                               const std::vector<cv::Point2f>& reprojected_pts) {
     static const cv::Scalar colors[] = {
         cv::Scalar(0, 255, 255),    // 黄
@@ -269,7 +118,7 @@ void OutpostVisualizer::drawReprojectedPoints(cv::Mat& img, int objIdx,
     }
 }
 
-void OutpostVisualizer::drawEskfProjectedPoints(cv::Mat& img,
+void ArmorVisualizer::drawEskfProjectedPoints(cv::Mat& img,
                                                 const std::vector<cv::Point3f>& world_points,
                                                 const RobotTfTree& tf_tree,
                                                 const CameraProjection& camera_proj) const {
@@ -294,7 +143,7 @@ void OutpostVisualizer::drawEskfProjectedPoints(cv::Mat& img,
     }
 }
 
-void OutpostVisualizer::drawPredictedCenterPoints(cv::Mat& img,
+void ArmorVisualizer::drawPredictedCenterPoints(cv::Mat& img,
                                                   const std::vector<cv::Point3f>& pred_world,
                                                   const RobotTfTree& tf_tree,
                                                   const CameraProjection& camera_proj) const {
@@ -321,7 +170,7 @@ void OutpostVisualizer::drawPredictedCenterPoints(cv::Mat& img,
     }
 }
 
-void OutpostVisualizer::drawAimPoint(cv::Mat& img,
+void ArmorVisualizer::drawAimPoint(cv::Mat& img,
                                      const cv::Vec3f& aim_world, double predict_time,
                                      const RobotTfTree& tf_tree,
                                      const CameraProjection& camera_proj) const {
@@ -343,8 +192,8 @@ void OutpostVisualizer::drawAimPoint(cv::Mat& img,
 // drawDetectionResults（复制自 test/main.cpp，原 RobotDetectionModel 绘制逻辑）
 // ============================================================================
 
-void OutpostVisualizer::drawDetectionResults(cv::Mat& image,
-                                             const std::vector<OutpostDetect::Object>& objects) {
+void ArmorVisualizer::drawDetectionResults(cv::Mat& image,
+                                             const std::vector<ArmorDetect::Object>& objects) {
     static const cv::Scalar COLOR_RED   = cv::Scalar(0, 0, 255);
     static const cv::Scalar COLOR_BLUE  = cv::Scalar(255, 0, 0);
     static const cv::Scalar COLOR_GREEN = cv::Scalar(0, 255, 0);
@@ -391,7 +240,7 @@ void OutpostVisualizer::drawDetectionResults(cv::Mat& image,
         }
 
         // 标签
-        static const char* CLS[] = {"Sentry","1","2","3","4","5","Outpost","Base","BigBase"};
+        static const char* CLS[] = {"Sentry","1","2","3","4","5","Armor","Base","BigBase"};
         const char* cname = (obj.label >= 0 && obj.label < 9) ? CLS[obj.label] : "?";
         std::string lbl = cv::format("%s %.1f%%", cname, obj.prob * 100.f);
         int baseline;

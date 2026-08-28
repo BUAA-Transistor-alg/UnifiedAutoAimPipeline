@@ -1,4 +1,4 @@
-// IPipeline.h — 流水线统一接口（OutpostPipeline / PowerRunePipeline 共同实现）
+// IPipeline.h — 流水线统一接口（ArmorPipeline / PowerRunePipeline 共同实现）
 //
 // 两个流水线实例在启动时全部构造（模型编译一次），之后不重建；
 // 任意时刻只有一个是"激活"状态（接收 addFrame），切换时调用 clear()
@@ -12,7 +12,7 @@
 
 #include "common/PipelineResult.h"
 
-enum class PipelineMode { OUTPOST, POWER_RUNE };
+enum class PipelineMode { ARMOR, POWER_RUNE };
 
 class IPipeline {
 public:

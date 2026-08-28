@@ -1,10 +1,10 @@
-#include "Outpost/ESEKF.h"
+#include "Armor/OutpostESEKF.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-ESEKF::ESEKF(std::shared_ptr<RobotTfTree> tf_tree,
+OutpostESEKF::OutpostESEKF(std::shared_ptr<RobotTfTree> tf_tree,
              std::shared_ptr<CameraProjection> camera_proj,
              const std::vector<std::vector<cv::Point3f>>& points_3d_list,
              const std::vector<cv::Point3f>& target_centers_3d_list,
@@ -36,7 +36,7 @@ ESEKF::ESEKF(std::shared_ptr<RobotTfTree> tf_tree,
     P_.setIdentity();
 }
 
-void ESEKF::init(const cv::Vec3d& position, const cv::Mat& rotation_matrix,
+void OutpostESEKF::init(const cv::Vec3d& position, const cv::Mat& rotation_matrix,
                  const TimePoint& t) {
     position_ = position;
     orientation_ = rotationMatrixToQuaternion(rotation_matrix);
@@ -51,7 +51,7 @@ void ESEKF::init(const cv::Vec3d& position, const cv::Mat& rotation_matrix,
     P_(8, 8) = init_dz3_noise_;
 }
 
-void ESEKF::reset() {
+void OutpostESEKF::reset() {
     position_ = cv::Vec3d(0.0, 0.0, 0.0);
     orientation_.setIdentity();
     yaw_rate_ = 0.0;
@@ -63,7 +63,7 @@ void ESEKF::reset() {
     P_.setIdentity();
 }
 
-void ESEKF::update(const std::vector<std::vector<cv::Point2f>>& points_2d_list,
+void OutpostESEKF::update(const std::vector<std::vector<cv::Point2f>>& points_2d_list,
                    const TimePoint& t) {
     const size_t M = points_2d_list.size();
     CV_Assert(M > 0);
@@ -122,7 +122,7 @@ void ESEKF::update(const std::vector<std::vector<cv::Point2f>>& points_2d_list,
     applyOrientationZAxisRegularization();
 }
 
-void ESEKF::predict(const TimePoint& t) {
+void OutpostESEKF::predict(const TimePoint& t) {
     double dt = std::chrono::duration<double>(t - last_time_).count();
     last_time_ = t;
     if (dt > 0.0) predict(dt);
@@ -130,7 +130,7 @@ void ESEKF::predict(const TimePoint& t) {
     applyOrientationZAxisRegularization();
 }
 
-std::vector<cv::Point3f> ESEKF::getWorldPoints() const {
+std::vector<cv::Point3f> OutpostESEKF::getWorldPoints() const {
     cv::Mat R = quaternionToRotationMatrix(orientation_);
     std::vector<cv::Point3f> all_local;
     for (size_t i = 0; i < points_3d_list_.size(); ++i) {
@@ -144,8 +144,8 @@ std::vector<cv::Point3f> ESEKF::getWorldPoints() const {
 }
 
 std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>>
-ESEKF::capturePosePredictor() const {
-    // 捕获调用时刻的所有状态（值拷贝），返回的函数不随 ESEKF 后续状态变化而改变
+OutpostESEKF::capturePosePredictor() const {
+    // 捕获调用时刻的所有状态（值拷贝），返回的函数不随 OutpostESEKF 后续状态变化而改变
     const cv::Vec3d pos = position_;
     const Eigen::Quaterniond q = orientation_;
     const double yaw_rate = yaw_rate_;
@@ -177,7 +177,7 @@ ESEKF::capturePosePredictor() const {
     return std::make_unique<std::function<std::vector<cv::Point3f>(double)>>(std::move(func));
 }
 
-std::vector<double> ESEKF::computeError(const cv::Vec3d& position,
+std::vector<double> OutpostESEKF::computeError(const cv::Vec3d& position,
                                         const cv::Mat& rotation_matrix,
                                         const std::vector<std::vector<cv::Point2f>>& points_2d_list,
                                         const std::vector<size_t>& assignment,
@@ -187,7 +187,7 @@ std::vector<double> ESEKF::computeError(const cv::Vec3d& position,
                             buildConcat3D(assignment, dz2, dz3));
 }
 
-cv::Mat ESEKF::computeJacobian(const std::vector<std::vector<cv::Point2f>>& points_2d_list,
+cv::Mat OutpostESEKF::computeJacobian(const std::vector<std::vector<cv::Point2f>>& points_2d_list,
                                const std::vector<size_t>& assignment) const {
     const std::vector<cv::Point2f> c2 = buildConcat2D(points_2d_list);
     const size_t n = c2.size();
@@ -243,11 +243,11 @@ cv::Mat ESEKF::computeJacobian(const std::vector<std::vector<cv::Point2f>>& poin
     return J;
 }
 
-cv::Mat ESEKF::getRotationMatrix() const {
+cv::Mat OutpostESEKF::getRotationMatrix() const {
     return quaternionToRotationMatrix(orientation_);
 }
 
-void ESEKF::predict(double dt) {
+void OutpostESEKF::predict(double dt) {
     if (dt <= 0.0) return;
 
     // 名义状态：位置不变，仅绕世界系 z 轴以 ω_z 恒速旋转
@@ -280,7 +280,7 @@ void ESEKF::predict(double dt) {
     P_ = F * P_ * F.transpose() + Q;
 }
 
-void ESEKF::applyCorrection(const Eigen::VectorXd& dx) {
+void OutpostESEKF::applyCorrection(const Eigen::VectorXd& dx) {
     position_[0] += dx(0);
     position_[1] += dx(1);
     position_[2] += dx(2);
@@ -299,7 +299,7 @@ void ESEKF::applyCorrection(const Eigen::VectorXd& dx) {
     dz3_ = std::clamp(dz3_, -dz_limit_, dz_limit_);
 }
 
-void ESEKF::applyOrientationZAxisRegularization() {
+void OutpostESEKF::applyOrientationZAxisRegularization() {
     cv::Mat Rmat = quaternionToRotationMatrix(orientation_);
     const double R00 = Rmat.at<double>(0, 0);
     const double R01 = Rmat.at<double>(0, 1);
@@ -331,7 +331,7 @@ void ESEKF::applyOrientationZAxisRegularization() {
     P_ = (Eigen::Matrix<double, 9, 9>::Identity() - KH) * P_;
 }
 
-void ESEKF::enumerateAssignments(const std::vector<std::vector<cv::Point2f>>& p2_list,
+void OutpostESEKF::enumerateAssignments(const std::vector<std::vector<cv::Point2f>>& p2_list,
                                  const cv::Vec3d& position, const cv::Mat& R,
                                  size_t depth,
                                  std::vector<size_t>& assignment, std::vector<bool>& used,
@@ -356,7 +356,7 @@ void ESEKF::enumerateAssignments(const std::vector<std::vector<cv::Point2f>>& p2
     }
 }
 
-std::vector<cv::Point3f> ESEKF::effectiveLocalPoints(size_t obj_idx, double dz) const {
+std::vector<cv::Point3f> OutpostESEKF::effectiveLocalPoints(size_t obj_idx, double dz) const {
     std::vector<cv::Point3f> pts = points_3d_list_[obj_idx];
     if (dz != 0.0) {
         for (auto& p : pts) p.z += (float)dz;
@@ -364,13 +364,13 @@ std::vector<cv::Point3f> ESEKF::effectiveLocalPoints(size_t obj_idx, double dz) 
     return pts;
 }
 
-std::vector<cv::Point2f> ESEKF::buildConcat2D(const std::vector<std::vector<cv::Point2f>>& points_2d_list) const {
+std::vector<cv::Point2f> OutpostESEKF::buildConcat2D(const std::vector<std::vector<cv::Point2f>>& points_2d_list) const {
     std::vector<cv::Point2f> c2;
     for (const auto& p : points_2d_list) c2.insert(c2.end(), p.begin(), p.end());
     return c2;
 }
 
-std::vector<cv::Point3f> ESEKF::buildConcat3D(const std::vector<size_t>& assignment,
+std::vector<cv::Point3f> OutpostESEKF::buildConcat3D(const std::vector<size_t>& assignment,
                                               double dz2, double dz3) const {
     std::vector<cv::Point3f> c3;
     for (size_t i = 0; i < assignment.size(); ++i) {
@@ -384,7 +384,7 @@ std::vector<cv::Point3f> ESEKF::buildConcat3D(const std::vector<size_t>& assignm
     return c3;
 }
 
-double ESEKF::costForDzPair(const std::vector<std::vector<cv::Point2f>>& p2_list,
+double OutpostESEKF::costForDzPair(const std::vector<std::vector<cv::Point2f>>& p2_list,
                             const std::vector<size_t>& assignment,
                             const cv::Vec3d& position, const cv::Mat& R,
                             double dz2, double dz3) const {
@@ -394,7 +394,7 @@ double ESEKF::costForDzPair(const std::vector<std::vector<cv::Point2f>>& p2_list
     return cost;
 }
 
-double ESEKF::optimizeDz(const std::vector<std::vector<cv::Point2f>>& p2_list,
+double OutpostESEKF::optimizeDz(const std::vector<std::vector<cv::Point2f>>& p2_list,
                          const std::vector<size_t>& assignment,
                          const cv::Vec3d& position, const cv::Mat& R,
                          size_t obj_idx) const {
@@ -424,7 +424,7 @@ double ESEKF::optimizeDz(const std::vector<std::vector<cv::Point2f>>& p2_list,
     return std::clamp(0.5 * (lo + hi), -dz_limit_, dz_limit_);
 }
 
-double ESEKF::assignmentCost(const std::vector<std::vector<cv::Point2f>>& p2_list,
+double OutpostESEKF::assignmentCost(const std::vector<std::vector<cv::Point2f>>& p2_list,
                              const std::vector<size_t>& assignment,
                              const cv::Vec3d& position, const cv::Mat& R) const {
     bool has1 = false, has2 = false;
@@ -438,7 +438,7 @@ double ESEKF::assignmentCost(const std::vector<std::vector<cv::Point2f>>& p2_lis
     return costForDzPair(p2_list, assignment, position, R, dz2, dz3);
 }
 
-std::vector<double> ESEKF::computeErrorCore(const cv::Vec3d& position,
+std::vector<double> OutpostESEKF::computeErrorCore(const cv::Vec3d& position,
                                             const cv::Mat& rotation_matrix,
                                             const std::vector<cv::Point2f>& c2,
                                             const std::vector<cv::Point3f>& c3) const {
@@ -468,7 +468,7 @@ std::vector<double> ESEKF::computeErrorCore(const cv::Vec3d& position,
     return residuals;
 }
 
-Eigen::Quaterniond ESEKF::rotationMatrixToQuaternion(const cv::Mat& R) {
+Eigen::Quaterniond OutpostESEKF::rotationMatrixToQuaternion(const cv::Mat& R) {
     CV_Assert(!R.empty() && R.rows == 3 && R.cols == 3);
     cv::Mat R64;
     if (R.type() == CV_64F) {
@@ -485,14 +485,14 @@ Eigen::Quaterniond ESEKF::rotationMatrixToQuaternion(const cv::Mat& R) {
     return q;
 }
 
-cv::Vec3d ESEKF::quaternionToRotationVector(const Eigen::Quaterniond& q) {
+cv::Vec3d OutpostESEKF::quaternionToRotationVector(const Eigen::Quaterniond& q) {
     Eigen::Quaterniond qn = q.normalized();
     Eigen::AngleAxisd aa(qn);
     Eigen::Vector3d rv = aa.angle() * aa.axis();
     return cv::Vec3d(rv[0], rv[1], rv[2]);
 }
 
-Eigen::Quaterniond ESEKF::rotationVectorToQuaternion(const cv::Vec3d& rotvec) {
+Eigen::Quaterniond OutpostESEKF::rotationVectorToQuaternion(const cv::Vec3d& rotvec) {
     double angle = std::sqrt(rotvec[0] * rotvec[0] +
                              rotvec[1] * rotvec[1] +
                              rotvec[2] * rotvec[2]);
@@ -503,7 +503,7 @@ Eigen::Quaterniond ESEKF::rotationVectorToQuaternion(const cv::Vec3d& rotvec) {
     return Eigen::Quaterniond(Eigen::AngleAxisd(angle, axis));
 }
 
-cv::Mat ESEKF::quaternionToRotationMatrix(const Eigen::Quaterniond& q) {
+cv::Mat OutpostESEKF::quaternionToRotationMatrix(const Eigen::Quaterniond& q) {
     Eigen::Matrix3d Re = q.normalized().toRotationMatrix();
     cv::Mat R(3, 3, CV_64F);
     for (int i = 0; i < 3; ++i)
@@ -512,14 +512,14 @@ cv::Mat ESEKF::quaternionToRotationMatrix(const Eigen::Quaterniond& q) {
     return R;
 }
 
-cv::Mat ESEKF::rotationVectorToRotationMatrix(const cv::Vec3d& rotvec) {
+cv::Mat OutpostESEKF::rotationVectorToRotationMatrix(const cv::Vec3d& rotvec) {
     cv::Mat rvec = (cv::Mat_<double>(3, 1) << rotvec[0], rotvec[1], rotvec[2]);
     cv::Mat R;
     cv::Rodrigues(rvec, R);
     return R;
 }
 
-std::vector<cv::Point3f> ESEKF::localToWorld(const cv::Vec3d& position, const cv::Mat& R,
+std::vector<cv::Point3f> OutpostESEKF::localToWorld(const cv::Vec3d& position, const cv::Mat& R,
                                              const std::vector<cv::Point3f>& local_points) {
     std::vector<cv::Point3f> world;
     world.reserve(local_points.size());

@@ -1,28 +1,28 @@
-#include "PowerRune/YoloPoseInfer.h"
+#include "PowerRune/PowerRuneInfer.h"
 #include <iostream>
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
 
-using namespace YoloPose;
+using namespace PowerRune;
 
 // ==========================================================================
-// YoloPosePreprocessor 实现（公共 InferCore 预处理）
+// PowerRunePreprocessor 实现（公共 InferCore 预处理）
 // ==========================================================================
 
-YoloPosePreprocessor::YoloPosePreprocessor(int input_width, int input_height, int num_threads)
+PowerRunePreprocessor::PowerRunePreprocessor(int input_width, int input_height, int num_threads)
     : impl_(input_width, input_height, num_threads) {}
 
-void YoloPosePreprocessor::preprocess(const std::vector<const cv::Mat*>& imgs,
+void PowerRunePreprocessor::preprocess(const std::vector<const cv::Mat*>& imgs,
                                       std::vector<cv::Mat*>& out) {
     impl_.preprocess(imgs, out);
 }
 
 // ==========================================================================
-// YoloPoseInfer 实现（公共 InferCore 推理引擎）
+// PowerRuneInfer 实现（公共 InferCore 推理引擎）
 // ==========================================================================
 
-YoloPoseInfer::YoloPoseInfer(const std::string& model_path_xml,
+PowerRuneInfer::PowerRuneInfer(const std::string& model_path_xml,
                              const std::string& model_path_bin,
                              const std::string& device,
                              int input_width, int input_height,
@@ -33,7 +33,7 @@ YoloPoseInfer::YoloPoseInfer(const std::string& model_path_xml,
           model_path_xml, model_path_bin, device, input_width, input_height,
           max_batch, std::move(shared_core), cache_dir)) {}
 
-YoloPoseInfer::YoloPoseInfer(const std::string& model_path_onnx,
+PowerRuneInfer::PowerRuneInfer(const std::string& model_path_onnx,
                              const std::string& device,
                              int input_width, int input_height,
                              int max_batch,
@@ -43,22 +43,22 @@ YoloPoseInfer::YoloPoseInfer(const std::string& model_path_onnx,
           model_path_onnx, device, input_width, input_height,
           max_batch, std::move(shared_core), cache_dir)) {}
 
-std::vector<InferenceOutput> YoloPoseInfer::runInference(
+std::vector<InferenceOutput> PowerRuneInfer::runInference(
     const std::vector<const cv::Mat*>& preprocessed_imgs,
     char* out_area, size_t out_cap) {
     return engine_->runInference(preprocessed_imgs, out_area, out_cap);
 }
 
 // ==========================================================================
-// YoloPosePostprocessor 实现
+// PowerRunePostprocessor 实现
 // ==========================================================================
 
-YoloPosePostprocessor::YoloPosePostprocessor(bool manual_nms, int input_width, int input_height,
+PowerRunePostprocessor::PowerRunePostprocessor(bool manual_nms, int input_width, int input_height,
                                              int num_threads)
     : manual_nms_(manual_nms), input_width_(input_width), input_height_(input_height),
       pool_(num_threads) {}
 
-void YoloPosePostprocessor::postprocessBatch(
+void PowerRunePostprocessor::postprocessBatch(
     const std::vector<PoseBatchOutput>& outputs,
     const std::vector<int>& orig_ws,
     const std::vector<int>& orig_hs,
@@ -72,7 +72,7 @@ void YoloPosePostprocessor::postprocessBatch(
     });
 }
 
-std::vector<PoseDetection> YoloPosePostprocessor::postprocess(
+std::vector<PoseDetection> PowerRunePostprocessor::postprocess(
     const float* data,
     int rows,
     int cols,
@@ -101,7 +101,7 @@ std::vector<PoseDetection> YoloPosePostprocessor::postprocess(
     }
 }
 
-std::vector<PoseDetection> YoloPosePostprocessor::postprocessNms(const float* data, int num_dets,
+std::vector<PoseDetection> PowerRunePostprocessor::postprocessNms(const float* data, int num_dets,
                                                                   int orig_w, int orig_h,
                                                                   float conf_threshold) {
     std::vector<PoseDetection> detections;
@@ -137,7 +137,7 @@ std::vector<PoseDetection> YoloPosePostprocessor::postprocessNms(const float* da
     return detections;
 }
 
-std::vector<PoseDetection> YoloPosePostprocessor::postprocessRaw(const float* data, int num_anchors,
+std::vector<PoseDetection> PowerRunePostprocessor::postprocessRaw(const float* data, int num_anchors,
                                                                  int orig_w, int orig_h,
                                                                  float conf_threshold) {
     // data 布局 (RAW_OUTPUT_DIM, num_anchors)，通道优先：

@@ -6,11 +6,11 @@ modify_0526_dynamic.py — 将静态 640×640 / batch=1 的魔改 YOLO 模型 05
 
 背景
 ----
-Model/Outpost/0526.onnx 是一个由 PyTorch 2.0.1 静态导出的"魔改 YOLO"（无原始 .pt 文件，
+Model/Armor/0526.onnx 是一个由 PyTorch 2.0.1 静态导出的"魔改 YOLO"（无原始 .pt 文件，
 头部为 4 关键点 landmarks + conf + 4 色 + 9 类，共 22 通道），导出时把输入分辨率写死为
 [1, 3, 640, 640]、输出写死为 [1, 25200, 22]（25200 = 3 尺度 × 3 anchor × (80²+40²+20²)）。
 因此：
-  * 把 config 的 outpost.inference.max_batch 调大后，OpenVINO 按 batch=2/3/4 reshape 编译
+  * 把 config 的 armor.inference.max_batch 调大后，OpenVINO 按 batch=2/3/4 reshape 编译
     会失败（检测头 Reshape 目标形状写死 batch=1），InferCore 只能回退到 batch=1；
   * 改用 512×512 / 320×320 输入会在检测头形状上直接报错。
 
@@ -47,13 +47,13 @@ Model/Outpost/0526.onnx 是一个由 PyTorch 2.0.1 静态导出的"魔改 YOLO"�
 
 用法
 ----
-  python3 modify_0526_dynamic.py [--input Model/Outpost/0526.onnx]
-                                [--output Model/Outpost/0526_dynamic.onnx]
+  python3 modify_0526_dynamic.py [--input Model/Armor/0526.onnx]
+                                [--output Model/Armor/0526_dynamic.onnx]
                                 [--no-verify]
 
 配套改动
 --------
-C++ 侧后处理原先把 anchor 数写死为 NUM_ANCHORS=25200（include/Outpost/OpenvinoInfer.h），
+C++ 侧后处理原先把 anchor 数写死为 NUM_ANCHORS=25200（include/Armor/ArmorInfer.h），
 分辨率一改就会拒绝输出。配合本脚本需将后处理改为按输出张量形状动态读取 anchor 数
 （已随分支提交：删除 NUM_ANCHORS，postprocess 内用 shape[1] 作为循环/步长）。
 
@@ -300,8 +300,8 @@ orig_model_path_global = None  # 由 main 注入，供 verify 使用
 
 def main():
     ap = argparse.ArgumentParser(description="把 0526.onnx 改造为动态 batch + 动态分辨率")
-    ap.add_argument("--input", default="Model/Outpost/0526.onnx")
-    ap.add_argument("--output", default="Model/Outpost/0526_dynamic.onnx")
+    ap.add_argument("--input", default="Model/Armor/0526.onnx")
+    ap.add_argument("--output", default="Model/Armor/0526_dynamic.onnx")
     ap.add_argument("--no-verify", action="store_true", help="跳过运行时验证")
     args = ap.parse_args()
 

@@ -2,7 +2,7 @@
 #define POWER_RUNE_PIPELINE_H
 
 #include "common/PipelineStage.h"
-#include "PowerRune/YoloPoseInfer.h"
+#include "PowerRune/PowerRuneInfer.h"
 #include "PowerRune/PowerRunePoseSolver.h"
 #include "PowerRune/YAxisFilter.h"
 #include "PowerRune/RollPredictor.h"
@@ -96,7 +96,7 @@ struct PowerRunePipelineData {
  * @brief 能量机关感知流水线（事件驱动调度器版本，实现 IPipeline）
  *
  * 五阶段（各有独立工作线程，由 PipelineStage 模板管理）：
- *   1. 预处理（YoloPosePreprocessor 并行 resize）/
+ *   1. 预处理（PowerRunePreprocessor 并行 resize）/
  *   2. 推理（InferShmClient 经共享内存调用独立推理进程）/
  *   3. 后处理（读取 PipelineData 自持输出缓冲）/
  *   4. 联合 PnP 位姿解算 + world 转换 /
@@ -130,7 +130,7 @@ public:
 
     /// 构造本流水线所用的推理器（模型编译 + 预热；由独立推理进程
     /// power_rune_infer_process 的 main 调用，见 InferShmServer）
-    static std::unique_ptr<YoloPose::YoloPoseInfer> createInfer();
+    static std::unique_ptr<PowerRune::PowerRuneInfer> createInfer();
 
     /// 推理进程（重新）启动后重连 InferShmClient 信号量。
     /// lazy 模式（common.infer_process_lazy=true）下推理进程按需启停，服务端启动时
@@ -176,7 +176,7 @@ private:
 
     /// 阶段1上下文：预处理
     struct Stage1Ctx {
-        YoloPose::YoloPosePreprocessor preprocessor;
+        PowerRune::PowerRunePreprocessor preprocessor;
         explicit Stage1Ctx(int input_width, int input_height)
             : preprocessor(input_width, input_height) {}
     } s1_;
@@ -189,7 +189,7 @@ private:
 
     /// 阶段3上下文：后处理
     struct Stage3Ctx {
-        std::unique_ptr<YoloPose::YoloPosePostprocessor> postprocessor;
+        std::unique_ptr<PowerRune::PowerRunePostprocessor> postprocessor;
     } s3_;
 
     /// 阶段4上下文：位姿解算 + 坐标转换（独立变换树）

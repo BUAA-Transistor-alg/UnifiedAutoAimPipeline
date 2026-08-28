@@ -4,7 +4,7 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 #include <memory>
-#include "PowerRune/YoloPoseInfer.h"
+#include "PowerRune/PowerRuneInfer.h"
 #include "common/CameraProjection.h"
 
 // 联合位姿解算结果

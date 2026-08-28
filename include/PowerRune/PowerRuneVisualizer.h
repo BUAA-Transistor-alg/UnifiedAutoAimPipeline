@@ -4,7 +4,7 @@
 #include "PowerRune/PowerRunePoseSolver.h"
 #include "common/TransformTree/RobotTfTree.h"
 #include "common/CameraProjection.h"
-#include "PowerRune/YoloPoseInfer.h"
+#include "PowerRune/PowerRuneInfer.h"
 #include "PowerRune/RollPredictor.h"
 
 #include <opencv2/opencv.hpp>
@@ -20,7 +20,7 @@
  * 内部按数据来源分组为嵌套结构体。
  */
 struct PowerRuneVisualizationData {
-    // ---- 检测数据(来自YoloPoseInfer推理) ----
+    // ---- 检测数据(来自PowerRuneInfer推理) ----
     struct DetectionData {
         std::vector<PoseDetection> detections;
     } detection;

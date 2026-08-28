@@ -21,7 +21,7 @@ public:
 
     /// 目标位置函数：输入 delta_t (秒)，返回目标世界坐标数组。
     /// 返回类型直接采用 SequencePredictor 所需的统一签名
-    /// （double 秒 → std::vector<cv::Point3f>，与 Outpost predictor 一致），
+    /// （double 秒 → std::vector<cv::Point3f>，与 Armor predictor 一致），
     /// 使流水线输出的 target_predictor 可直接传入 SequencePredictor，无需外部再包装。
     using TargetPosFunc    = std::function<std::vector<cv::Point3f>(double)>;
     using TargetPosFuncPtr = std::unique_ptr<TargetPosFunc>;

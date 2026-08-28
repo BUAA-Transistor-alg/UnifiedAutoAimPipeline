@@ -7,7 +7,7 @@
 // ==================== 构造 ====================
 
 // 构造本流水线所用的推理器（模型编译 + 预热；由 power_rune_infer_process 的 main 调用）
-std::unique_ptr<YoloPose::YoloPoseInfer> PowerRunePipeline::createInfer()
+std::unique_ptr<PowerRune::PowerRuneInfer> PowerRunePipeline::createInfer()
 {
     const RobotConfig& cfg = RobotConfig::instance();
     // 模型路径（相对项目根目录，经 PathResolver 解析；以 / 开头为绝对路径）
@@ -16,7 +16,7 @@ std::unique_ptr<YoloPose::YoloPoseInfer> PowerRunePipeline::createInfer()
         : PathResolver::resolvePath(cfg.powerRune.modelPath);
     // 本进程专属模型缓存目录（ONNX→IR 转换产物存放处，不存在时自动创建）
     std::string cache_dir = PathResolver::resolvePath("cache/power_rune");
-    return std::make_unique<YoloPose::YoloPoseInfer>(
+    return std::make_unique<PowerRune::PowerRuneInfer>(
         model_path, cfg.powerRune.device,
         cfg.powerRune.inputWidth, cfg.powerRune.inputHeight, cfg.powerRune.maxBatch,
         nullptr, cache_dir);
@@ -42,7 +42,7 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
     const RobotConfig::PipelineParams& pipe = cfg.powerRune.pipeline;
 
     conf_threshold_ = cfg.powerRune.confThreshold;
-    s3_.postprocessor = std::make_unique<YoloPose::YoloPosePostprocessor>(
+    s3_.postprocessor = std::make_unique<PowerRune::PowerRunePostprocessor>(
         cfg.powerRune.manualNms,
         cfg.powerRune.inputWidth, cfg.powerRune.inputHeight);
     // 推理器在独立进程 power_rune_infer_process 中（仅推理一步；预处理/后处理在本
@@ -208,7 +208,7 @@ void PowerRunePipeline::processStage3(DataDeque& data)
     ptrs.reserve(data.size());
     for (auto& d : data) ptrs.push_back(d.get());
 
-    std::vector<YoloPose::PoseBatchOutput> outputs;
+    std::vector<PowerRune::PoseBatchOutput> outputs;
     std::vector<int> orig_ws, orig_hs;
     outputs.reserve(ptrs.size());
     orig_ws.reserve(ptrs.size());

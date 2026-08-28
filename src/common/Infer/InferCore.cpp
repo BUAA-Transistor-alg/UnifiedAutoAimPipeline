@@ -59,7 +59,7 @@ void InferEngine::init(const std::string& model_path_xml,
     // （intel_sub_group_block_read_us8 等），AMD OpenCL 编译器不支持；混合精度
     // 模型（FP32 输入 + FP16 权重）甚至触发 AMD 驱动 GPU 内存错误直接崩溃。
     // 因此 AMD GPU 上对 FP32 输入模型直接以 FP32 推理精度编译（FP32 内核不依赖
-    // Intel 特有指令，实测可正常编译运行）。FP16 输入模型（如 Outpost 0526）保持
+    // Intel 特有指令，实测可正常编译运行）。FP16 输入模型（如 Armor 0526）保持
     // 默认路径（FP16 更快）。Intel GPU / CPU 不受影响。
     ov::AnyMap compile_cfg{
         ov::hint::performance_mode(ov::hint::PerformanceMode::CUMULATIVE_THROUGHPUT)};

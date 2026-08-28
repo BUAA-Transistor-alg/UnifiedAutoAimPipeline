@@ -1,8 +1,8 @@
 // VisualizeOutput.h — 可视化输出模式
 //
-// 按当前流水线模式（Outpost / PowerRune）渲染对应画面：
+// 按当前流水线模式（Armor / PowerRune）渲染对应画面：
 //  - 每帧从 PipelineResult.extra_info 同步自己的 RobotTfTree（world→cam 投影）；
-//  - Outpost 用 OutpostVisualizer，PowerRune 用 PowerRuneVisualizer；
+//  - Armor 用 ArmorVisualizer，PowerRune 用 PowerRuneVisualizer；
 //  - 预测瞄准点取自 SequencePredictor 瞄准点序列的第一个值（main 每帧统一预测，
 //    两种流水线模式一致绘制，任何输出状态下都可用）。
 #ifndef VISUALIZE_OUTPUT_H
@@ -10,7 +10,7 @@
 
 #include "common/Output/IOutputMode.h"
 #include "common/Ballistic/SequencePredictor.h"
-#include "Outpost/OutpostVisualizer.h"
+#include "Armor/ArmorVisualizer.h"
 #include "PowerRune/PowerRuneVisualizer.h"
 #include "common/TransformTree/RobotTfTree.h"
 #include "common/FrameRateCounter.h"
@@ -45,14 +45,14 @@ private:
     // 渲染当前流水线模式的画面到 render_buf_（仅可视化线程访问；create+copyTo
     // 复用缓冲，避免每帧 clone 的分配/释放。像素拷贝仍需保留：result.frame 另被
     // 主线程保存为原始画面，不可原地绘制）
-    void renderOutpost(const PipelineResult& result, RobotController* rc);
+    void renderArmor(const PipelineResult& result, RobotController* rc);
     void renderPowerRune(const PipelineResult& result, RobotController* rc);
 
     // 当前渲染模式（主线程 setMode 写 / 可视化线程 update 读，需原子）
-    std::atomic<PipelineMode> mode_{PipelineMode::OUTPOST};
+    std::atomic<PipelineMode> mode_{PipelineMode::ARMOR};
     RobotTfTree tree_;
     std::shared_ptr<CameraProjection> camera_proj_;
-    OutpostVisualizer  outpost_vis_;
+    ArmorVisualizer  armor_vis_;
     PowerRuneVisualizer power_rune_vis_;
     FrameRateCounter fps_;
     cv::Mat render_buf_;              // 渲染目标缓冲（可视化线程独占）

@@ -1,5 +1,5 @@
-#ifndef YOLOPOSEINFER_H
-#define YOLOPOSEINFER_H
+#ifndef POWER_RUNE_INFER_H
+#define POWER_RUNE_INFER_H
 
 #include <opencv2/opencv.hpp>
 #include <openvino/openvino.hpp>
@@ -17,8 +17,8 @@ struct PoseDetection {
     std::vector<cv::Point3f> keypoints; // 关键点: (x, y, visibility) 基于原图尺寸
 };
 
-/// YoloPose 命名空间：预处理类 与 推理类 共享的常量
-namespace YoloPose {
+/// PowerRune 命名空间：预处理类 与 推理类 共享的常量
+namespace PowerRune {
 
 // ---- 共享参数 ----
 // 输入分辨率 INPUT_WIDTH × INPUT_HEIGHT 不再硬编码为 512×512：由 config.yaml
@@ -33,13 +33,13 @@ constexpr int RAW_OUTPUT_DIM = 4 + NUM_CLASSES + NUM_KEYPOINTS * 3;  // 无 NMS 
 using InferenceOutput = Infer::InferenceOutput;
 
 // ==========================================================================
-// YoloPosePreprocessor – 批量预处理（多线程 resize，公共 InferCore）
+// PowerRunePreprocessor – 批量预处理（多线程 resize，公共 InferCore）
 // ==========================================================================
-class YoloPosePreprocessor {
+class PowerRunePreprocessor {
 public:
     /// @param input_width/input_height  模型输入分辨率（像素，须与模型输入一致）
     /// @param num_threads               内部 TaskPool 线程数, 0 = 自动
-    YoloPosePreprocessor(int input_width, int input_height, int num_threads = 0);
+    PowerRunePreprocessor(int input_width, int input_height, int num_threads = 0);
 
     /// 批量预处理：将原始图像 resize 到 input_width × input_height
     void preprocess(const std::vector<const cv::Mat*>& imgs,
@@ -50,7 +50,7 @@ private:
 };
 
 // ==========================================================================
-// YoloPosePostprocessor – 后处理（输出张量 → PoseDetection）
+// PowerRunePostprocessor – 后处理（输出张量 → PoseDetection）
 // ==========================================================================
 
 /// 单图推理输出视图：指向 PipelineData 自持的输出缓冲（行优先 f32）
@@ -60,12 +60,12 @@ struct PoseBatchOutput {
     int cols;            // 张量 shape[2]
 };
 
-class YoloPosePostprocessor {
+class PowerRunePostprocessor {
 public:
     /// @param manual_nms    true: 模型为无 NMS 的原始输出，需手动 NMS；false: NMS 已内嵌
     /// @param input_width/input_height  模型输入分辨率（后处理坐标缩放基准）
     /// @param num_threads   线程池线程数，0 = 自动
-    YoloPosePostprocessor(bool manual_nms, int input_width, int input_height, int num_threads = 0);
+    PowerRunePostprocessor(bool manual_nms, int input_width, int input_height, int num_threads = 0);
 
     /// 处理单个推理输出（每图一个独立输出缓冲）
     /// @return 该图的所有检测结果（坐标已缩放到原图尺寸）
@@ -96,16 +96,16 @@ private:
 };
 
 // ==========================================================================
-// YoloPoseInfer – 推理（接收已预处理的图像，动态 batch，公共 InferCore）
+// PowerRuneInfer – 推理（接收已预处理的图像，动态 batch，公共 InferCore）
 // ==========================================================================
-class YoloPoseInfer {
+class PowerRuneInfer {
 public:
     /// @param shared_core 可选的共享 ov::Core（多流水线共用同一 GPU context，避免
     ///                    同进程多 Core 对彼此推理的显著拖慢），为空则自建
     /// @param cache_dir 可选的模型缓存目录（不存在时自动创建）：作为 OpenVINO
     ///                  编译缓存（ov::cache_dir），且 ONNX→IR 转换产物（xml/bin）
     ///                  也写入该目录；为空时保持旧行为
-    YoloPoseInfer(const std::string& model_path_xml,
+    PowerRuneInfer(const std::string& model_path_xml,
                   const std::string& model_path_bin,
                   const std::string& device,
                   int input_width, int input_height,
@@ -113,7 +113,7 @@ public:
                   std::shared_ptr<ov::Core> shared_core = nullptr,
                   const std::string& cache_dir = "");
 
-    YoloPoseInfer(const std::string& model_path_onnx,
+    PowerRuneInfer(const std::string& model_path_onnx,
                   const std::string& device,
                   int input_width, int input_height,
                   int max_batch = 4,
@@ -132,6 +132,6 @@ private:
     std::unique_ptr<Infer::InferEngine> engine_;
 };
 
-} // namespace YoloPose
+} // namespace PowerRune
 
-#endif // YOLOPOSEINFER_H
+#endif // POWER_RUNE_INFER_H

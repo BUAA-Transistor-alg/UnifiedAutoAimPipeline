@@ -1,4 +1,4 @@
-// RobotConfig.cpp — 从 yaml 配置文件加载全局参数（common / outpost / power_rune 三结构）
+// RobotConfig.cpp — 从 yaml 配置文件加载全局参数（common / armor / power_rune 三结构）
 #include "common/RobotConfig.h"
 
 #include <stdexcept>
@@ -74,7 +74,7 @@ void parseCameraParams(const YAML::Node& camNode, const std::string& name,
     }
 }
 
-// 解析流水线缓冲队列与批量参数段（outpost.pipeline / power_rune.pipeline）：
+// 解析流水线缓冲队列与批量参数段（armor.pipeline / power_rune.pipeline）：
 // queue_max_sizes 必为 6 个正整数（[输入, 阶段间×4, 输出]）；preprocess_batch /
 // inference_batch / postprocess_batch 必为正整数，且 inference_batch 不得超过
 // 该流水线 inference.max_batch（模型编译的动态批量上限，maxBatch 参数传入）。
@@ -302,50 +302,50 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
         throw std::runtime_error("RobotConfig: common.predict_sequence.fire_seq_lead 必须 >= 0");
     }
 
-    // ══════════════ outpost（独占参数） ══════════════
-    const YAML::Node& op = root["outpost"];
-    if (!op || !op.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'outpost' 配置段");
+    // ══════════════ armor（独占参数） ══════════════
+    const YAML::Node& op = root["armor"];
+    if (!op || !op.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'armor' 配置段");
     const YAML::Node& oinf = op["inference"];
-    if (!oinf || !oinf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'outpost.inference' 配置段");
-    cfg.outpost.modelPath = requireScalar<std::string>(oinf, "model_path", "outpost.inference");
-    cfg.outpost.device    = requireScalar<std::string>(oinf, "device", "outpost.inference");
+    if (!oinf || !oinf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'armor.inference' 配置段");
+    cfg.armor.modelPath = requireScalar<std::string>(oinf, "model_path", "armor.inference");
+    cfg.armor.device    = requireScalar<std::string>(oinf, "device", "armor.inference");
 
-    // ── outpost.inference.resolution（YOLO 推理输入分辨率）──
+    // ── armor.inference.resolution（YOLO 推理输入分辨率）──
     const YAML::Node& ores = oinf["resolution"];
     if (!ores || !ores.IsMap())
-        throw std::runtime_error("RobotConfig: 缺少 'outpost.inference.resolution' 配置段");
-    cfg.outpost.inputWidth  = requireScalar<int>(ores, "width", "outpost.inference.resolution");
-    cfg.outpost.inputHeight = requireScalar<int>(ores, "height", "outpost.inference.resolution");
-    if (cfg.outpost.inputWidth <= 0 || cfg.outpost.inputHeight <= 0) {
-        throw std::runtime_error("RobotConfig: outpost.inference.resolution 宽高必须为正整数");
+        throw std::runtime_error("RobotConfig: 缺少 'armor.inference.resolution' 配置段");
+    cfg.armor.inputWidth  = requireScalar<int>(ores, "width", "armor.inference.resolution");
+    cfg.armor.inputHeight = requireScalar<int>(ores, "height", "armor.inference.resolution");
+    if (cfg.armor.inputWidth <= 0 || cfg.armor.inputHeight <= 0) {
+        throw std::runtime_error("RobotConfig: armor.inference.resolution 宽高必须为正整数");
     }
-    cfg.outpost.maxBatch = requireScalar<int>(oinf, "max_batch", "outpost.inference");
-    if (cfg.outpost.maxBatch < 1) {
-        throw std::runtime_error("RobotConfig: outpost.inference.max_batch 必须 >= 1");
+    cfg.armor.maxBatch = requireScalar<int>(oinf, "max_batch", "armor.inference");
+    if (cfg.armor.maxBatch < 1) {
+        throw std::runtime_error("RobotConfig: armor.inference.max_batch 必须 >= 1");
     }
-    cfg.outpost.shmKey   = requireScalar<int>(oinf, "shm_key", "outpost.inference");
-    cfg.outpost.observationLostTimeoutSec = requireScalar<double>(op, "observation_lost_timeout", "outpost");
+    cfg.armor.shmKey   = requireScalar<int>(oinf, "shm_key", "armor.inference");
+    cfg.armor.observationLostTimeoutSec = requireScalar<double>(op, "observation_lost_timeout", "armor");
 
-    // ── outpost.pipeline（缓冲队列长度 + 可批处理阶段批量）──
+    // ── armor.pipeline（缓冲队列长度 + 可批处理阶段批量）──
     const YAML::Node& opipe = op["pipeline"];
-    if (!opipe || !opipe.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'outpost.pipeline' 配置段");
-    parsePipelineParams(opipe, "outpost.pipeline", cfg.outpost.maxBatch, cfg.outpost.pipeline);
+    if (!opipe || !opipe.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'armor.pipeline' 配置段");
+    parsePipelineParams(opipe, "armor.pipeline", cfg.armor.maxBatch, cfg.armor.pipeline);
 
-    // ── outpost.esekf（ESEKF 滤波参数）──
-    const YAML::Node& ek = op["esekf"];
-    if (!ek || !ek.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'outpost.esekf' 配置段");
-    cfg.outpost.esekf.positionNoise        = requireScalar<double>(ek, "position_noise", "outpost.esekf");
-    cfg.outpost.esekf.rotationNoise        = requireScalar<double>(ek, "rotation_noise", "outpost.esekf");
-    cfg.outpost.esekf.measurementNoise     = requireScalar<double>(ek, "measurement_noise", "outpost.esekf");
-    cfg.outpost.esekf.orientationZRegNoise = requireScalar<double>(ek, "orientation_z_reg_noise", "outpost.esekf");
-    cfg.outpost.esekf.dzNoise              = requireScalar<double>(ek, "dz_noise", "outpost.esekf");
-    cfg.outpost.esekf.dzSearchRange        = requireScalar<double>(ek, "dz_search_range", "outpost.esekf");
-    cfg.outpost.esekf.dzLimit              = requireScalar<double>(ek, "dz_limit", "outpost.esekf");
-    cfg.outpost.esekf.initPositionNoise    = requireScalar<double>(ek, "init_position_noise", "outpost.esekf");
-    cfg.outpost.esekf.initOrientationNoise = requireScalar<double>(ek, "init_orientation_noise", "outpost.esekf");
-    cfg.outpost.esekf.initYawRateNoise     = requireScalar<double>(ek, "init_yaw_rate_noise", "outpost.esekf");
-    cfg.outpost.esekf.initDz2Noise         = requireScalar<double>(ek, "init_dz2_noise", "outpost.esekf");
-    cfg.outpost.esekf.initDz3Noise         = requireScalar<double>(ek, "init_dz3_noise", "outpost.esekf");
+    // ── armor.outpost_esekf（OutpostESEKF 滤波参数）──
+    const YAML::Node& ek = op["outpost_esekf"];
+    if (!ek || !ek.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'armor.outpost_esekf' 配置段");
+    cfg.armor.esekf.positionNoise        = requireScalar<double>(ek, "position_noise", "armor.outpost_esekf");
+    cfg.armor.esekf.rotationNoise        = requireScalar<double>(ek, "rotation_noise", "armor.outpost_esekf");
+    cfg.armor.esekf.measurementNoise     = requireScalar<double>(ek, "measurement_noise", "armor.outpost_esekf");
+    cfg.armor.esekf.orientationZRegNoise = requireScalar<double>(ek, "orientation_z_reg_noise", "armor.outpost_esekf");
+    cfg.armor.esekf.dzNoise              = requireScalar<double>(ek, "dz_noise", "armor.outpost_esekf");
+    cfg.armor.esekf.dzSearchRange        = requireScalar<double>(ek, "dz_search_range", "armor.outpost_esekf");
+    cfg.armor.esekf.dzLimit              = requireScalar<double>(ek, "dz_limit", "armor.outpost_esekf");
+    cfg.armor.esekf.initPositionNoise    = requireScalar<double>(ek, "init_position_noise", "armor.outpost_esekf");
+    cfg.armor.esekf.initOrientationNoise = requireScalar<double>(ek, "init_orientation_noise", "armor.outpost_esekf");
+    cfg.armor.esekf.initYawRateNoise     = requireScalar<double>(ek, "init_yaw_rate_noise", "armor.outpost_esekf");
+    cfg.armor.esekf.initDz2Noise         = requireScalar<double>(ek, "init_dz2_noise", "armor.outpost_esekf");
+    cfg.armor.esekf.initDz3Noise         = requireScalar<double>(ek, "init_dz3_noise", "armor.outpost_esekf");
 
     // ══════════════ power_rune（独占参数） ══════════════
     const YAML::Node& pr = root["power_rune"];

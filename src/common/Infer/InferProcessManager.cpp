@@ -58,13 +58,13 @@ void InferProcessManager::shutdown() {
 }
 
 std::string InferProcessManager::processPath(Kind kind) const {
-    const char* name = (kind == Kind::OUTPOST)
-        ? "outpost_infer_process" : "power_rune_infer_process";
+    const char* name = (kind == Kind::ARMOR)
+        ? "armor_infer_process" : "power_rune_infer_process";
     return PathResolver::resolvePath(std::string("bin/") + name);
 }
 
 std::string InferProcessManager::processName(Kind kind) {
-    return (kind == Kind::OUTPOST) ? "outpost_infer_process"
+    return (kind == Kind::ARMOR) ? "armor_infer_process"
                                    : "power_rune_infer_process";
 }
 

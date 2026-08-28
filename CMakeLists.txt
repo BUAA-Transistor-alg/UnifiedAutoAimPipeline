@@ -91,12 +91,12 @@ set(COMMON_SOURCES
     src/common/Record/FrameRecorder.cpp
 )
 
-# ── Outpost 源文件 ──
-set(OUTPOST_SOURCES
-    src/Outpost/ESEKF.cpp
-    src/Outpost/OpenvinoInfer.cpp
-    src/Outpost/OutpostVisualizer.cpp
-    src/Outpost/OutpostPipeline.cpp
+# ── Armor 源文件 ──
+set(ARMOR_SOURCES
+    src/Armor/OutpostESEKF.cpp
+    src/Armor/ArmorInfer.cpp
+    src/Armor/ArmorVisualizer.cpp
+    src/Armor/ArmorPipeline.cpp
 )
 
 # ── PowerRune 源文件 ──
@@ -105,7 +105,7 @@ set(POWER_RUNE_SOURCES
     src/PowerRune/RollPredictor.cpp
     src/PowerRune/TargetPositionCalculator.cpp
     src/PowerRune/PowerRunePoseSolver.cpp
-    src/PowerRune/YoloPoseInfer.cpp
+    src/PowerRune/PowerRuneInfer.cpp
     src/PowerRune/PowerRuneVisualizer.cpp
     src/PowerRune/PowerRunePipeline.cpp
 )
@@ -114,7 +114,7 @@ set(POWER_RUNE_SOURCES
 add_executable(unified_auto_aim
     src/main.cpp
     ${COMMON_SOURCES}
-    ${OUTPOST_SOURCES}
+    ${ARMOR_SOURCES}
     ${POWER_RUNE_SOURCES}
 )
 
@@ -140,7 +140,7 @@ endif()
 
 # ── 推理进程（共享内存 + 信号量通信；各进程只编译一个模型，见 InferShm.h）──
 # 启动方式（先于主程序）：
-#   ./bin/outpost_infer_process    （读 config outpost.inference 段 + shm_key）
+#   ./bin/armor_infer_process    （读 config armor.inference 段 + shm_key）
 #   ./bin/power_rune_infer_process （读 config power_rune.inference 段 + shm_key）
 set(INFER_PROCESS_LIBS
     ${OpenCV_LIBS}
@@ -150,17 +150,17 @@ set(INFER_PROCESS_LIBS
     ${CMAKE_DL_LIBS}
 )
 
-add_executable(outpost_infer_process
-    src/Infer/outpost_infer_process_main.cpp
+add_executable(armor_infer_process
+    src/Infer/armor_infer_process_main.cpp
     src/common/RobotConfig.cpp
     src/common/PathResolver.cpp
     src/common/TaskPool.cpp
     src/common/Infer/InferCore.cpp
     src/common/Infer/InferShmClient.cpp
     src/common/Infer/InferShmServer.cpp
-    src/Outpost/OpenvinoInfer.cpp
+    src/Armor/ArmorInfer.cpp
 )
-target_link_libraries(outpost_infer_process PRIVATE ${INFER_PROCESS_LIBS})
+target_link_libraries(armor_infer_process PRIVATE ${INFER_PROCESS_LIBS})
 
 add_executable(power_rune_infer_process
     src/Infer/power_rune_infer_process_main.cpp
@@ -170,6 +170,6 @@ add_executable(power_rune_infer_process
     src/common/Infer/InferCore.cpp
     src/common/Infer/InferShmClient.cpp
     src/common/Infer/InferShmServer.cpp
-    src/PowerRune/YoloPoseInfer.cpp
+    src/PowerRune/PowerRuneInfer.cpp
 )
 target_link_libraries(power_rune_infer_process PRIVATE ${INFER_PROCESS_LIBS})

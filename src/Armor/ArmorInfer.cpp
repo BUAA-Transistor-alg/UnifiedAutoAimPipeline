@@ -1,30 +1,30 @@
-// OpenvinoInfer.cpp — 前哨站检测推理实现（预处理/推理委托公共 InferCore，后处理为 Outpost 特有）
-#include "Outpost/OpenvinoInfer.h"
+// ArmorInfer.cpp — 装甲板检测推理实现（预处理/推理委托公共 InferCore，后处理为 Armor 特有）
+#include "Armor/ArmorInfer.h"
 #include <iostream>
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
 #include <cmath>
 
-using namespace OutpostDetect;
+using namespace ArmorDetect;
 
 // ==========================================================================
-// OutpostPreprocessor 实现（公共 InferCore 预处理）
+// ArmorPreprocessor 实现（公共 InferCore 预处理）
 // ==========================================================================
 
-OutpostPreprocessor::OutpostPreprocessor(int input_width, int input_height, int num_threads)
+ArmorPreprocessor::ArmorPreprocessor(int input_width, int input_height, int num_threads)
     : impl_(input_width, input_height, num_threads) {}
 
-void OutpostPreprocessor::preprocess(const std::vector<const cv::Mat*>& imgs,
+void ArmorPreprocessor::preprocess(const std::vector<const cv::Mat*>& imgs,
                                      std::vector<cv::Mat*>& out) {
     impl_.preprocess(imgs, out);
 }
 
 // ==========================================================================
-// OutpostInfer 实现（公共 InferCore 推理引擎）
+// ArmorInfer 实现（公共 InferCore 推理引擎）
 // ==========================================================================
 
-OutpostInfer::OutpostInfer(const std::string& model_path_xml,
+ArmorInfer::ArmorInfer(const std::string& model_path_xml,
                            const std::string& model_path_bin,
                            const std::string& device,
                            int input_width, int input_height,
@@ -35,7 +35,7 @@ OutpostInfer::OutpostInfer(const std::string& model_path_xml,
           model_path_xml, model_path_bin, device, input_width, input_height,
           max_batch, std::move(shared_core), cache_dir)) {}
 
-OutpostInfer::OutpostInfer(const std::string& model_path_onnx,
+ArmorInfer::ArmorInfer(const std::string& model_path_onnx,
                            const std::string& device,
                            int input_width, int input_height,
                            int max_batch,
@@ -45,20 +45,20 @@ OutpostInfer::OutpostInfer(const std::string& model_path_onnx,
           model_path_onnx, device, input_width, input_height,
           max_batch, std::move(shared_core), cache_dir)) {}
 
-std::vector<InferenceOutput> OutpostInfer::runInference(
+std::vector<InferenceOutput> ArmorInfer::runInference(
     const std::vector<const cv::Mat*>& preprocessed_imgs,
     char* out_area, size_t out_cap) {
     return engine_->runInference(preprocessed_imgs, out_area, out_cap);
 }
 
 // ==========================================================================
-// OutpostPostprocessor 实现
+// ArmorPostprocessor 实现
 // ==========================================================================
 
-OutpostPostprocessor::OutpostPostprocessor(int input_width, int input_height, int num_threads)
+ArmorPostprocessor::ArmorPostprocessor(int input_width, int input_height, int num_threads)
     : input_width_(input_width), input_height_(input_height), pool_(num_threads) {}
 
-void OutpostPostprocessor::postprocessBatch(
+void ArmorPostprocessor::postprocessBatch(
     const std::vector<BatchOutput>& outputs,
     const std::vector<int>& orig_ws,
     const std::vector<int>& orig_hs,
@@ -75,7 +75,7 @@ void OutpostPostprocessor::postprocessBatch(
     });
 }
 
-std::vector<Object> OutpostPostprocessor::postprocess(
+std::vector<Object> ArmorPostprocessor::postprocess(
     const float* data,
     int rows,
     int cols,
@@ -144,8 +144,8 @@ std::vector<Object> OutpostPostprocessor::postprocess(
         _class_id = class_id.x;
         _color_id = color_id.x;
 
-        // 仅保留前哨站类别（label 6）的装甲板，其余类别（哨兵/1~5号机器人/基地）直接丢弃
-        if (_class_id != OUTPOST_CLASS)
+        // 仅保留装甲板类别（label 6）的装甲板，其余类别（哨兵/1~5号机器人/基地）直接丢弃
+        if (_class_id != ARMOR_CLASS)
             continue;
 
         Object obj;

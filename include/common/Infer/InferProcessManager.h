@@ -34,7 +34,7 @@ namespace Infer {
 
 class InferProcessManager {
 public:
-    enum class Kind { OUTPOST, POWER_RUNE };
+    enum class Kind { ARMOR, POWER_RUNE };
 
     /// @param on_ready 某推理进程启动并就绪后的回调（主程序用来重连该流水线的
     ///                 InferShmClient 信号量）；可能从后台线程调用
@@ -88,7 +88,7 @@ private:
     std::mutex mtx_;
     std::condition_variable cv_;
     bool  request_pending_ = false;   // 有待处理的 switchTo 请求（mtx_ 保护）
-    Kind  desired_ = Kind::OUTPOST;   // 最近一次目标流水线（mtx_ 保护）
+    Kind  desired_ = Kind::ARMOR;   // 最近一次目标流水线（mtx_ 保护）
     bool  worker_running_ = false;    // worker 线程已启动（mtx_ 保护）
     std::atomic<bool> shutdown_{false};
 

@@ -4,15 +4,15 @@
 # 用法：
 #   python3 launch_all.py <unified_auto_aim 的全部参数...>
 #   例如：
-#     python3 launch_all.py --pipeline outpost --input video \
+#     python3 launch_all.py --pipeline armor --input video \
 #       -v "/path/demo.mkv" --output visualize
-#     python3 launch_all.py --pipeline outpost --input camera --output visualize+gimbal
+#     python3 launch_all.py --pipeline armor --input camera --output visualize+gimbal
 #
 # 行为：
 #   - 启动前先清理本程序用到的共享内存段与具名信号量（key 取自 config 的
 #     shm_key），避免上一次运行遗留的 IPC 影响本次运行；
 #   - 推理进程启动策略由 config common.infer_process_lazy 决定：
-#       false（默认）：先启动 outpost_infer_process / power_rune_infer_process
+#       false（默认）：先启动 armor_infer_process / power_rune_infer_process
 #         （读 config 各自的 shm_key），等两者输出 "[InferShmServer] ready" 后再启动
 #         主程序；无推理任务时推理进程在后台闲置；
 #       true：不预启动推理进程，由主程序（unified_auto_aim）按需启动当前流水线
@@ -35,7 +35,7 @@ BIN = os.path.join(ROOT, "bin")
 CONFIG = os.path.join(ROOT, "config", "config.yaml")
 
 INFER_PROCS = [
-    ("outpost_infer_process", "outpost"),
+    ("armor_infer_process", "armor"),
     ("power_rune_infer_process", "power_rune"),
 ]
 
@@ -53,7 +53,7 @@ def _on_signal(signum, frame):
 
 
 def read_shm_keys():
-    """从 config/config.yaml 读取所有 shm_key（outpost / power_rune 各一个）。"""
+    """从 config/config.yaml 读取所有 shm_key（armor / power_rune 各一个）。"""
     keys = []
     try:
         with open(CONFIG, "r", encoding="utf-8") as f:

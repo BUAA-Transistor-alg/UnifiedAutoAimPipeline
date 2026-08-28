@@ -1,6 +1,6 @@
 // InferCore.h — 公共推理核心（预处理 + 推理引擎）
 //
-// 从 Outpost 的 OpenvinoInfer 与 PowerRune 的 YoloPoseInfer 中抽取的公共部分：
+// 从 Armor 的 ArmorInfer 与 PowerRune 的 PowerRuneInfer 中抽取的公共部分：
 //   1. Preprocessor  — 批量预处理（线程池并行 resize 到固定 W×H）
 //   2. InferEngine   — 动态 batch 1..N：每种 batch 编译一个静态模型 + 白图预热 +
 //                      THROUGHPUT 性能模式 + ONNX→IR 转换 + 贪心拆批
@@ -54,7 +54,7 @@ public:
     /// @param shared_core 可选的共享 ov::Core：多条流水线共用同一 Core（同一 GPU
     ///                    context），避免同进程多 Core 共存对彼此推理的显著拖慢
     ///                    （2026.3 GPU 插件实测：同进程两套推理器各建 Core 时，
-    ///                    outpost 帧率被拖到 ~62；共享一个 Core 后无此问题）。
+    ///                    armor 帧率被拖到 ~62；共享一个 Core 后无此问题）。
     ///                    为空时自建一个。
     /// @param cache_dir 可选的模型缓存目录（不存在时自动创建）：
     ///                   - 作为 OpenVINO 编译缓存（ov::cache_dir），编译好的模型

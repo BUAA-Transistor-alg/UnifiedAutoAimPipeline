@@ -7,7 +7,7 @@
 #include "common/RobotConfig.h"
 #include "common/PathResolver.h"
 #include "common/Infer/InferShmServer.h"
-#include "PowerRune/YoloPoseInfer.h"
+#include "PowerRune/PowerRuneInfer.h"
 
 #include <csignal>
 #include <iostream>
@@ -41,7 +41,7 @@ int main() {
     std::cout << "    缓存目录: " << cache_dir << std::endl;
     std::cout << "========================================" << std::endl;
 
-    auto engine = std::make_unique<YoloPose::YoloPoseInfer>(
+    auto engine = std::make_unique<PowerRune::PowerRuneInfer>(
         model_path, cfg.powerRune.device,
         cfg.powerRune.inputWidth, cfg.powerRune.inputHeight, cfg.powerRune.maxBatch,
         nullptr, cache_dir);

@@ -10,7 +10,7 @@
 // config.yaml 顶层分为三个大类：
 //   - common      ：两个流水线共用的参数（tf 偏移 / 相机内参 / 弹道 / MPC / 输入控制器 /
 //                    min_delay_seconds 等）
-//   - outpost     ：Outpost 流水线独占参数（推理模型 / 批量 / 观测丢失超时）
+//   - armor     ：Armor 流水线独占参数（推理模型 / 批量 / 观测丢失超时）
 //   - power_rune  ：PowerRune 流水线独占参数（推理模型 / NMS / 阈值 / 批量）
 //
 // 相机内参与畸变系数两流水线共用，但分为两套按输入模式自动选择
@@ -138,8 +138,8 @@ public:
         int postprocessBatch;   // 阶段3 后处理最大批量
     };
 
-    // Outpost 流水线独占参数
-    struct OutpostParams {
+    // Armor 流水线独占参数
+    struct ArmorParams {
         std::string modelPath;              // 推理模型路径
         std::string device;                 // 推理设备
         int inputWidth;                     // YOLO 推理输入宽度（像素，须与模型输入一致）
@@ -149,7 +149,7 @@ public:
         double observationLostTimeoutSec;   // 连续观测丢失多久后重置滤波器（秒）
         PipelineParams pipeline;            // 缓冲队列长度 + 可批处理阶段批量
 
-        // ESEKF 误差状态扩展卡尔曼滤波参数
+        // OutpostESEKF 误差状态扩展卡尔曼滤波参数
         struct EsekfParams {
             double positionNoise;           // 位置过程噪声（Q 位置块）
             double rotationNoise;           // 姿态过程噪声（Q 姿态块）
@@ -230,7 +230,7 @@ public:
     };
 
     CommonParams    common;      // 共用参数
-    OutpostParams   outpost;     // Outpost 独占参数
+    ArmorParams   armor;     // Armor 独占参数
     PowerRuneParams powerRune;   // PowerRune 独占参数
 
     // 从指定 yaml 文件加载配置；文件缺失或格式错误抛出 std::runtime_error。

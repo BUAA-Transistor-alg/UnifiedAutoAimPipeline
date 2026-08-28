@@ -67,7 +67,7 @@ public:
     /// 构造时创建内部 GimbalSolver，序列/弹道/偏置参数从 RobotConfig common 段读取
     SequencePredictor();
 
-    // 目标选择策略透传（Outpost NEAREST / PowerRune LOWEST_Z），作用于全部线程实例
+    // 目标选择策略透传（Armor NEAREST / PowerRune LOWEST_Z），作用于全部线程实例
     void setTargetSelection(PredictedBallisticSolver::TargetSelection sel) {
         for (auto& s : solvers_) s.setTargetSelection(sel);
     }

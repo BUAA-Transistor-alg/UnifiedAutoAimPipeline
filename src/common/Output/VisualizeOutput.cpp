@@ -1,7 +1,7 @@
 // VisualizeOutput.cpp — 可视化输出模式实现
 #include "common/Output/VisualizeOutput.h"
 #include "common/RobotConfig.h"
-#include "Outpost/OutpostModel.h"
+#include "Armor/ArmorModel.h"
 #include "PowerRune/TargetPositionCalculator.h"
 
 #include <cstdio>
@@ -57,8 +57,8 @@ void VisualizeOutput::update(const PipelineResult& result, RobotController* rc)
 
     // 渲染当前流水线模式的画面（写入成员缓冲 render_buf_，复用以免每帧分配）
     const PipelineMode mode = mode_.load(std::memory_order_relaxed);
-    if (mode == PipelineMode::OUTPOST)
-        renderOutpost(result, rc);
+    if (mode == PipelineMode::ARMOR)
+        renderArmor(result, rc);
     else
         renderPowerRune(result, rc);
 
@@ -81,11 +81,11 @@ cv::Mat VisualizeOutput::display() const
     return display_;   // 浅拷贝：共享像素数据（引用计数原子安全）
 }
 
-void VisualizeOutput::renderOutpost(const PipelineResult& result, RobotController* rc)
+void VisualizeOutput::renderArmor(const PipelineResult& result, RobotController* rc)
 {
-    const OutpostPerception& p = result.outpost;
+    const ArmorPerception& p = result.armor;
 
-    OutpostVisualizationData vis;
+    ArmorVisualizationData vis;
     vis.detection.objects = p.objects;
 
     vis.raw_pose.world_positions   = p.world_positions;
@@ -99,7 +99,7 @@ void VisualizeOutput::renderOutpost(const PipelineResult& result, RobotControlle
     vis.filtered_pose.world_points = p.ekf_world_points;
     vis.filtered_pose.pred_center_points = p.pred_center_points;
 
-    // 瞄准点由 GimbalOutput 计算；本模式不计算，仅绘制 ESEKF 预测中心
+    // 瞄准点由 GimbalOutput 计算；本模式不计算，仅绘制 OutpostESEKF 预测中心
     vis.aim.auto_aim_enable = false;
 
     vis.robot_state = rc ? rc->getState() : RobotController::State{};
@@ -110,7 +110,7 @@ void VisualizeOutput::renderOutpost(const PipelineResult& result, RobotControlle
     // 成员缓冲复用：尺寸/类型不变时 create 不重新分配，仅 copyTo 拷贝像素
     render_buf_.create(result.frame.size(), result.frame.type());
     result.frame.copyTo(render_buf_);
-    outpost_vis_.render(render_buf_, vis, tree_, *camera_proj_);
+    armor_vis_.render(render_buf_, vis, tree_, *camera_proj_);
 }
 
 void VisualizeOutput::renderPowerRune(const PipelineResult& result, RobotController* rc)

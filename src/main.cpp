@@ -1,14 +1,14 @@
-// main.cpp — 统一自瞄流水线主程序（Outpost / PowerRune 双流水线 + 输入/输出模式）
+// main.cpp — 统一自瞄流水线主程序（Armor / PowerRune 双流水线 + 输入/输出模式）
 //
 // 用法：
-//   unified_auto_aim [--pipeline outpost|power_rune]
+//   unified_auto_aim [--pipeline armor|power_rune]
 //                    [--input camera|video|interactive]
 //                    [--output none|visualize|gimbal]
 //                    [-v <video>] [-e <extra_info.txt>] [--record] [--skip-unaccepted] [-i] [-h]
 //
 // 设计要点：
 //  - 两个流水线本体在启动时全部构造、且始终保持构造（阶段线程/调度器常驻）；推理器
-//    （模型编译产物，占用 GPU 显存）提取到两个独立进程（outpost_infer_process /
+//    （模型编译产物，占用 GPU 显存）提取到两个独立进程（armor_infer_process /
 //    power_rune_infer_process），各进程只编译一个模型——2026.3 GPU 插件实测跨进程
 //    驻留零影响，而进程内两套模型共存会互相拖慢（详见 InferShm.h 背景说明）；
 //  - 流水线推理阶段经共享内存 + 具名信号量与推理进程通信（InferShmClient），预处理/
@@ -28,7 +28,7 @@
 #include "common/Input/InteractiveInputMode.h"
 #include "common/BacklogAdaptiveDelay.h"
 #include "common/IPipeline.h"
-#include "Outpost/OutpostPipeline.h"
+#include "Armor/ArmorPipeline.h"
 #include "PowerRune/PowerRunePipeline.h"
 #include "common/Output/IOutputMode.h"
 #include "common/Output/VisualizeOutput.h"
@@ -67,7 +67,7 @@ struct OutputConfig {
 };
 
 struct Options {
-    PipelineMode pipeline = PipelineMode::OUTPOST;
+    PipelineMode pipeline = PipelineMode::ARMOR;
     InputKind    input    = InputKind::INTERACTIVE;
     OutputConfig output;    // 默认 visualize
     std::string  video_path;
@@ -80,7 +80,7 @@ struct Options {
 
 static void printUsage(const char* prog) {
     std::cout << "Usage: " << prog << " [options]\n"
-              << "  --pipeline outpost|power_rune  流水线模式 (默认 outpost)\n"
+              << "  --pipeline armor|power_rune  流水线模式 (默认 armor)\n"
               << "  --input camera|video|interactive  输入模式 (默认 interactive)\n"
               << "  --output <mode>[+<mode>...]     输出模式组合 (默认 visualize)\n"
               << "            none | visualize | gimbal | visualize+gimbal\n"
@@ -104,9 +104,9 @@ static void printUsage(const char* prog) {
 }
 
 static PipelineMode parsePipeline(const std::string& s) {
-    if (s == "outpost") return PipelineMode::OUTPOST;
+    if (s == "armor") return PipelineMode::ARMOR;
     if (s == "power_rune") return PipelineMode::POWER_RUNE;
-    throw std::runtime_error("未知流水线模式: " + s + " (可选 outpost / power_rune)");
+    throw std::runtime_error("未知流水线模式: " + s + " (可选 armor / power_rune)");
 }
 
 static InputKind parseInput(const std::string& s) {
@@ -174,7 +174,7 @@ static Options parseArgs(int argc, char** argv) {
 }
 
 // ==================== 可视化统一覆盖层 ====================
-// 可视化开启时，无论 Outpost 还是 PowerRune 流水线，都在画面上叠加：
+// 可视化开启时，无论 Armor 还是 PowerRune 流水线，都在画面上叠加：
 //   1. 热键提醒  — 顶部 (10,20)，0.6 号粗 2 绿
 //   2. 队列积压  — 原 main info 位置 (10,60)，Q[in i0 i1 i2 i3 out] 格式
 //   3. 帧数统计  — 原 drawFps 样式：右上角
@@ -388,7 +388,7 @@ int main(int argc, char** argv) {
     std::cout << "========================================" << std::endl;
     std::cout << "Unified Auto-Aim Pipeline" << std::endl;
     std::cout << "----------------------------------------" << std::endl;
-    std::cout << "  Pipeline: " << (opt.pipeline == PipelineMode::OUTPOST ? "Outpost" : "PowerRune") << std::endl;
+    std::cout << "  Pipeline: " << (opt.pipeline == PipelineMode::ARMOR ? "Armor" : "PowerRune") << std::endl;
     std::cout << "  Input:    " << (opt.input == InputKind::CAMERA ? "Camera"
                                    : opt.input == InputKind::VIDEO ? "Video" : "Interactive") << std::endl;
     std::cout << "  Output:   "
@@ -499,20 +499,20 @@ int main(int argc, char** argv) {
 
     // ── 流水线生命周期 ──
     // 两条流水线始终构造、始终持有各自的推理通信器（InferShmClient）。推理器本体
-    // （模型编译产物，占 GPU）提取到两个独立进程（outpost_infer_process /
+    // （模型编译产物，占 GPU）提取到两个独立进程（armor_infer_process /
     // power_rune_infer_process，各自只编译一个模型——2026.3 GPU 插件实测跨进程驻留
     // 零影响，而进程内两套模型共存会互相拖慢）。因此本进程不做 GPU 推理，切换模式
     // 只交换指针；推理进程的启停策略见 config common.infer_process_lazy：
     //   false（默认）：由 launch_all.py 启动全部推理进程并常驻（先于主程序启动）；
     //   true：由下方 InferProcessManager 按需启停（仅启动当前流水线所需进程）。
     // min_delay_seconds 共用 config common.min_delay_seconds；相机参数按输入模式选择；
-    // 各流水线缓冲队列长度取自 config outpost.pipeline / power_rune.pipeline
-    OutpostPipeline   outpost_pipeline(cfg.outpost.pipeline.queueMaxSizes,
+    // 各流水线缓冲队列长度取自 config armor.pipeline / power_rune.pipeline
+    ArmorPipeline   armor_pipeline(cfg.armor.pipeline.queueMaxSizes,
                                        cfg.common.minDelaySeconds, camera_params);
     PowerRunePipeline power_rune_pipeline(cfg.powerRune.pipeline.queueMaxSizes,
                                           cfg.common.minDelaySeconds, camera_params);
     IPipeline* active_pipeline =
-        (opt.pipeline == PipelineMode::OUTPOST) ? static_cast<IPipeline*>(&outpost_pipeline)
+        (opt.pipeline == PipelineMode::ARMOR) ? static_cast<IPipeline*>(&armor_pipeline)
                                                 : static_cast<IPipeline*>(&power_rune_pipeline);
 
     // ── lazy 模式（common.infer_process_lazy=true）：推理进程按需启停 ──
@@ -523,15 +523,15 @@ int main(int argc, char** argv) {
     std::unique_ptr<Infer::InferProcessManager> infer_manager;
     if (cfg.common.inferProcessLazy) {
         auto reconnectFor = [&](Infer::InferProcessManager::Kind k) {
-            if (k == Infer::InferProcessManager::Kind::OUTPOST)
-                outpost_pipeline.reconnectInferClient();
+            if (k == Infer::InferProcessManager::Kind::ARMOR)
+                armor_pipeline.reconnectInferClient();
             else
                 power_rune_pipeline.reconnectInferClient();
         };
         infer_manager = std::make_unique<Infer::InferProcessManager>(reconnectFor);
         const Infer::InferProcessManager::Kind initial_kind =
-            (opt.pipeline == PipelineMode::OUTPOST)
-                ? Infer::InferProcessManager::Kind::OUTPOST
+            (opt.pipeline == PipelineMode::ARMOR)
+                ? Infer::InferProcessManager::Kind::ARMOR
                 : Infer::InferProcessManager::Kind::POWER_RUNE;
         std::cout << "[main] lazy 模式（infer_process_lazy=true）：仅启动当前流水线所需推理进程"
                   << "，切换时立即关闭不再需要的进程。" << std::endl;
@@ -660,8 +660,8 @@ int main(int argc, char** argv) {
             std::lock_guard<std::mutex> lock(pipeline_mtx);
             if (active_pipeline->mode() == m) return;
             active_pipeline->clear();   // 清空旧流水线（队列 + 滤波状态）
-            active_pipeline = (m == PipelineMode::OUTPOST)
-                ? static_cast<IPipeline*>(&outpost_pipeline)
+            active_pipeline = (m == PipelineMode::ARMOR)
+                ? static_cast<IPipeline*>(&armor_pipeline)
                 : static_cast<IPipeline*>(&power_rune_pipeline);
             active_pipeline->clear();
             new_name = active_pipeline->name();
@@ -670,8 +670,8 @@ int main(int argc, char** argv) {
             vis->setMode(m);
         }
         if (infer_manager) {
-            infer_manager->switchTo(m == PipelineMode::OUTPOST
-                ? Infer::InferProcessManager::Kind::OUTPOST
+            infer_manager->switchTo(m == PipelineMode::ARMOR
+                ? Infer::InferProcessManager::Kind::ARMOR
                 : Infer::InferProcessManager::Kind::POWER_RUNE);
         }
         std::cout << "[main] Pipeline -> " << new_name << std::endl;
@@ -831,11 +831,11 @@ int main(int argc, char** argv) {
         while (ballistic_slot.take(req)) {
             if (req.result) {
                 // 弹道解算：按流水线模式选择目标策略（与原 process_thread 内逻辑一致）
-                if (req.result->outpost.esekf_initialized && req.result->outpost.predictor) {
+                if (req.result->armor.esekf_initialized && req.result->armor.predictor) {
                     sequence_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
-                    sequence_predictor.predict(req.st, *req.result->outpost.predictor,
+                    sequence_predictor.predict(req.st, *req.result->armor.predictor,
                                           shared_frame_timestamp.load(std::memory_order_acquire),
-                                          req.result->outpost.predictor_timestamp);
+                                          req.result->armor.predictor_timestamp);
                 } else if (req.result->power_rune.target_predictor) {
                     sequence_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::LOWEST_Z);
                     sequence_predictor.predict(req.st, *req.result->power_rune.target_predictor,
@@ -929,7 +929,7 @@ int main(int argc, char** argv) {
                     t1_done.store(true, std::memory_order_release);
                     break;
                 } else if (key == '1') {
-                    switchPipeline(PipelineMode::OUTPOST);
+                    switchPipeline(PipelineMode::ARMOR);
                 } else if (key == '2') {
                     switchPipeline(PipelineMode::POWER_RUNE);
                 } else if (key == 'n') {

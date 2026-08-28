@@ -1,8 +1,8 @@
 # =============================================================
 # 全局参数配置（项目根目录 config/config.yaml）
 # 顶层分为三个大类：
-#   - common      ：两个流水线（Outpost / PowerRune）共用的参数
-#   - outpost     ：Outpost 流水线独占参数
+#   - common      ：两个流水线（Armor / PowerRune）共用的参数
+#   - armor     ：Armor 流水线独占参数
 #   - power_rune  ：PowerRune 流水线独占参数
 # 相对路径（model_path 等）以项目根目录为基准，经 PathResolver 解析。
 # 修改后无需重新编译，重启程序即生效。
@@ -42,7 +42,7 @@ common:
 
   # ── 推理进程启动策略（bool）──
   #   false：启动时由 launch_all.py 启动全部推理进程
-  #     （outpost_infer_process / power_rune_infer_process），无推理任务时在后台
+  #     （armor_infer_process / power_rune_infer_process），无推理任务时在后台
   #     闲置（阻塞等待共享内存请求，不占 CPU）；
   #   true：仅启动当前流水线所需的推理进程（由主程序按需启动），切换流水线时
   #     立即关闭所有不再需要的进程（释放其 GPU 显存），再启动新流水线所需进程
@@ -182,22 +182,22 @@ common:
     fire_angle_length: 0.05          # fire 判定弧长（米）：动态阈值 = length / 目标与 yaw 原点 xy 距离
 
 # ════════════════════════════════════════════════════════════
-# outpost — Outpost 流水线独占参数
+# armor — Armor 流水线独占参数
 # ════════════════════════════════════════════════════════════
-outpost:
+armor:
   inference:
-    model_path: "Model/Outpost/0526_dynamic.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
+    model_path: "Model/Armor/0526_dynamic.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
     device: "GPU"                          # 推理设备（CPU / GPU / ...）
     max_batch: 1                           # 推理最大批量（动态 batch 1..max_batch；值越大编译/预热越多，须 ≤ 模型可支持上限）
-    shm_key: 23301                         # 共享内存 Key（与 outpost_infer_process 通信，两进程须一致）
+    shm_key: 23301                         # 共享内存 Key（与 armor_infer_process 通信，两进程须一致）
     resolution:                            # YOLO 推理输入分辨率（像素），须与模型输入一致
       width: 640                           # 输入图像宽（像素）
       height: 640                          # 输入图像高（像素）
-  observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 ESEKF（秒）
+  observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 OutpostESEKF（秒）
 
-  # ── 流水线缓冲队列与批量参数（outpost.pipeline）──
+  # ── 流水线缓冲队列与批量参数（armor.pipeline）──
   # 缓冲队列长度 + 可批处理阶段（1 预处理 / 2 推理 / 3 后处理）的最大批量。
-  # 阶段4（PnP）/ 阶段5（ESEKF）为单帧处理，批量固定为 1。
+  # 阶段4（PnP）/ 阶段5（OutpostESEKF）为单帧处理，批量固定为 1。
   pipeline:
     # 6 个缓冲队列最大长度（[输入, 阶段间×4, 输出]）；队列满时新帧直接丢弃。
     queue_max_sizes: [10, 10, 10, 10, 10, 10]
@@ -206,8 +206,8 @@ outpost:
                            #   须 ≤ inference.max_batch，且 ≤ 共享内存容量 4）
     postprocess_batch: 4   # 阶段3 后处理最大批量
 
-  # ── ESEKF 误差状态扩展卡尔曼滤波参数 ──
-  esekf:
+  # ── OutpostESEKF 误差状态扩展卡尔曼滤波参数 ──
+  outpost_esekf:
     position_noise: 100.0         # 位置过程噪声（Q 位置块）
     rotation_noise: 10.0          # 姿态过程噪声（Q 姿态块）
     measurement_noise: 40.0      # 观测噪声（重投影误差 R）
