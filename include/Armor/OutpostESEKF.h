@@ -48,7 +48,16 @@ public:
           const std::vector<cv::Point3f>& target_centers_3d_list,
           const Params& params = Params{});
 
-    void init(const cv::Vec3d& position, const cv::Mat& rotation_matrix, const TimePoint& t);
+    /**
+     * @brief 用首个观测物体的 4 个图像关键点初始化滤波状态。
+     * 所需位姿信息在函数内部计算（与原有 stage4 初始化 PnP 一致）：对
+     * points_3d_list_[0]（面 0 模型）做 solvePnP 得到相机系位姿，再经变换树
+     * 转换到世界系，作为名义状态（位置 + 姿态）并设置初始协方差。
+     * @param points_2d 首个观测物体的 4 个 2D 关键点（原图坐标）
+     * @param t 初始化时刻
+     * @return PnP 解算成功返回 true；失败返回 false（保持未初始化状态）
+     */
+    bool init(const std::vector<cv::Point2f>& points_2d, const TimePoint& t);
     void reset();
     void update(const std::vector<std::vector<cv::Point2f>>& points_2d_list, const TimePoint& t);
     void predict(const TimePoint& t);

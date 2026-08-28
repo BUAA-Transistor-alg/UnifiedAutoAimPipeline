@@ -4,6 +4,8 @@
 #include <cmath>
 #include <limits>
 
+#include "common/TransformTree/CoordinateTransform.h"
+
 OutpostESEKF::OutpostESEKF(std::shared_ptr<RobotTfTree> tf_tree,
              std::shared_ptr<CameraProjection> camera_proj,
              const std::vector<std::vector<cv::Point3f>>& points_3d_list,
@@ -36,10 +38,28 @@ OutpostESEKF::OutpostESEKF(std::shared_ptr<RobotTfTree> tf_tree,
     P_.setIdentity();
 }
 
-void OutpostESEKF::init(const cv::Vec3d& position, const cv::Mat& rotation_matrix,
+bool OutpostESEKF::init(const std::vector<cv::Point2f>& points_2d,
                  const TimePoint& t) {
-    position_ = position;
-    orientation_ = rotationMatrixToQuaternion(rotation_matrix);
+    CV_Assert(points_2d.size() == points_3d_list_[0].size());
+
+    // 所需位姿信息在内部计算（与原有 stage4 初始化 PnP 一致）：
+    // 1. 对面 0 模型（points_3d_list_[0]）做 PnP，得到相机系位置/欧拉角
+    cv::Vec3f position_cam, euler_cam;
+    bool pnp_ok = camera_proj_->solvePnP_Cam(
+        points_3d_list_[0], points_2d,
+        {cv::SOLVEPNP_IPPE, cv::SOLVEPNP_ITERATIVE},
+        position_cam, euler_cam);
+    if (!pnp_ok)
+        return false;
+
+    // 2. 相机系 → 世界系
+    cv::Vec3f pos_center = tf_tree_->transformPoint(RobotTfTree::CAMERA, RobotTfTree::WORLD, position_cam);
+    cv::Vec3f euler_center = tf_tree_->transformEuler(RobotTfTree::CAMERA, RobotTfTree::WORLD, euler_cam);
+    cv::Mat R_center = CoordinateTransform::eulerToRotationMatrix(euler_center);
+
+    // 3. 名义状态 + 初始协方差
+    position_ = cv::Vec3d(pos_center[0], pos_center[1], pos_center[2]);
+    orientation_ = rotationMatrixToQuaternion(R_center);
     yaw_rate_ = 0.0;
     last_time_ = t;
 
@@ -49,6 +69,7 @@ void OutpostESEKF::init(const cv::Vec3d& position, const cv::Mat& rotation_matri
     P_(6, 6) = init_yaw_rate_noise_;   // 绕 z 轴旋转速度的初始不确定性
     P_(7, 7) = init_dz2_noise_;
     P_(8, 8) = init_dz3_noise_;
+    return true;
 }
 
 void OutpostESEKF::reset() {

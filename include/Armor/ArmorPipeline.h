@@ -5,10 +5,11 @@
 //   2. 推理            — InferShmClient 经共享内存调用独立推理进程（动态 batch）
 //   3. 后处理          — ArmorPostprocessor 并行解码 + NMS（读取 PipelineData 自持输出缓冲）
 //   4. PnP + 坐标转换  — 每物体按装甲板种类（类别 label 0~8）分类：solvePnP + world
-//                        转换 + 重投影；各类别首个物体做初始化 PnP（面 0 模型），
-//                        结果按类别打包存入 vector<CategoryData>（索引 = 类别）
+//                        转换 + 重投影；结果按类别打包存入 vector<CategoryData>
+//                        （索引 = 类别，含该类别观测关键点与 world_pos/world_euler）
 //   5. OutpostESEKF           — 误差状态卡尔曼滤波（初始化 / update / predict / 观测超时重置）；
-//                               仅使用 label 6（装甲板）类别的观测与初始化
+//                               初始化传入 label 6 首个装甲板的图像关键点（位姿在 init
+//                               内部解算），观测仅使用 label 6 类别的关键点
 //
 // 弹道解算、控制序列生成与可视化均已移出流水线，由输出模式（common/Output/）
 // 负责；本流水线只输出感知结果（PipelineResult::armor）。
@@ -75,13 +76,12 @@ struct ArmorPipelineData {
     struct Stage4Data {
         // 单个装甲板种类（类别 label）的分类数据
         struct CategoryData {
-            std::vector<std::vector<cv::Point2f>> all_image_points;  // 该类别所有物体的 4 个 2D 关键点（原图坐标，每物体一组）
-            bool init_pnp_ok = false;   // 该类别初始化 PnP 是否成功（首个物体、面 0 模型）
-            cv::Vec3f init_pos = cv::Vec3f(0, 0, 0);  // 初始化位置（world 系）
-            cv::Mat   init_R;                          // 初始化旋转矩阵 3x3 CV_32F（world 系）
+            std::vector<std::vector<cv::Point2f>> all_image_points;  // 该类别所有物体的 4 个 2D 关键点（原图坐标）
+            std::vector<cv::Vec3f> world_pos;    // 与 all_image_points 一一对应：该类别各物体的世界坐标
+            std::vector<cv::Vec3f> world_euler;  // 与 all_image_points 一一对应：该类别各物体的世界欧拉角
         };
         // 按装甲板种类分类的数据：外层 vector 索引 = 类别 label 0~8，每帧重置为
-        // NUM_CLASSES 个槽位；槽内为该类别自己的观测关键点与初始化 PnP 结果
+        // NUM_CLASSES 个槽位；槽内为该类别自己的观测关键点与世界位姿
         std::vector<CategoryData> categories;
 
         // 每个物体的世界坐标/欧拉角/重投影（与 objects 一一对应，供输出与可视化）

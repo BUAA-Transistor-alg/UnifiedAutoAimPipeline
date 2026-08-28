@@ -300,7 +300,7 @@ void ArmorPipeline::processStage4(DataDeque& data)
             cv::Point2f(obj.landmarks[4], obj.landmarks[5]),  // 右下
             cv::Point2f(obj.landmarks[6], obj.landmarks[7])   // 右上
         };
-        // 按装甲板种类分类：该物体的观测与初始化 PnP 结果写入对应类别
+        // 按装甲板种类分类：该物体的观测关键点与世界位姿写入对应类别
         // （obj.label 0~8）的槽位，供 OutpostESEKF 等下游阶段按类别使用
         auto& cat = d->stage4.categories[obj.label];
         cat.all_image_points.push_back(image_points);
@@ -327,24 +327,8 @@ void ArmorPipeline::processStage4(DataDeque& data)
         }
         world_positions.push_back(world_pos);
         world_eulers.push_back(world_euler);
-
-        // 各类别首个物体：初始化 PnP（面 0 模型），结果存入该类别的
-        // init_pnp_ok/init_pos/init_R，供 OutpostESEKF 等阶段使用
-        if (!cat.init_pnp_ok) {
-            cv::Vec3f position_c, euler_c;
-            bool init_pnp_ok = s4_.camera_proj->solvePnP_Cam(
-                ArmorModel::OUTPOST_POINTS_3D_LIST[0], image_points,
-                {cv::SOLVEPNP_IPPE, cv::SOLVEPNP_ITERATIVE},
-                position_c, euler_c);
-            if (init_pnp_ok) {
-                cv::Vec3f pos_center = tree.transformPoint(RobotTfTree::CAMERA, RobotTfTree::WORLD, position_c);
-                cv::Vec3f euler_center = tree.transformEuler(RobotTfTree::CAMERA, RobotTfTree::WORLD, euler_c);
-                cv::Mat R_center = CoordinateTransform::eulerToRotationMatrix(euler_center);
-                cat.init_pnp_ok = true;
-                cat.init_pos    = pos_center;
-                cat.init_R      = R_center;
-            }
-        }
+        cat.world_pos.push_back(world_pos);      // 按类别存储：与 cat.all_image_points 一一对应
+        cat.world_euler.push_back(world_euler);
     }
 }
 
@@ -382,12 +366,10 @@ void ArmorPipeline::processStage5(DataDeque& data)
 
     // ── OutpostESEKF：初始化 / 更新 / 仅预测 ──
     if (!s5_.esekf_initialized) {
-        if (armor_cat.init_pnp_ok) {
-            const cv::Vec3f& ip = armor_cat.init_pos;
-            s5_.esekf->init(cv::Vec3d(ip[0], ip[1], ip[2]),
-                            armor_cat.init_R, ts);
-            s5_.esekf_initialized = true;
-        }
+        // 初始化：传入 label 6 首个装甲板的图像关键点，
+        // 位姿信息（PnP + 世界系转换）在 OutpostESEKF::init 内部计算
+        if (has_obs)
+            s5_.esekf_initialized = s5_.esekf->init(armor_cat.all_image_points[0], ts);
     } else {
         if (has_obs) {
             // 更新 OutpostESEKF 时仅使用 label 6（装甲板）类别的观测，
