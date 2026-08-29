@@ -71,8 +71,12 @@ public:
     bool hasState() const {
         return state_ != TrackerState::LOST && target_.has_value();
     }
+    // 稳定跟踪期（TRACKING）或短暂失检期（TEMP_LOST，目标仍在、仅做时间预测）
+    // 都视为状态可用；DETECTING（尚未累计满 min_detect_count 帧）与 LOST 除外。
     bool ready() const {
-        return state_ == TrackerState::TRACKING && target_.has_value();
+        return (state_ == TrackerState::TRACKING ||
+                state_ == TrackerState::TEMP_LOST) &&
+               target_.has_value();
     }
     TrackerState state() const { return state_; }
     const Target* target() const {

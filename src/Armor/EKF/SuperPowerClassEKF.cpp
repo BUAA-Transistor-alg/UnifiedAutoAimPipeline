@@ -116,8 +116,8 @@ bool ClassEKF::processFrame(const std::vector<cv::Vec3f>& world_pos,
         }
     }
 
-    // 帧末统一刷新 state 快照：仅当原接口 ready()（TRACKING 且目标存在）时
-    // 用 state() 保存后验状态，并返回 state 是否可用；同步导出车体中心坐标与
+    // 帧末统一刷新 state 快照：仅当原接口 ready()（TRACKING 或 TEMP_LOST 且目标
+    // 存在）时用 state() 保存后验状态，并返回 state 是否可用；同步导出车体中心坐标与
     // 旋转矩阵（与 OutpostESEKF 的 getPosition/getRotationMatrix 形式一致）。
     if (predictor_ && predictor_->ready()) {
         state_ = predictor_->state();
