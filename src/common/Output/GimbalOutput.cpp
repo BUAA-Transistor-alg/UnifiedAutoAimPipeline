@@ -28,6 +28,7 @@ std::vector<T> truncateKeepLast(const std::vector<T>& seq, int skip, const T& fa
 GimbalOutput::GimbalOutput(SequencePredictor& aim, RobotController& rc)
     : aim_(aim),
       rc_(rc),
+      yaw_torque_only_mode_(RobotConfig::instance().common.robotController.yawTorqueOnlyMode),
       pitch_seq_lead_(RobotConfig::instance().common.predictSequence.pitchSeqLead),
       fire_seq_lead_(RobotConfig::instance().common.predictSequence.fireSeqLead),
       fire_angle_lower_limit_(RobotConfig::instance().common.predictSequence.fireAngleLowerLimit),
@@ -93,7 +94,7 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*)
         last_.pitch_seq       = pitch_out;
         last_.fire_seq        = fire_out;
         last_.mpc_available   = mpc_available;
-        rc_.set(/*auto_aim_enable=*/true, /*yaw_torque_only_mode=*/false,
+        rc_.set(/*auto_aim_enable=*/true, /*yaw_torque_only_mode=*/yaw_torque_only_mode_,
                 yaw_out, pitch_out, fire_out,
                 /*integral_enable=*/seq.integral_enable);
     } else {
@@ -102,7 +103,7 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*)
         last_ = LastOutput{};
         const double hold_yaw   = st.strict.yaw_pos;
         const double hold_pitch = st.strict.pitch_angle;
-        rc_.set(/*auto_aim_enable=*/false, /*yaw_torque_only_mode=*/false,
+        rc_.set(/*auto_aim_enable=*/false, /*yaw_torque_only_mode=*/yaw_torque_only_mode_,
                 std::vector<double>{hold_yaw},
                 std::vector<double>{hold_pitch},
                 std::vector<bool>{false},

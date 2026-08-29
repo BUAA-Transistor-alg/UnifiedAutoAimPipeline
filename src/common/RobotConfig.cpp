@@ -260,6 +260,7 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     const YAML::Node& rc = cm["robot_controller"];
     if (!rc || !rc.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.robot_controller' 配置段");
     cfg.common.robotController.sequenceMode  = requireScalar<bool>(rc, "sequence_mode", "common.robot_controller");
+    cfg.common.robotController.yawTorqueOnlyMode = requireScalar<bool>(rc, "yaw_torque_only_mode", "common.robot_controller");
     cfg.common.robotController.dtControl     = requireScalar<double>(rc, "dt_control", "common.robot_controller");
     cfg.common.robotController.mpcPredN      = requireScalar<int>(rc, "mpc_pred_n", "common.robot_controller");
     cfg.common.robotController.J             = requireScalar<double>(rc, "J", "common.robot_controller");

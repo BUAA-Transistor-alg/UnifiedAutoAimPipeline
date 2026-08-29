@@ -45,6 +45,7 @@ private:
     RobotController& rc_;
 
     // ── 配置（构造时从 RobotConfig common 读取）──
+    bool   yaw_torque_only_mode_;
     int    pitch_seq_lead_;
     int    fire_seq_lead_;
     double fire_angle_lower_limit_;

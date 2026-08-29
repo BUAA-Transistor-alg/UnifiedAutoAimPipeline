@@ -126,6 +126,7 @@ common:
   # ── RobotController（TorqueController 子模组）构造参数 ──
   robot_controller:
     sequence_mode: true         # 序列输入模式（true=序列 set / false=单目标 set）
+    yaw_torque_only_mode: false # 仅力矩控制模式（false=正常发送角度/速度目标；true=仅发送 yaw 力矩控制，用于调参/测试）
     dt_control: 0.01            # 控制周期（秒，100Hz）
     mpc_pred_n: 20              # MPC 预测步数
     J: 0.016541                 # yaw 轴转动惯量

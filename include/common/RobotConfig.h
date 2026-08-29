@@ -94,6 +94,9 @@ public:
     // RobotController（TorqueController 子模组）构造参数
     struct RobotControllerParams {
         bool   sequenceMode;     // 序列输入模式
+        bool   yawTorqueOnlyMode; // 仅力矩控制模式（yaw_torque_only_mode 开关）：
+                                  // true 时 MCU 仅接收 yaw 力矩控制（不再发送角度/速度目标），
+                                  // false 时正常发送角度/速度目标（见 McuMpcController::set）
         double dtControl;        // 控制周期（秒）
         int    mpcPredN;         // MPC 预测步数
         double J;                // yaw 轴转动惯量
