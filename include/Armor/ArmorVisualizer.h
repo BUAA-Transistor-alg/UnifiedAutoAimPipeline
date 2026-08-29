@@ -101,6 +101,7 @@ public:
     bool xyWindowOpen() const;
 
     /// 每帧绘制 XY 平面（车体中心 / 装甲板位置（预测函数 t=0 快照）/
+    /// 观测装甲板（PnP 原始位姿，橙小圆，绘制于预测装甲板上层）+ 本体 -y 方向法线短线 /
     /// 瞄准目标位置 / 自身 chassis 位置 + chassis→瞄准目标连线）并刷新窗口；
     /// 窗口未开启或已被用户手动关闭时直接返回。仅可视化线程调用。
     void renderXY(const ArmorVisualizationData& data);

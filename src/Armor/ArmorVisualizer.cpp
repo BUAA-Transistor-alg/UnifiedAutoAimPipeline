@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iomanip>
 #include <sstream>
+#include <utility>
 
 #include "common/TransformTree/CoordinateTransform.h"
 
@@ -165,10 +166,6 @@ void ArmorVisualizer::drawPredictedCenterPoints(cv::Mat& img,
         cv::Point pt(pred_projected[j].x, pred_projected[j].y);
         cv::circle(img, pt, 5, pred_color, -1);
         cv::circle(img, pt, 8, pred_color, 2);
-        if (j == 0) {
-            cv::putText(img, "t+0.0s", pt + cv::Point(12, -8),
-                        cv::FONT_HERSHEY_SIMPLEX, 0.5, pred_color, 2);
-        }
     }
 }
 
@@ -225,13 +222,28 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
     const cv::Scalar kChassisColor(0, 160, 0);    // 绿：自身底盘
     const cv::Scalar kCenterColor(0, 0, 255);     // 红：车体中心
     const cv::Scalar kArmorColor(255, 0, 0);      // 蓝：装甲板位置（t+0 预测）
+    const cv::Scalar kObservedColor(0, 128, 255); // 橙：观测装甲板（PnP 原始位姿，小圆）
     const cv::Scalar kAimColor(255, 0, 255);      // 品红：瞄准目标
     const cv::Scalar kTextColor(60, 60, 60);
+
+    // 观测装甲板法线短线固定长度（米）：本体 -y 方向（外法线）投影到 XY 平面后的长度
+    constexpr float kNormalLenM = 0.5f;
 
     xy_buf_.create(kSize, kSize, CV_8UC3);
     xy_buf_.setTo(kBg);
 
     // ── 收集待绘制点（world 系 x/y，米）──
+    // 本体 -y 方向（装甲板外法线）→ world 旋转 → 投影到 XY 平面后的单位方向 (dx, dy)；
+    // 法线竖直（XY 分量约 0，即法线垂直于地面）时返回 (0,0)
+    auto normalDirXY = [](const cv::Vec3f& euler) -> std::pair<float, float> {
+        const cv::Mat R = CoordinateTransform::eulerToRotationMatrix(euler);
+        float dx = -R.at<float>(0, 1);   // R·(0,-1,0) 的 x 分量
+        float dy = -R.at<float>(1, 1);   // R·(0,-1,0) 的 y 分量
+        const float len = std::sqrt(dx * dx + dy * dy);
+        if (len < 1e-6f) return {0.0f, 0.0f};
+        return {dx / len, dy / len};
+    };
+
     struct Pt2 { float x, y; };
     std::vector<Pt2> pts;
     if (data.filtered_pose.valid) {
@@ -242,6 +254,20 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
     if (data.xy.aim_valid)
         pts.push_back({data.xy.aim_point[0], data.xy.aim_point[1]});
     pts.push_back({data.xy.chassis_position[0], data.xy.chassis_position[1]});
+    // 观测到的装甲板（PnP 原始位姿；跳过 PnP 失败残留的原点）及其法线短线端点
+    if (data.raw_pose.valid) {
+        for (size_t i = 0; i < data.raw_pose.world_positions.size(); ++i) {
+            const cv::Vec3f& wp = data.raw_pose.world_positions[i];
+            if (!std::isfinite(wp[0]) || !std::isfinite(wp[1])) continue;
+            if (wp[0] == 0.0f && wp[1] == 0.0f && wp[2] == 0.0f) continue;
+            pts.push_back({wp[0], wp[1]});
+            if (i < data.raw_pose.world_eulers.size()) {
+                const auto dir = normalDirXY(data.raw_pose.world_eulers[i]);
+                pts.push_back({wp[0] + dir.first * kNormalLenM,
+                               wp[1] + dir.second * kNormalLenM});
+            }
+        }
+    }
 
     // ── 自动缩放：包围盒 + 边距（无有效点或范围过小时用默认半边长）──
     float min_x = -kDefaultRange, max_x = kDefaultRange;
@@ -307,10 +333,6 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
         cv::line(xy_buf_, cv::Point(kMargin, py), cv::Point(kSize - kMargin, py),
                  kAxis, 1);
     }
-    cv::putText(xy_buf_, "x+", cv::Point(kSize - 62, kMargin + 18),
-                cv::FONT_HERSHEY_SIMPLEX, 0.5, kTextColor, 1, cv::LINE_AA);
-    cv::putText(xy_buf_, "y+", cv::Point(kMargin + 4, kMargin + 22),
-                cv::FONT_HERSHEY_SIMPLEX, 0.5, kTextColor, 1, cv::LINE_AA);
 
     // ── chassis → 瞄准目标连线（先画，避免压住标记）──
     if (data.xy.aim_valid) {
@@ -349,6 +371,30 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
         }
     }
 
+    // ── 观测到的装甲板（PnP 原始位姿，橙小圆 + 序号）+ 本体 -y 方向法线短线 ──
+    // 绘制在预测装甲板上层、瞄准点下层
+    if (data.raw_pose.valid) {
+        for (size_t i = 0; i < data.raw_pose.world_positions.size(); ++i) {
+            const cv::Vec3f& wp = data.raw_pose.world_positions[i];
+            if (!std::isfinite(wp[0]) || !std::isfinite(wp[1])) continue;
+            if (wp[0] == 0.0f && wp[1] == 0.0f && wp[2] == 0.0f) continue;
+            const cv::Point p = w2p(wp[0], wp[1]);
+
+            // 法线短线：本体 -y 方向（装甲板外法线）投影到 XY 平面，固定长度（米）
+            if (i < data.raw_pose.world_eulers.size()) {
+                const auto dir = normalDirXY(data.raw_pose.world_eulers[i]);
+                const cv::Point q = w2p(wp[0] + dir.first * kNormalLenM,
+                                        wp[1] + dir.second * kNormalLenM);
+                cv::line(xy_buf_, p, q, kObservedColor, 2, cv::LINE_AA);
+            }
+
+            cv::circle(xy_buf_, p, 4, kObservedColor, -1, cv::LINE_AA);   // 半径较小的实心圆
+            cv::circle(xy_buf_, p, 7, kObservedColor, 1, cv::LINE_AA);
+            cv::putText(xy_buf_, cv::format("O%d", (int)i), p + cv::Point(9, 14),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.4, kObservedColor, 1, cv::LINE_AA);
+        }
+    }
+
     // ── 瞄准目标位置（品红叉 + 圆）──
     if (data.xy.aim_valid) {
         const cv::Point p = w2p(data.xy.aim_point[0], data.xy.aim_point[1]);
@@ -359,8 +405,8 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
     }
 
     // ── 标题 / 比例尺 ──
-    cv::putText(xy_buf_, "Armor XY Plane (armor positions: predictor t=0)",
-                cv::Point(14, 26), cv::FONT_HERSHEY_SIMPLEX, 0.6,
+    cv::putText(xy_buf_, "Armor XY Plane (A: t=0 predict | circles: raw PnP, line: -y normal)",
+                cv::Point(14, 26), cv::FONT_HERSHEY_SIMPLEX, 0.55,
                 kTextColor, 2, cv::LINE_AA);
     cv::putText(xy_buf_, cv::format("grid: %.2f m", grid_m),
                 cv::Point(14, kSize - 18), cv::FONT_HERSHEY_SIMPLEX, 0.45,
