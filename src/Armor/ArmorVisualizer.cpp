@@ -1,6 +1,8 @@
 // ArmorVisualizer.cpp — 装甲板自瞄可视化实现（全部绘制逻辑从 test/main.cpp 抽取）
 #include "Armor/ArmorVisualizer.h"
 
+#include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 
@@ -186,6 +188,185 @@ void ArmorVisualizer::drawAimPoint(cv::Mat& img,
     cv::putText(img, cv::format("AIM t+%.2fs", predict_time),
                 pt + cv::Point(15, -10),
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, aim_color, 2);
+}
+
+// ============================================================================
+// XY 平面窗口（顶视图；仿照 transistor_rm2027_algorithm_visual_ws 的 RMM 顶视图）
+// ============================================================================
+
+void ArmorVisualizer::openXYWindow() {
+    cv::namedWindow(XY_WINDOW_NAME, cv::WINDOW_AUTOSIZE);
+    xy_window_open_ = true;
+}
+
+void ArmorVisualizer::closeXYWindow() {
+    if (!xy_window_open_) return;
+    try {
+        cv::destroyWindow(XY_WINDOW_NAME);
+    } catch (const cv::Exception&) {
+        // 窗口可能已被用户手动关闭（点 X），忽略
+    }
+    xy_window_open_ = false;
+}
+
+bool ArmorVisualizer::xyWindowOpen() const {
+    return xy_window_open_;
+}
+
+void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
+    if (!xy_window_open_) return;
+
+    constexpr int kSize = 900;              // 窗口尺寸（像素）
+    constexpr int kMargin = 70;             // 绘制边距（像素）
+    constexpr float kDefaultRange = 5.0f;   // 无点/范围过小时默认半边长（米）
+    const cv::Scalar kBg(248, 248, 248);          // 白底（仿照 RMM 顶视图）
+    const cv::Scalar kGrid(226, 226, 226);        // 网格线
+    const cv::Scalar kAxis(150, 150, 150);        // 世界原点十字
+    const cv::Scalar kChassisColor(0, 160, 0);    // 绿：自身底盘
+    const cv::Scalar kCenterColor(0, 0, 255);     // 红：车体中心
+    const cv::Scalar kArmorColor(255, 0, 0);      // 蓝：装甲板位置（t+0 预测）
+    const cv::Scalar kAimColor(255, 0, 255);      // 品红：瞄准目标
+    const cv::Scalar kTextColor(60, 60, 60);
+
+    xy_buf_.create(kSize, kSize, CV_8UC3);
+    xy_buf_.setTo(kBg);
+
+    // ── 收集待绘制点（world 系 x/y，米）──
+    struct Pt2 { float x, y; };
+    std::vector<Pt2> pts;
+    if (data.filtered_pose.valid) {
+        pts.push_back({(float)data.filtered_pose.pos[0], (float)data.filtered_pose.pos[1]});
+        for (const auto& p : data.filtered_pose.pred_center_points)
+            pts.push_back({p.x, p.y});
+    }
+    if (data.xy.aim_valid)
+        pts.push_back({data.xy.aim_point[0], data.xy.aim_point[1]});
+    pts.push_back({data.xy.chassis_position[0], data.xy.chassis_position[1]});
+
+    // ── 自动缩放：包围盒 + 边距（无有效点或范围过小时用默认半边长）──
+    float min_x = -kDefaultRange, max_x = kDefaultRange;
+    float min_y = -kDefaultRange, max_y = kDefaultRange;
+    bool have_pts = false;
+    for (const auto& p : pts) {
+        if (!std::isfinite(p.x) || !std::isfinite(p.y)) continue;
+        if (!have_pts) {
+            min_x = max_x = p.x;
+            min_y = max_y = p.y;
+            have_pts = true;
+        } else {
+            min_x = std::min(min_x, p.x); max_x = std::max(max_x, p.x);
+            min_y = std::min(min_y, p.y); max_y = std::max(max_y, p.y);
+        }
+    }
+    if (have_pts) {
+        // 以包围盒中心为中心，x/y 跨度较大者 + 默认范围下界为边长（保证近处
+        // 目标也留出视野），避免车体中心/瞄准目标贴在窗口边缘
+        const float span = std::max({max_x - min_x, max_y - min_y,
+                                     2.0f * kDefaultRange});
+        const float cx = 0.5f * (min_x + max_x);
+        const float cy = 0.5f * (min_y + max_y);
+        min_x = cx - span * 0.5f; max_x = cx + span * 0.5f;
+        min_y = cy - span * 0.5f; max_y = cy + span * 0.5f;
+    }
+    const double scale = (double)(kSize - 2 * kMargin) / (double)(max_x - min_x);
+    // world (x, y) → 窗口像素（x 向右，y 向上）
+    auto w2p = [&](float x, float y) -> cv::Point {
+        return cv::Point((int)std::lround(kMargin + (x - min_x) * scale),
+                         (int)std::lround(kSize - kMargin - (y - min_y) * scale));
+    };
+
+    // ── 网格 + 世界原点十字 ──
+    // 自适应网格步长（米）：使网格间距约 >= 40px
+    float grid_m = 0.1f;
+    {
+        static const float kSteps[] = {0.1f, 0.2f, 0.5f, 1.0f, 2.0f, 5.0f,
+                                       10.0f, 20.0f, 50.0f, 100.0f};
+        for (float s : kSteps) {
+            if (s * (float)scale >= 40.0f) { grid_m = s; break; }
+        }
+    }
+    for (float gx = std::floor(min_x / grid_m) * grid_m;
+         gx <= max_x + 1e-6f; gx += grid_m) {
+        const int px = w2p(gx, 0).x;
+        cv::line(xy_buf_, cv::Point(px, kMargin), cv::Point(px, kSize - kMargin),
+                 kGrid, 1);
+    }
+    for (float gy = std::floor(min_y / grid_m) * grid_m;
+         gy <= max_y + 1e-6f; gy += grid_m) {
+        const int py = w2p(0, gy).y;
+        cv::line(xy_buf_, cv::Point(kMargin, py), cv::Point(kSize - kMargin, py),
+                 kGrid, 1);
+    }
+    if (min_x <= 0.0f && 0.0f <= max_x) {   // 世界原点 x=0 竖线
+        const int px = w2p(0, 0).x;
+        cv::line(xy_buf_, cv::Point(px, kMargin), cv::Point(px, kSize - kMargin),
+                 kAxis, 1);
+    }
+    if (min_y <= 0.0f && 0.0f <= max_y) {   // 世界原点 y=0 横线
+        const int py = w2p(0, 0).y;
+        cv::line(xy_buf_, cv::Point(kMargin, py), cv::Point(kSize - kMargin, py),
+                 kAxis, 1);
+    }
+    cv::putText(xy_buf_, "x+", cv::Point(kSize - 62, kMargin + 18),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, kTextColor, 1, cv::LINE_AA);
+    cv::putText(xy_buf_, "y+", cv::Point(kMargin + 4, kMargin + 22),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, kTextColor, 1, cv::LINE_AA);
+
+    // ── chassis → 瞄准目标连线（先画，避免压住标记）──
+    if (data.xy.aim_valid) {
+        const cv::Point a = w2p(data.xy.chassis_position[0], data.xy.chassis_position[1]);
+        const cv::Point b = w2p(data.xy.aim_point[0], data.xy.aim_point[1]);
+        cv::line(xy_buf_, a, b, cv::Scalar(0, 0, 220), 2, cv::LINE_AA);
+    }
+
+    // ── 自身 chassis 位置（绿方块）──
+    {
+        const cv::Point p = w2p(data.xy.chassis_position[0], data.xy.chassis_position[1]);
+        cv::drawMarker(xy_buf_, p, kChassisColor, cv::MARKER_SQUARE, 24, 2, cv::LINE_AA);
+        cv::putText(xy_buf_, "chassis", p + cv::Point(10, -12),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, kChassisColor, 1, cv::LINE_AA);
+    }
+
+    // ── 车体中心（红实心圆 + 外圈）──
+    if (data.filtered_pose.valid) {
+        const cv::Point p = w2p((float)data.filtered_pose.pos[0],
+                                (float)data.filtered_pose.pos[1]);
+        cv::circle(xy_buf_, p, 7, kCenterColor, -1, cv::LINE_AA);
+        cv::circle(xy_buf_, p, 12, kCenterColor, 2, cv::LINE_AA);
+        cv::putText(xy_buf_, "center", p + cv::Point(13, -10),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, kCenterColor, 1, cv::LINE_AA);
+    }
+
+    // ── 装甲板位置（t=0 预测，蓝实心圆 + 序号；CLASS_EKF 目标即四块装甲板）──
+    if (data.filtered_pose.valid) {
+        for (size_t i = 0; i < data.filtered_pose.pred_center_points.size(); ++i) {
+            const auto& ap = data.filtered_pose.pred_center_points[i];
+            const cv::Point p = w2p(ap.x, ap.y);
+            cv::circle(xy_buf_, p, 6, kArmorColor, -1, cv::LINE_AA);
+            cv::circle(xy_buf_, p, 10, kArmorColor, 2, cv::LINE_AA);
+            cv::putText(xy_buf_, cv::format("A%d", (int)i), p + cv::Point(9, -9),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.45, kArmorColor, 1, cv::LINE_AA);
+        }
+    }
+
+    // ── 瞄准目标位置（品红叉 + 圆）──
+    if (data.xy.aim_valid) {
+        const cv::Point p = w2p(data.xy.aim_point[0], data.xy.aim_point[1]);
+        cv::drawMarker(xy_buf_, p, kAimColor, cv::MARKER_CROSS, 28, 2, cv::LINE_AA);
+        cv::circle(xy_buf_, p, 12, kAimColor, 2, cv::LINE_AA);
+        cv::putText(xy_buf_, "aim", p + cv::Point(13, -13),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, kAimColor, 1, cv::LINE_AA);
+    }
+
+    // ── 标题 / 比例尺 ──
+    cv::putText(xy_buf_, "Armor XY Plane (armor positions: predictor t=0)",
+                cv::Point(14, 26), cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                kTextColor, 2, cv::LINE_AA);
+    cv::putText(xy_buf_, cv::format("grid: %.2f m", grid_m),
+                cv::Point(14, kSize - 18), cv::FONT_HERSHEY_SIMPLEX, 0.45,
+                kTextColor, 1, cv::LINE_AA);
+
+    cv::imshow(XY_WINDOW_NAME, xy_buf_);
 }
 
 // ============================================================================

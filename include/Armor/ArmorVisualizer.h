@@ -50,6 +50,13 @@ struct ArmorVisualizationData {
         double predict_time = 0.0;                       // 预测时间（秒）
     } aim;
 
+    // ---- XY 平面窗口数据（由 VisualizeOutput 填充；仅 XY 平面窗口绘制使用） ----
+    struct XYPlaneData {
+        cv::Vec3f chassis_position = cv::Vec3f(0, 0, 0);  // 自身底盘位置（world，米）
+        bool      aim_valid = false;                       // 瞄准目标位置是否有效
+        cv::Vec3f aim_point = cv::Vec3f(0, 0, 0);          // 瞄准目标位置（world，米）
+    } xy;
+
     // ---- 通信数据（取帧时刻 RobotController 状态快照） ----
     RobotController::State robot_state;
 
@@ -78,6 +85,25 @@ public:
                 const ArmorVisualizationData& data,
                 const RobotTfTree& tf_tree,
                 const CameraProjection& camera_proj) const;
+
+    // ---- XY 平面窗口（顶视图；仿照 transistor_rm2027_algorithm_visual_ws 的
+    //      RMM 顶视图窗口）----
+    // 进入 Armor 模式且可视化开启时由 main 调用 openXYWindow()，退出 Armor 模式
+    // 时调用 closeXYWindow()（两者均仅在可视化开启时执行）；每帧由
+    // VisualizeOutput 调用 renderXY() 刷新窗口。
+    static constexpr const char* XY_WINDOW_NAME = "Armor XY Plane";
+
+    /// 创建 XY 平面窗口（幂等；窗口相关操作须在可视化线程调用）
+    void openXYWindow();
+    /// 关闭 XY 平面窗口（幂等；窗口相关操作须在可视化线程调用）
+    void closeXYWindow();
+    /// XY 平面窗口当前是否开启（用户手动关闭窗口后自动复位为 false）
+    bool xyWindowOpen() const;
+
+    /// 每帧绘制 XY 平面（车体中心 / 装甲板位置（预测函数 t=0 快照）/
+    /// 瞄准目标位置 / 自身 chassis 位置 + chassis→瞄准目标连线）并刷新窗口；
+    /// 窗口未开启或已被用户手动关闭时直接返回。仅可视化线程调用。
+    void renderXY(const ArmorVisualizationData& data);
 
     // ---- 独立静态工具函数（供其他用途复用） ----
 
@@ -115,6 +141,10 @@ private:
                       const cv::Vec3f& aim_world, double predict_time,
                       const RobotTfTree& tf_tree,
                       const CameraProjection& camera_proj) const;
+
+    // ── XY 平面窗口状态 ──
+    bool xy_window_open_ = false;   // 窗口是否开启（用户手动关闭后自动复位）
+    cv::Mat xy_buf_;                // XY 平面绘制缓冲（复用，仅可视化线程访问）
 };
 
 #endif // ARMOR_VISUALIZER_H

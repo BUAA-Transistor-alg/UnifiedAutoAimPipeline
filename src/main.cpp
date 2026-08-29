@@ -99,6 +99,9 @@ static void printUsage(const char* prog) {
               << "  - 启动时指定 visualize：可视化开启时绘制检测/位姿/滤波 + 统一覆盖层\n"
               << "    (串口信息 / 帧数统计 / 热键提醒，两流水线一致)；按 'v' 关闭可视化后\n"
               << "    窗口仅显示原始画面，热键仍可用，'v' 可随时恢复\n"
+              << "  - Armor 模式且可视化开启时额外打开 'Armor XY Plane' 顶视图窗口\n"
+              << "    (车体中心 / 四块装甲板 t+0 预测 / 瞄准目标 / 自身底盘 + 连线)，\n"
+              << "    切换出 Armor 模式或关闭可视化时自动关闭\n"
               << "热键 (窗口内):\n"
               << "  '1'/'2' 切换流水线  'v' 开关可视化  'g' 开关云台输出  'n' 关闭全部输出  'q'/ESC 退出\n";
 }
@@ -637,6 +640,10 @@ int main(int argc, char** argv) {
             ensureVisualizeThread();   // 首次开启时创建可视化循环线程（随后不销毁）
             auto vis = std::make_shared<VisualizeOutput>(camera_proj, sequence_predictor);
             vis->setMode(active_pipeline->mode());
+            // 初始流水线为 Armor 且可视化开启：打开 XY 平面窗口
+            if (active_pipeline->mode() == PipelineMode::ARMOR) {
+                vis->openArmorXYWindow();
+            }
             std::lock_guard<std::mutex> lock(output_mtx);
             output_modes.push_back(vis);
         }
@@ -668,6 +675,13 @@ int main(int argc, char** argv) {
         }
         if (std::shared_ptr<VisualizeOutput> vis = findVisualize()) {
             vis->setMode(m);
+            // XY 平面窗口：进入 Armor 模式时开启、退出 Armor 模式时自动关闭
+            // （仅在可视化开启时执行——findVisualize() 非空即可视化开启）
+            if (m == PipelineMode::ARMOR) {
+                vis->openArmorXYWindow();
+            } else {
+                vis->closeArmorXYWindow();
+            }
         }
         if (infer_manager) {
             infer_manager->switchTo(m == PipelineMode::ARMOR
@@ -678,22 +692,34 @@ int main(int argc, char** argv) {
     };
     // 'v'：切换可视化开关（不影响云台）；'g'：切换云台开关（不影响可视化）；'n'：全部关闭
     toggleOutput = [&](OutputMode m) {
+        std::shared_ptr<VisualizeOutput> removed_vis;   // 被移除的可视化输出（用于关闭 XY 窗口）
         bool add = true;
         {
             std::lock_guard<std::mutex> lock(output_mtx);
             for (auto it = output_modes.begin(); it != output_modes.end(); ++it) {
                 if ((*it)->type() == m) {
+                    if (m == OutputMode::VISUALIZE) {
+                        removed_vis = std::static_pointer_cast<VisualizeOutput>(*it);
+                    }
                     output_modes.erase(it);
                     add = false;
                     break;
                 }
             }
         }
+        // 可视化关闭：同步关闭 Armor XY 平面窗口（窗口操作须在窗口线程内）
+        if (removed_vis) {
+            removed_vis->closeArmorXYWindow();
+        }
         if (add) {
             if (m == OutputMode::VISUALIZE) {
                 ensureVisualizeThread();   // 首次开启时创建可视化循环线程（随后不销毁）
                 auto vis = std::make_shared<VisualizeOutput>(camera_proj, sequence_predictor);
                 vis->setMode(active_pipeline->mode());
+                // 可视化开启且当前为 Armor 模式：打开 XY 平面窗口
+                if (active_pipeline->mode() == PipelineMode::ARMOR) {
+                    vis->openArmorXYWindow();
+                }
                 std::lock_guard<std::mutex> lock(output_mtx);
                 output_modes.push_back(vis);
             } else if (m == OutputMode::GIMBAL) {
@@ -934,9 +960,19 @@ int main(int argc, char** argv) {
                     switchPipeline(PipelineMode::POWER_RUNE);
                 } else if (key == 'n') {
                     // 全部关闭（窗口保留，仅显示原始画面）
+                    std::shared_ptr<VisualizeOutput> vis_to_close;
                     {
                         std::lock_guard<std::mutex> lock(output_mtx);
+                        for (auto& m : output_modes) {
+                            if (m->type() == OutputMode::VISUALIZE) {
+                                vis_to_close = std::static_pointer_cast<VisualizeOutput>(m);
+                            }
+                        }
                         output_modes.clear();
+                    }
+                    // 可视化全部关闭：同步关闭 Armor XY 平面窗口
+                    if (vis_to_close) {
+                        vis_to_close->closeArmorXYWindow();
                     }
                     std::cout << "[main] Output modes: " << outputNames() << std::endl;
                 } else if (key == 'v') {

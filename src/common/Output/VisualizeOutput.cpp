@@ -174,6 +174,15 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, RobotController*
     // 瞄准点由 GimbalOutput 计算；本模式不计算，仅绘制目标滤波预测中心
     vis.aim.auto_aim_enable = false;
 
+    // XY 平面窗口数据：自身底盘位置（取帧时刻 ExtraInputInfo 快照）+ 瞄准目标
+    // （SequencePredictor 瞄准点序列第一个值，与主画面瞄准点绘制同源）
+    vis.xy.chassis_position = cv::Vec3f((float)result.extra_info.chassis_x,
+                                        (float)result.extra_info.chassis_y,
+                                        (float)result.extra_info.chassis_z);
+    const SequencePredictor::Result seq = aim_.latest();
+    vis.xy.aim_valid = seq.valid;
+    vis.xy.aim_point = seq.first_point;
+
     vis.robot_state = rc ? rc->getState() : RobotController::State{};
 
     vis.fps = fps_.fps();
@@ -183,6 +192,9 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, RobotController*
     render_buf_.create(result.frame.size(), result.frame.type());
     result.frame.copyTo(render_buf_);
     armor_vis_.render(render_buf_, vis, tree_, *camera_proj_);
+
+    // XY 平面窗口每帧刷新（窗口未开启时内部直接返回；仅可视化线程调用）
+    armor_vis_.renderXY(vis);
 }
 
 void VisualizeOutput::renderPowerRune(const PipelineResult& result, RobotController* rc)

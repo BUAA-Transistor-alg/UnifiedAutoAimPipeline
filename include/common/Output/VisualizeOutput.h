@@ -31,6 +31,11 @@ public:
     /// 切换当前渲染的流水线模式（相机投影与输入模式绑定，不随流水线切换）
     void setMode(PipelineMode mode) { mode_.store(mode, std::memory_order_relaxed); }
 
+    // ---- Armor XY 平面窗口管理（进入/退出 Armor 模式时由 main 调用；
+    //      仅可视化开启时调用，转发给 ArmorVisualizer）----
+    void openArmorXYWindow()  { armor_vis_.openXYWindow(); }
+    void closeArmorXYWindow() { armor_vis_.closeXYWindow(); }
+
     void update(const PipelineResult& result, RobotController* rc) override;
 
     OutputMode type() const override { return OutputMode::VISUALIZE; }
