@@ -448,7 +448,8 @@ int main(int argc, char** argv) {
             McuDataPreprocessor::LinearParams{
                 rp.sendPitchScale, rp.sendPitchOffset,
                 rp.recvPitchScale, rp.recvPitchOffset},
-            rp.sequenceMode);
+            rp.sequenceMode,
+            /*smooth_eps=*/rp.smoothEps);
         std::cout << "[main] RobotController constructed (serial threads may fail silently without hardware)." << std::endl;
     };
     // 线程安全读取当前 RobotController 指针（未构造时为 nullptr）
