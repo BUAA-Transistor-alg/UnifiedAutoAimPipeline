@@ -16,22 +16,49 @@
 // missUpdate / clear / hasState），不直接使用 Target / ExtendedKalmanFilter 等
 // 内部类型。双板（联合）观测经原接口的 YAML 配置机制（superpower_ekf.joint_update）
 // 启用，默认开启，见 Params::jointUpdateEnabled。
+//
+// 全部可调参数（Params）由调用方从 config armor.super_power_ekf 段提供，经
+// buildConfig 组装成原接口的 YAML 配置节点下发（缺省字段原接口用内置默认）。
 namespace sp_ekf {
 
 class ClassEKF {
 public:
     using TimePoint = std::chrono::steady_clock::time_point;
 
-    // 可调参数（默认值与 ArmorPipeline::processStage5 原有内联逻辑一致）
+    // 可调参数（默认值与 SP standard3 普通四装甲一致；ArmorPipeline 从
+    // config armor.super_power_ekf 段完整覆盖，不依赖本默认值）
     struct Params {
         double observationLostTimeoutSec;  // 连续无观测多久后自动销毁（秒）
         double initialRadiusM;             // SP 普通四装甲初始半径（米）
         bool   jointUpdateEnabled;         // 启用双板（联合）观测更新（原接口 joint_update.enabled）
+        int    minDetectCount;             // 最小识别帧数（DETECTING→TRACKING）
+        int    maxTempLostCount;           // 临时失检最大帧数（超过转 LOST 重建）
+        double maxDtSec;                   // 最大帧间隔（秒，超过视为时间不连续）
+        int    armorNum;                   // 装甲板数量（普通四装甲=4）
+        double angularVelocityFitWindowSec;   // 角速度拟合滑窗（秒）
+        int    angularVelocityFitMinSamples;  // 角速度拟合最少样本数
+        // 双板联合更新门控参数（原接口 joint_update 段）
+        double jointMaxNis;                     // 联合 NIS 门控阈值
+        double jointMaxSecondaryPositionErrorM; // 副板最大位置误差门控（米）
+        double jointMaxSecondaryAngleErrorRad;  // 副板最大角度误差门控（弧度）
+        double jointMeasurementVarianceScale;   // 联合更新位置方差放大系数
+        double jointAngleVarianceScale;         // 联合更新角度方差放大系数
 
         Params()
             : observationLostTimeoutSec(2.0),
               initialRadiusM(0.2),
-              jointUpdateEnabled(true) {}
+              jointUpdateEnabled(true),
+              minDetectCount(5),
+              maxTempLostCount(15),
+              maxDtSec(0.1),
+              armorNum(4),
+              angularVelocityFitWindowSec(0.20),
+              angularVelocityFitMinSamples(4),
+              jointMaxNis(20.09),
+              jointMaxSecondaryPositionErrorM(0.45),
+              jointMaxSecondaryAngleErrorRad(0.80),
+              jointMeasurementVarianceScale(1.5),
+              jointAngleVarianceScale(4.0) {}
     };
 
     explicit ClassEKF(const Params& params = Params{});
@@ -96,9 +123,9 @@ public:
     cv::Mat getRotationMatrix() const { return R_; }
 
 private:
-    // 按 jointUpdateEnabled 构造原接口（SuperPowerPredictor）的 YAML 配置节点，
-    // 其余字段沿用其内置默认（普通四装甲）；门控参数取 PairUpdateConfig 默认值。
-    static std::shared_ptr<YAML::Node> buildConfig(bool joint_update_enabled);
+    // 按 Params 构造原接口（SuperPowerPredictor）的 YAML 配置节点：段内字段与
+    // config armor.super_power_ekf 一一对应，全部下发到原接口（普通四装甲）。
+    static std::shared_ptr<YAML::Node> buildConfig(const Params& params);
 
     Params params_;
     std::shared_ptr<YAML::Node> config_;       // 原接口配置节点（构造 SuperPowerPredictor 时传入）

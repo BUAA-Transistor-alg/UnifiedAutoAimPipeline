@@ -15,12 +15,21 @@ constexpr double kMillimetersPerMeter = 1000.0;
 constexpr double kPi = 3.141592653589793238462643383279502884;
 }  // namespace
 
-std::shared_ptr<YAML::Node> ClassEKF::buildConfig(bool joint_update_enabled) {
-    // 经原接口（SuperPowerPredictor）的 YAML 配置机制启用双板联合更新；
-    // 门控参数取 PairUpdateConfig 默认值，其余段不提供 → 原接口用内置默认。
+std::shared_ptr<YAML::Node> ClassEKF::buildConfig(const Params& params) {
+    // 经原接口（SuperPowerPredictor）的 YAML 配置机制下发全部可调参数：
+    // 段内字段与 config armor.super_power_ekf 一一对应；YAML 块只覆盖这些
+    // SP 常量，集中管理配置来源，且不读取旧估计器配置。
     std::shared_ptr<YAML::Node> node =
         std::make_shared<YAML::Node>(YAML::Load(R"(
 superpower_ekf:
+  min_detect_count: 5
+  max_temp_lost_count: 15
+  max_dt_s: 0.1
+  initial_radius_m: 0.2
+  armor_num: 4
+  angular_velocity_fit:
+    window_s: 0.20
+    min_samples: 4
   joint_update:
     enabled: false
     max_joint_nis: 20.09
@@ -29,13 +38,27 @@ superpower_ekf:
     measurement_variance_scale: 1.5
     angle_variance_scale: 4.0
 )"));
-    (*node)["superpower_ekf"]["joint_update"]["enabled"] = joint_update_enabled;
+    YAML::Node sp = (*node)["superpower_ekf"];
+    sp["min_detect_count"] = params.minDetectCount;
+    sp["max_temp_lost_count"] = params.maxTempLostCount;
+    sp["max_dt_s"] = params.maxDtSec;
+    sp["initial_radius_m"] = params.initialRadiusM;
+    sp["armor_num"] = params.armorNum;
+    sp["angular_velocity_fit"]["window_s"] = params.angularVelocityFitWindowSec;
+    sp["angular_velocity_fit"]["min_samples"] = params.angularVelocityFitMinSamples;
+    YAML::Node joint = sp["joint_update"];
+    joint["enabled"] = params.jointUpdateEnabled;
+    joint["max_joint_nis"] = params.jointMaxNis;
+    joint["max_secondary_position_error_m"] = params.jointMaxSecondaryPositionErrorM;
+    joint["max_secondary_angle_error_rad"] = params.jointMaxSecondaryAngleErrorRad;
+    joint["measurement_variance_scale"] = params.jointMeasurementVarianceScale;
+    joint["angle_variance_scale"] = params.jointAngleVarianceScale;
     return node;
 }
 
 ClassEKF::ClassEKF(const Params& params)
     : params_(params),
-      config_(buildConfig(params_.jointUpdateEnabled)) {}
+      config_(buildConfig(params_)) {}
 
 bool ClassEKF::processFrame(const std::vector<cv::Vec3f>& world_pos,
                             const std::vector<cv::Vec3f>& world_euler,

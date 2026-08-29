@@ -173,7 +173,7 @@ armor:
     resolution:                            # YOLO 推理输入分辨率（像素），须与模型输入一致
       width: 640                           # 输入图像宽（像素）
       height: 640                          # 输入图像高（像素）
-  observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 OutpostESEKF（秒）
+  observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 OutpostESEKF / 最新物体位姿保持（秒）
 
   # ── 流水线缓冲队列与批量参数（armor.pipeline）──
   # 缓冲队列长度 + 可批处理阶段（1 预处理 / 2 推理 / 3 后处理）的最大批量。
@@ -200,6 +200,29 @@ armor:
     init_yaw_rate_noise: 1.0      # 初始化旋转速度不确定性（P(6,6)）
     init_dz2_noise: 0.01          # 初始化 dz2 不确定性（P(7,7)）
     init_dz3_noise: 0.01          # 初始化 dz3 不确定性（P(8,8)）
+
+  # ── SuperPower EKF（sp_ekf::ClassEKF，label 0~5 每类一个）滤波参数 ──
+  # 字段与 ClassEKF::Params 一一对应，经 ClassEKF::buildConfig 组装成原接口
+  # （SuperPowerPredictor）的 YAML 配置节点下发；改动后仅需重启程序，无需重新编译。
+  super_power_ekf:
+    observation_lost_timeout_sec: 2.0   # 连续无观测多久后自动销毁内部目标（秒）
+    initial_radius_m: 0.2               # SP 普通四装甲初始半径（米）
+    joint_update_enabled: true          # 双板（联合）观测更新开关
+    min_detect_count: 5                 # 最小识别帧数（DETECTING→TRACKING）
+    max_temp_lost_count: 15             # 临时失检最大帧数（超过转 LOST 重建）
+    max_dt_s: 0.1                       # 最大帧间隔（秒，超过视为时间不连续）
+    armor_num: 4                        # 装甲板数量（普通四装甲=4）
+    # ── 角速度（车体旋转 w）滑窗最小二乘拟合参数 ──
+    angular_velocity_fit:
+      window_s: 0.50                    # 拟合滑窗（秒，须 >= 0.02）
+      min_samples: 10                    # 拟合最少样本数（须 >= 2）
+    # ── 双板（联合）观测更新门控参数 ──
+    joint_update:
+      max_joint_nis: 20.09              # 联合 NIS 门控阈值
+      max_secondary_position_error_m: 0.45  # 副板最大位置误差门控（米）
+      max_secondary_angle_error_rad: 0.80   # 副板最大角度误差门控（弧度）
+      measurement_variance_scale: 1.5       # 联合更新位置方差放大系数
+      angle_variance_scale: 4.0             # 联合更新角度方差放大系数
 
 # ════════════════════════════════════════════════════════════
 # power_rune — PowerRune 流水线独占参数

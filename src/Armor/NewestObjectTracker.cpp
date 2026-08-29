@@ -1,4 +1,4 @@
-#include "Armor/EKF/FirstObjectTracker.h"
+#include "Armor/NewestObjectTracker.h"
 
 #include <algorithm>
 
@@ -6,11 +6,11 @@
 
 namespace sp_ekf {
 
-FirstObjectTracker::FirstObjectTracker(const Params& params) : params_(params) {}
+NewestObjectTracker::NewestObjectTracker(const Params& params) : params_(params) {}
 
-bool FirstObjectTracker::processFrame(const std::vector<cv::Vec3f>& world_pos,
-                                      const std::vector<cv::Vec3f>& world_euler,
-                                      const TimePoint& t) {
+bool NewestObjectTracker::processFrame(const std::vector<cv::Vec3f>& world_pos,
+                                       const std::vector<cv::Vec3f>& world_euler,
+                                       const TimePoint& t) {
     // 取本帧第一个有效物体（PnP 失败填充的 (0,0,0) 视为无效，跳过）。
     const cv::Vec3f* obs_pos = nullptr;
     const cv::Vec3f* obs_euler = nullptr;
@@ -50,7 +50,7 @@ bool FirstObjectTracker::processFrame(const std::vector<cv::Vec3f>& world_pos,
     return valid_;
 }
 
-void FirstObjectTracker::reset() {
+void NewestObjectTracker::reset() {
     detect_count_ = 0;
     valid_ = false;
     position_ = cv::Vec3d(0, 0, 0);
@@ -59,7 +59,7 @@ void FirstObjectTracker::reset() {
 }
 
 std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>>
-FirstObjectTracker::capturePosePredictor() const {
+NewestObjectTracker::capturePosePredictor() const {
     if (!valid_) return nullptr;
 
     // 完全捕捉当前保存的位姿（值拷贝，独立于后续变化）；无运动模型，

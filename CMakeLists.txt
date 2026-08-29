@@ -104,7 +104,7 @@ set(ARMOR_SOURCES
     src/Armor/EKF/SuperPowerTracker.cpp
     src/Armor/EKF/SuperPowerPredictor.cpp
     src/Armor/EKF/SuperPowerClassEKF.cpp
-    src/Armor/EKF/FirstObjectTracker.cpp
+    src/Armor/NewestObjectTracker.cpp
 )
 
 # ── PowerRune 源文件 ──

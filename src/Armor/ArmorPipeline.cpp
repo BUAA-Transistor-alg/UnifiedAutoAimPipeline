@@ -65,18 +65,33 @@ ArmorPipeline::Stage5Ctx::Stage5Ctx(const RobotConfig::CameraParams& camera,
                                     ArmorModel::OUTPOST_POINTS_3D_LIST,
                                     ArmorModel::OUTPOST_TARGET_CENTER_3D_LIST,
                                     makeEsekfParams(armor))) {
-    // label 0~5 每类一个封装 EKF：无观测超时自动销毁阈值统一复用
-    // armor.observation_lost_timeout（与 OutpostESEKF 同一配置）
+    // label 0~5 每类一个封装 EKF：全部可调参数取自 config armor.super_power_ekf
+    // 段（字段与 ClassEKF::Params 一一对应，经 buildConfig 组装成原接口 YAML 节点）
+    const RobotConfig::ArmorParams::SuperPowerEkfParams& sp =
+        armor.superPowerEkf;
     sp_ekf::ClassEKF::Params class_params;
-    class_params.observationLostTimeoutSec = armor.observationLostTimeoutSec;
+    class_params.observationLostTimeoutSec   = sp.observationLostTimeoutSec;
+    class_params.initialRadiusM              = sp.initialRadiusM;
+    class_params.jointUpdateEnabled          = sp.jointUpdateEnabled;
+    class_params.minDetectCount              = sp.minDetectCount;
+    class_params.maxTempLostCount            = sp.maxTempLostCount;
+    class_params.maxDtSec                    = sp.maxDtSec;
+    class_params.armorNum                    = sp.armorNum;
+    class_params.angularVelocityFitWindowSec = sp.angularVelocityFitWindowSec;
+    class_params.angularVelocityFitMinSamples = sp.angularVelocityFitMinSamples;
+    class_params.jointMaxNis                 = sp.jointMaxNis;
+    class_params.jointMaxSecondaryPositionErrorM = sp.jointMaxSecondaryPositionErrorM;
+    class_params.jointMaxSecondaryAngleErrorRad  = sp.jointMaxSecondaryAngleErrorRad;
+    class_params.jointMeasurementVarianceScale   = sp.jointMeasurementVarianceScale;
+    class_params.jointAngleVarianceScale         = sp.jointAngleVarianceScale;
     for (auto& class_ekf : class_ekfs) {
         class_ekf = sp_ekf::ClassEKF(class_params);
     }
-    // label 7~8 各一个首物体位姿保持：重置时间同样复用 observation_lost_timeout
-    sp_ekf::FirstObjectTracker::Params first_object_params;
-    first_object_params.resetTimeoutSec = armor.observationLostTimeoutSec;
-    for (auto& tracker : first_object_trackers) {
-        tracker = sp_ekf::FirstObjectTracker(first_object_params);
+    // label 7~8 各一个最新物体位姿保持：重置时间同样复用 observation_lost_timeout
+    sp_ekf::NewestObjectTracker::Params newest_object_params;
+    newest_object_params.resetTimeoutSec = armor.observationLostTimeoutSec;
+    for (auto& tracker : newest_object_trackers) {
+        tracker = sp_ekf::NewestObjectTracker(newest_object_params);
     }
 }
 
@@ -384,16 +399,16 @@ void ArmorPipeline::processStage5(DataDeque& data)
         s5_.class_ekfs[label].processFrame(cat.world_pos, cat.world_euler, ts);
     }
 
-    // ── 首物体位姿保持：label 7~8（基地/基地大装甲）──
+    // ── 最新物体位姿保持：label 7~8（基地/基地大装甲）──
     for (int label = ArmorDetect::BASE_CLASS; label <= ArmorDetect::BASE_LARGE_CLASS; ++label) {
         const auto& cat = d->stage4.categories[label];
-        s5_.first_object_trackers[label - ArmorDetect::BASE_CLASS]
+        s5_.newest_object_trackers[label - ArmorDetect::BASE_CLASS]
             .processFrame(cat.world_pos, cat.world_euler, ts);
     }
 
     // ── 选择本帧使用的目标滤波结果 ──
     // 有效候选：OutpostESEKF（esekf_initialized）、label 0~5 移植 EKF
-    // （state_available_）、label 7~8 首物体（valid()）；取车体中心距底盘系原点
+    // （state_available_）、label 7~8 最新物体（valid()）；取车体中心距底盘系原点
     // （world 系，chassis_x/y/z）最近的那一类，stage5 输出全部使用其结果。
     const cv::Vec3d chassis_origin(info.chassis_x, info.chassis_y, info.chassis_z);
     int best_label = -1;
@@ -414,8 +429,8 @@ void ArmorPipeline::processStage5(DataDeque& data)
         }
     }
     for (int label = ArmorDetect::BASE_CLASS; label <= ArmorDetect::BASE_LARGE_CLASS; ++label) {
-        const sp_ekf::FirstObjectTracker& tracker =
-            s5_.first_object_trackers[label - ArmorDetect::BASE_CLASS];
+        const sp_ekf::NewestObjectTracker& tracker =
+            s5_.newest_object_trackers[label - ArmorDetect::BASE_CLASS];
         if (!tracker.valid()) continue;
         const double dist = cv::norm(tracker.getPosition() - chassis_origin);
         if (dist < best_dist) {
@@ -451,10 +466,10 @@ void ArmorPipeline::processStage5(DataDeque& data)
         }
     } else if (best_label >= ArmorDetect::BASE_CLASS &&
                best_label <= ArmorDetect::BASE_LARGE_CLASS) {
-        // 首物体位姿保持（label 7~8）结果：位置 / 旋转矩阵 / 1 点预测器
-        d->stage5.target_filter_type = TargetFilterType::FIRST_OBJECT;
-        const sp_ekf::FirstObjectTracker& tracker =
-            s5_.first_object_trackers[best_label - ArmorDetect::BASE_CLASS];
+        // 最新物体位姿保持（label 7~8）结果：位置 / 旋转矩阵 / 1 点预测器
+        d->stage5.target_filter_type = TargetFilterType::NEWEST_OBJECT;
+        const sp_ekf::NewestObjectTracker& tracker =
+            s5_.newest_object_trackers[best_label - ArmorDetect::BASE_CLASS];
         d->stage5.target_pos = tracker.getPosition();
         d->stage5.target_R64 = tracker.getRotationMatrix();
         d->stage5.target_predictor = tracker.capturePosePredictor();  // valid() 时非空
@@ -633,8 +648,8 @@ void ArmorPipeline::clear()
         for (auto& class_ekf : s5_.class_ekfs) {
             class_ekf.reset();
         }
-        // 一并重置首物体位姿保持（label 7~8）
-        for (auto& tracker : s5_.first_object_trackers) {
+        // 一并重置最新物体位姿保持（label 7~8）
+        for (auto& tracker : s5_.newest_object_trackers) {
             tracker.reset();
         }
 

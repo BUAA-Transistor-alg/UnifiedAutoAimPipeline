@@ -348,6 +348,69 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.armor.esekf.initDz2Noise         = requireScalar<double>(ek, "init_dz2_noise", "armor.outpost_esekf");
     cfg.armor.esekf.initDz3Noise         = requireScalar<double>(ek, "init_dz3_noise", "armor.outpost_esekf");
 
+    // ── armor.super_power_ekf（SuperPower EKF 滤波参数，label 0~5 每类一个 ClassEKF）──
+    // 字段与 ClassEKF::Params 一一对应（含原接口 TrackerConfig / PairUpdateConfig /
+    // 角速度拟合参数），经 ClassEKF::buildConfig 组装成原接口 YAML 配置节点下发。
+    const YAML::Node& spekf = op["super_power_ekf"];
+    if (!spekf || !spekf.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'armor.super_power_ekf' 配置段");
+    cfg.armor.superPowerEkf.observationLostTimeoutSec =
+        requireScalar<double>(spekf, "observation_lost_timeout_sec", "armor.super_power_ekf");
+    cfg.armor.superPowerEkf.initialRadiusM =
+        requireScalar<double>(spekf, "initial_radius_m", "armor.super_power_ekf");
+    cfg.armor.superPowerEkf.jointUpdateEnabled =
+        requireScalar<bool>(spekf, "joint_update_enabled", "armor.super_power_ekf");
+    cfg.armor.superPowerEkf.minDetectCount =
+        requireScalar<int>(spekf, "min_detect_count", "armor.super_power_ekf");
+    cfg.armor.superPowerEkf.maxTempLostCount =
+        requireScalar<int>(spekf, "max_temp_lost_count", "armor.super_power_ekf");
+    cfg.armor.superPowerEkf.maxDtSec =
+        requireScalar<double>(spekf, "max_dt_s", "armor.super_power_ekf");
+    cfg.armor.superPowerEkf.armorNum =
+        requireScalar<int>(spekf, "armor_num", "armor.super_power_ekf");
+    const YAML::Node& ekf_fit = spekf["angular_velocity_fit"];
+    if (!ekf_fit || !ekf_fit.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'armor.super_power_ekf.angular_velocity_fit' 配置段");
+    cfg.armor.superPowerEkf.angularVelocityFitWindowSec =
+        requireScalar<double>(ekf_fit, "window_s", "armor.super_power_ekf.angular_velocity_fit");
+    cfg.armor.superPowerEkf.angularVelocityFitMinSamples =
+        requireScalar<int>(ekf_fit, "min_samples", "armor.super_power_ekf.angular_velocity_fit");
+    const YAML::Node& ekf_joint = spekf["joint_update"];
+    if (!ekf_joint || !ekf_joint.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'armor.super_power_ekf.joint_update' 配置段");
+    cfg.armor.superPowerEkf.jointMaxNis =
+        requireScalar<double>(ekf_joint, "max_joint_nis", "armor.super_power_ekf.joint_update");
+    cfg.armor.superPowerEkf.jointMaxSecondaryPositionErrorM =
+        requireScalar<double>(ekf_joint, "max_secondary_position_error_m", "armor.super_power_ekf.joint_update");
+    cfg.armor.superPowerEkf.jointMaxSecondaryAngleErrorRad =
+        requireScalar<double>(ekf_joint, "max_secondary_angle_error_rad", "armor.super_power_ekf.joint_update");
+    cfg.armor.superPowerEkf.jointMeasurementVarianceScale =
+        requireScalar<double>(ekf_joint, "measurement_variance_scale", "armor.super_power_ekf.joint_update");
+    cfg.armor.superPowerEkf.jointAngleVarianceScale =
+        requireScalar<double>(ekf_joint, "angle_variance_scale", "armor.super_power_ekf.joint_update");
+    // 取值校验：非法值同样在此处报错（不静默修正）；下界与原接口
+    // SuperPowerPredictor 的内置钳位（window_s ≥ 0.02、min_samples ≥ 2）保持一致。
+    if (cfg.armor.superPowerEkf.observationLostTimeoutSec <= 0.0 ||
+        cfg.armor.superPowerEkf.initialRadiusM <= 0.0 ||
+        cfg.armor.superPowerEkf.minDetectCount < 1 ||
+        cfg.armor.superPowerEkf.maxTempLostCount < 0 ||
+        cfg.armor.superPowerEkf.maxDtSec <= 0.0 ||
+        cfg.armor.superPowerEkf.armorNum < 1 ||
+        cfg.armor.superPowerEkf.angularVelocityFitWindowSec < 0.02 ||
+        cfg.armor.superPowerEkf.angularVelocityFitMinSamples < 2 ||
+        cfg.armor.superPowerEkf.jointMaxNis <= 0.0 ||
+        cfg.armor.superPowerEkf.jointMaxSecondaryPositionErrorM <= 0.0 ||
+        cfg.armor.superPowerEkf.jointMaxSecondaryAngleErrorRad <= 0.0 ||
+        cfg.armor.superPowerEkf.jointMeasurementVarianceScale <= 0.0 ||
+        cfg.armor.superPowerEkf.jointAngleVarianceScale <= 0.0) {
+        throw std::runtime_error("RobotConfig: armor.super_power_ekf 取值非法："
+                                 "observation_lost_timeout_sec / initial_radius_m / max_dt_s 必须 > 0，"
+                                 "min_detect_count 必须 >= 1，max_temp_lost_count 必须 >= 0，"
+                                 "armor_num 必须 >= 1，angular_velocity_fit.window_s 必须 >= 0.02，"
+                                 "angular_velocity_fit.min_samples 必须 >= 2，"
+                                 "joint_update 各门控阈值必须 > 0");
+    }
+
     // ══════════════ power_rune（独占参数） ══════════════
     const YAML::Node& pr = root["power_rune"];
     if (!pr || !pr.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'power_rune' 配置段");

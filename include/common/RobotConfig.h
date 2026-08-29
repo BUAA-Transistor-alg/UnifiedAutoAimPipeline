@@ -16,7 +16,8 @@
 // 机器配置文件顶层分为三个大类：
 //   - common      ：两个流水线共用的参数（tf 偏移 / 相机内参 / 弹道 / MPC / 输入控制器 /
 //                    min_delay_seconds 等）
-//   - armor     ：Armor 流水线独占参数（推理模型 / 批量 / 观测丢失超时）
+//   - armor     ：Armor 流水线独占参数（推理模型 / 批量 / 观测丢失超时 /
+//                   OutpostESEKF 与 SuperPower EKF 滤波参数）
 //   - power_rune  ：PowerRune 流水线独占参数（推理模型 / NMS / 阈值 / 批量）
 //
 // 相机内参与畸变系数两流水线共用，但分为两套按输入模式自动选择
@@ -171,6 +172,28 @@ public:
             double initDz3Noise;            // 初始化 dz3 不确定性（P(8,8)）
         };
         EsekfParams esekf;
+
+        // SuperPower EKF（sp_ekf::ClassEKF，label 0~5 每类一个）滤波参数
+        // （config: armor.super_power_ekf；字段与 ClassEKF::Params 一一对应，
+        //  经 buildConfig 组装成原接口 YAML 配置节点下发）
+        struct SuperPowerEkfParams {
+            double observationLostTimeoutSec;     // 连续无观测多久后自动销毁内部目标（秒）
+            double initialRadiusM;                // SP 普通四装甲初始半径（米）
+            bool   jointUpdateEnabled;            // 双板（联合）观测更新开关
+            int    minDetectCount;                // 最小识别帧数（DETECTING→TRACKING）
+            int    maxTempLostCount;              // 临时失检最大帧数（超过转 LOST 重建）
+            double maxDtSec;                      // 最大帧间隔（秒，超过视为时间不连续）
+            int    armorNum;                      // 装甲板数量（普通四装甲=4）
+            double angularVelocityFitWindowSec;   // 角速度拟合滑窗（秒）
+            int    angularVelocityFitMinSamples;  // 角速度拟合最少样本数
+            // 双板联合更新门控参数（config: armor.super_power_ekf.joint_update）
+            double jointMaxNis;                     // 联合 NIS 门控阈值
+            double jointMaxSecondaryPositionErrorM; // 副板最大位置误差门控（米）
+            double jointMaxSecondaryAngleErrorRad;  // 副板最大角度误差门控（弧度）
+            double jointMeasurementVarianceScale;   // 联合更新位置方差放大系数
+            double jointAngleVarianceScale;         // 联合更新角度方差放大系数
+        };
+        SuperPowerEkfParams superPowerEkf;
     };
 
     // PowerRune 流水线独占参数

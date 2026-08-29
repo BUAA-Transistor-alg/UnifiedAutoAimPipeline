@@ -26,7 +26,7 @@
 #include "Armor/ArmorInfer.h"
 #include "Armor/OutpostESEKF.h"
 #include "Armor/EKF/SuperPowerClassEKF.h"   // 移植 EKF 封装：label 0~5 每类一个 ClassEKF（sp_ekf）
-#include "Armor/EKF/FirstObjectTracker.h"   // 首物体位姿保持：label 7~8 各一个 FirstObjectTracker（sp_ekf）
+#include "Armor/NewestObjectTracker.h"      // 最新物体位姿保持：label 7~8 各一个 NewestObjectTracker（sp_ekf）
 #include "common/CameraProjection.h"
 #include "common/TransformTree/RobotTfTree.h"
 #include "Armor/ArmorModel.h"
@@ -95,15 +95,15 @@ struct ArmorPipelineData {
         std::vector<std::vector<cv::Point2f>> reprojected_points;
     } stage4;
 
-    // ==================== 阶段5：目标滤波（OutpostESEKF / 移植 EKF / 首物体位姿，多选一） ====================
+    // ==================== 阶段5：目标滤波（OutpostESEKF / 移植 EKF / 最新物体位姿，多选一） ====================
     struct Stage5Data {
         // 本帧使用的目标滤波结果：在有效的候选（OutpostESEKF=label 6、移植 EKF=
-        // label 0~5、首物体位姿=label 7~8）中，取车体中心距底盘系原点（world 系）
+        // label 0~5、最新物体位姿=label 7~8）中，取车体中心距底盘系原点（world 系）
         // 最近的那一类。
         bool target_valid = false;                    // 所选目标滤波是否有效
-        int  target_label = -1;                       // 所选目标类别：0~5=ClassEKF，6=OutpostESEKF，7~8=首物体；-1=无
+        int  target_label = -1;                       // 所选目标类别：0~5=ClassEKF，6=OutpostESEKF，7~8=最新物体；-1=无
         TargetFilterType target_filter_type = TargetFilterType::NONE;  // 使用的目标对应的滤波器种类
-        std::vector<cv::Point3f> target_world_points;  // 所选目标世界关键点（esekf：12 点；ClassEKF：4 块装甲；首物体：1 点）
+        std::vector<cv::Point3f> target_world_points;  // 所选目标世界关键点（esekf：12 点；ClassEKF：4 块装甲；最新物体：1 点）
         cv::Vec3d target_pos = cv::Vec3d(0, 0, 0);    // 所选目标车体中心（world，米）
         cv::Mat   target_R64;                          // 所选目标旋转矩阵（CV_64F）
         std::vector<cv::Point3f> target_pred_center_points;  // 预测目标关键点 t+0（world）
@@ -225,9 +225,9 @@ private:
         // 初始化 / predict+update / 超时自动销毁 均由封装内部自行判断。
         std::array<sp_ekf::ClassEKF, NUM_CLASS_EKF> class_ekfs;
 
-        // ── 首物体位姿保持：label 7~8（基地/基地大装甲）各一个 ──
+        // ── 最新物体位姿保持：label 7~8（基地/基地大装甲）各一个 ──
         // 只保存每帧第一个有效物体的位姿；最小识别帧数 + 重置时间均在内部维护。
-        std::array<sp_ekf::FirstObjectTracker, 2> first_object_trackers;  // 索引 = label - BASE_CLASS
+        std::array<sp_ekf::NewestObjectTracker, 2> newest_object_trackers;  // 索引 = label - BASE_CLASS
 
         explicit Stage5Ctx(const RobotConfig::CameraParams& camera,
                            const RobotConfig::ArmorParams& armor);

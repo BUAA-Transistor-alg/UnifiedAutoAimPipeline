@@ -7,13 +7,13 @@
 
 #include <opencv2/core.hpp>
 
-// 单类（label 7~8，基地/基地大装甲）首物体位姿保持：只保存最近一次
+// 单类（label 7~8，基地/基地大装甲）最新物体位姿保持：只保存最近一次
 // processFrame 传入物体列表中第一个有效物体的位姿，内部设有最小识别帧数
 // 与重置时间（无观测超时自动重置）。capturePosePredictor 返回的预测器
 // 始终返回该物体最新位置（仅 1 个物体），与 ClassEKF 一起参与最近目标选择。
 namespace sp_ekf {
 
-class FirstObjectTracker {
+class NewestObjectTracker {
 public:
     using TimePoint = std::chrono::steady_clock::time_point;
 
@@ -27,7 +27,7 @@ public:
               resetTimeoutSec(2.0) {}
     };
 
-    explicit FirstObjectTracker(const Params& params = Params{});
+    explicit NewestObjectTracker(const Params& params = Params{});
 
     /**
      * @brief 统一帧处理：只取本帧物体列表中第一个有效物体保存其位姿。
