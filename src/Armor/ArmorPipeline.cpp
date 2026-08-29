@@ -321,9 +321,14 @@ void ArmorPipeline::processStage4(DataDeque& data)
         auto& cat = d->stage4.categories[obj.label];
         cat.all_image_points.push_back(image_points);
 
+        auto& loacl_points_3d = 
+            ((obj.label == 1) || (obj.label == 8)) ? 
+            ArmorModel::BIG_ARMOR_POINTS_3D_LOCAL : 
+            ArmorModel::SMALL_ARMOR_POINTS_3D_LOCAL;
+
         cv::Vec3f position_cam, euler_cam;
         bool pnp_ok = s4_.camera_proj->solvePnP_Cam(
-            ArmorModel::SMALL_ARMOR_POINTS_3D_LOCAL, image_points,
+            loacl_points_3d, image_points,
             {cv::SOLVEPNP_IPPE, cv::SOLVEPNP_ITERATIVE},
             position_cam, euler_cam);
 
@@ -337,7 +342,7 @@ void ArmorPipeline::processStage4(DataDeque& data)
             std::vector<cv::Point2f> reprojected_pts;
             std::vector<cv::Point3f> reprojected_pts_3d_cam =
                 CoordinateTransform::transformPoints(position_cam, euler_cam,
-                                                     ArmorModel::SMALL_ARMOR_POINTS_3D_LOCAL);
+                                                     loacl_points_3d);
             s4_.camera_proj->projectPoints_Cam(reprojected_pts_3d_cam, reprojected_pts);
             reprojected.push_back(std::move(reprojected_pts));
         }

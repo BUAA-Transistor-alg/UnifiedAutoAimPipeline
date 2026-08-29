@@ -13,16 +13,25 @@
 
 namespace ArmorModel {
 
-// 物体 3D 尺寸（w=0.133m 宽, h=0.05m 高）
-constexpr float OBJ_W = 0.133f;
-constexpr float OBJ_H = 0.050f;
+// 物体 3D 尺寸（m）
+constexpr float SMALL_ARMOR_W = 0.133f;
+constexpr float BIG_ARMOR_W = 0.225f;
+constexpr float LIGHT_BAR_H = 0.050f;
+
 
 // 物体四个角点（局部坐标系，逆时针顺序）
 inline const std::vector<cv::Point3f> SMALL_ARMOR_POINTS_3D_LOCAL = {
-    cv::Point3f(-OBJ_W/2.0f, 0.0f,  OBJ_H/2.0f),  // 左上
-    cv::Point3f(-OBJ_W/2.0f, 0.0f, -OBJ_H/2.0f),  // 左下
-    cv::Point3f( OBJ_W/2.0f, 0.0f, -OBJ_H/2.0f),  // 右下
-    cv::Point3f( OBJ_W/2.0f, 0.0f,  OBJ_H/2.0f)   // 右上
+    cv::Point3f(-SMALL_ARMOR_W/2.0f, 0.0f,  LIGHT_BAR_H/2.0f),  // 左上
+    cv::Point3f(-SMALL_ARMOR_W/2.0f, 0.0f, -LIGHT_BAR_H/2.0f),  // 左下
+    cv::Point3f( SMALL_ARMOR_W/2.0f, 0.0f, -LIGHT_BAR_H/2.0f),  // 右下
+    cv::Point3f( SMALL_ARMOR_W/2.0f, 0.0f,  LIGHT_BAR_H/2.0f)   // 右上
+};
+
+inline const std::vector<cv::Point3f> BIG_ARMOR_POINTS_3D_LOCAL = {
+    cv::Point3f(-BIG_ARMOR_W/2.0f, 0.0f,  LIGHT_BAR_H/2.0f),  // 左上
+    cv::Point3f(-BIG_ARMOR_W/2.0f, 0.0f, -LIGHT_BAR_H/2.0f),  // 左下
+    cv::Point3f( BIG_ARMOR_W/2.0f, 0.0f, -LIGHT_BAR_H/2.0f),  // 右下
+    cv::Point3f( BIG_ARMOR_W/2.0f, 0.0f,  LIGHT_BAR_H/2.0f)   // 右上
 };
 
 inline const std::vector<cv::Point3f> TARGET_CENTER_3D_LOCAL = {
