@@ -137,6 +137,12 @@ public:
     /// 会 sem_unlink 重建信号量，本客户端先于服务端附加则需重连（见 InferShmClient::reconnect）。
     void reconnectInferClient() { s2_.client->reconnect(); }
 
+    /// 设置推理客户端强制重启回调：推理进程疑似挂死（响应超时超过配置时限）时由
+    /// 客户端从推理阶段线程调用；主程序把它挂钩到 InferProcessManager::forceRestart。
+    void setInferRestartHandler(std::function<void()> handler) {
+        s2_.client->setForceRestartHandler(std::move(handler));
+    }
+
     // ---- IPipeline ----
     PipelineMode mode() const override { return PipelineMode::POWER_RUNE; }
     std::string name() const override { return "PowerRune"; }

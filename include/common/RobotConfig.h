@@ -225,6 +225,13 @@ public:
         // false: 启动时启动全部推理进程并后台闲置（launch_all.py 预启动）
         bool inferProcessLazy;
 
+        // 推理挂死强制重启时限（秒，必填，config: common.infer_force_restart_timeout_sec）：
+        // 推理客户端（InferShmClient）每次推理响应超时（2s）返回时，检测当前时间
+        // 与上一次推理正常返回时间的间隔，超过该时限则判定推理进程挂死，调用
+        // InferProcessManager::forceRestart 强制重启对应的推理进程（见 InferShmClient
+        // 文件头注释）。0 = 关闭该功能。
+        double inferForceRestartTimeoutSec;
+
         // 队列积压自适应额外延迟（可选功能，见 BacklogAdaptiveDelay，v6 PID 式 PI）：
         // 开启后处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列
         // 积压总数，以 targetBacklog 为目标做 PI 直接输出

@@ -41,6 +41,13 @@ common:
   #     （新进程需重新编译模型，就绪前该流水线推理返回空结果，界面保持响应）。
   infer_process_lazy: true
 
+  # ── 推理挂死强制重启时限（秒，>= 0；0 = 关闭）──
+  # 推理客户端每次推理响应超时（2s）返回时，检测距上一次推理正常返回的间隔；
+  # 若超过该时限（说明推理进程疑似挂死），则强制重启对应的推理进程
+  # （SIGKILL 后重新启动并等待就绪，见 InferProcessManager::forceRestart）。
+  # 建议大于模型编译/切换耗时（如 10s），避免切换期间误触发。
+  infer_force_restart_timeout_sec: 20.0
+
   # ── 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择 ──
   input_mode:
     # camera_mode：--input camera（实机相机）。

@@ -112,7 +112,9 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
 
     // 推理器在独立进程 armor_infer_process 中（仅推理一步；预处理/后处理在本
     // 进程），本阶段经共享内存通信调用，推理进程未启动时阻塞等待。
-    s2_.client = std::make_unique<Infer::InferShmClient>(cfg.armor.shmKey);
+    // 推理挂死强制重启时限取自 config common.infer_force_restart_timeout_sec
+    s2_.client = std::make_unique<Infer::InferShmClient>(cfg.armor.shmKey,
+                                                         cfg.common.inferForceRestartTimeoutSec);
     s3_.postprocessor = std::make_unique<ArmorDetect::ArmorPostprocessor>(
         cfg.armor.inputWidth, cfg.armor.inputHeight);
 

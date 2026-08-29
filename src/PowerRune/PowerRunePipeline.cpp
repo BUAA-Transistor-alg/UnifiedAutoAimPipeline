@@ -47,7 +47,9 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
         cfg.powerRune.inputWidth, cfg.powerRune.inputHeight);
     // 推理器在独立进程 power_rune_infer_process 中（仅推理一步；预处理/后处理在本
     // 进程），本阶段经共享内存通信调用，推理进程未启动时阻塞等待。
-    s2_.client = std::make_unique<Infer::InferShmClient>(cfg.powerRune.shmKey);
+    // 推理挂死强制重启时限取自 config common.infer_force_restart_timeout_sec
+    s2_.client = std::make_unique<Infer::InferShmClient>(cfg.powerRune.shmKey,
+                                                         cfg.common.inferForceRestartTimeoutSec);
 
     // 模型路径（仅用于打印 banner；推理器构造见 createInfer，由 main 调用）
     std::string model_path = (!cfg.powerRune.modelPath.empty() && cfg.powerRune.modelPath[0] == '/')

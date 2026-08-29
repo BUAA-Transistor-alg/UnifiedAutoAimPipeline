@@ -518,20 +518,36 @@ int main(int argc, char** argv) {
         (opt.pipeline == PipelineMode::ARMOR) ? static_cast<IPipeline*>(&armor_pipeline)
                                                 : static_cast<IPipeline*>(&power_rune_pipeline);
 
-    // ── lazy 模式（common.infer_process_lazy=true）：推理进程按需启停 ──
-    // 仅启动当前流水线所需推理进程；切换流水线时立即关闭不再需要的进程（释放 GPU
-    // 显存），再启动新流水线所需进程。推理进程就绪后需重连该流水线的 InferShmClient
-    // （客户端先于服务端附加，服务端 sem_unlink 重建信号量后旧句柄失效）。
-    // 非 lazy 模式（默认）：推理进程由 launch_all.py 启动并常驻，本段不生效。
-    std::unique_ptr<Infer::InferProcessManager> infer_manager;
+    // ── 推理进程管理器（始终构造）──
+    // 主程序始终持有 InferProcessManager：
+    //   - lazy 模式（common.infer_process_lazy=true）：按需启停推理进程——仅启动
+    //     当前流水线所需进程，切换流水线时立即关闭不需要的进程（释放 GPU 显存），
+    //     再启动新流水线所需进程；推理进程就绪后需重连该流水线的 InferShmClient
+    //     （客户端先于服务端附加，服务端 sem_unlink 重建信号量后旧句柄失效）。
+    //   - 非 lazy 模式（默认）：推理进程由 launch_all.py 启动并常驻，本管理器不
+    //     主动启停；仅当推理客户端检测到推理进程挂死时（响应超时距上次正常返回
+    //     超过 common.infer_force_restart_timeout_sec）经 forceRestart 强制重启。
+    // 用 shared_ptr 持有，并让两条流水线的强制重启回调捕获其副本：管理器因此存活
+    // 于任何可能调用它的推理阶段线程之后（回调随客户端析构才释放引用）。
+    auto reconnectFor = [&](Infer::InferProcessManager::Kind k) {
+        if (k == Infer::InferProcessManager::Kind::ARMOR)
+            armor_pipeline.reconnectInferClient();
+        else
+            power_rune_pipeline.reconnectInferClient();
+    };
+    auto infer_manager = std::make_shared<Infer::InferProcessManager>(reconnectFor);
+
+    // 推理客户端 → 管理器：推理进程疑似挂死时强制重启对应进程（两条流水线各一个
+    // 客户端；强制重启对非 lazy 模式同样生效——按进程名终止外部进程后自启）
+    armor_pipeline.setInferRestartHandler([mgr = infer_manager]() {
+        mgr->forceRestart(Infer::InferProcessManager::Kind::ARMOR);
+    });
+    power_rune_pipeline.setInferRestartHandler([mgr = infer_manager]() {
+        mgr->forceRestart(Infer::InferProcessManager::Kind::POWER_RUNE);
+    });
+
+    // lazy 模式：初始启动当前流水线所需推理进程（仅 lazy 模式使用管理器管理进程）
     if (cfg.common.inferProcessLazy) {
-        auto reconnectFor = [&](Infer::InferProcessManager::Kind k) {
-            if (k == Infer::InferProcessManager::Kind::ARMOR)
-                armor_pipeline.reconnectInferClient();
-            else
-                power_rune_pipeline.reconnectInferClient();
-        };
-        infer_manager = std::make_unique<Infer::InferProcessManager>(reconnectFor);
         const Infer::InferProcessManager::Kind initial_kind =
             (opt.pipeline == PipelineMode::ARMOR)
                 ? Infer::InferProcessManager::Kind::ARMOR
@@ -683,7 +699,9 @@ int main(int argc, char** argv) {
                 vis->closeArmorXYWindow();
             }
         }
-        if (infer_manager) {
+        // 仅 lazy 模式由 InferProcessManager 管理推理进程（切换时按需启停）；
+        // 非 lazy 模式推理进程常驻，切换只交换指针，不触碰推理进程。
+        if (cfg.common.inferProcessLazy) {
             infer_manager->switchTo(m == PipelineMode::ARMOR
                 ? Infer::InferProcessManager::Kind::ARMOR
                 : Infer::InferProcessManager::Kind::POWER_RUNE);
@@ -1017,8 +1035,9 @@ int main(int argc, char** argv) {
         }
     }
     if (camera) camera->stop();
-    // lazy 模式：停止全部推理进程并等待后台切换线程结束
-    if (infer_manager) infer_manager->shutdown();
+    // 停止推理进程管理器（幂等）：lazy 模式停止全部由管理器启动的推理进程并等待
+    // 后台切换线程结束；非 lazy 模式仅回收本管理器强制重启后持有的进程。
+    infer_manager->shutdown();
     // robot_controller 析构时自动停止串口线程与 MPC 后台发送线程
     cv::destroyAllWindows();
     return 0;

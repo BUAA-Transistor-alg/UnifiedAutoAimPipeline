@@ -179,6 +179,18 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     //   true：仅启动当前流水线所需推理进程，切换时立即关闭不需要的进程（主程序管理）
     cfg.common.inferProcessLazy = requireScalar<bool>(cm, "infer_process_lazy", "common");
 
+    // ── common.infer_force_restart_timeout_sec（推理挂死强制重启时限）──
+    // 推理客户端（InferShmClient）每次推理响应超时（2s）返回时，检测距上一次
+    // 推理正常返回的间隔，超过该时限则判定推理进程挂死，经 InferProcessManager::
+    // forceRestart 强制重启对应推理进程（见 InferShmClient 文件头注释）。
+    // 0 = 关闭该功能。
+    cfg.common.inferForceRestartTimeoutSec =
+        requireScalar<double>(cm, "infer_force_restart_timeout_sec", "common");
+    if (cfg.common.inferForceRestartTimeoutSec < 0.0) {
+        throw std::runtime_error("RobotConfig: common.infer_force_restart_timeout_sec "
+                                 "必须 >= 0（0 = 关闭推理挂死强制重启）");
+    }
+
     // ── common.backlog_adaptive_delay（队列积压自适应额外延迟，v6 PID 式 PI）──
     // 开启后（见 BacklogAdaptiveDelay）：
     //   - 以 target_backlog 为目标做 PI 直接输出：extra_delay = gain_p*e +
