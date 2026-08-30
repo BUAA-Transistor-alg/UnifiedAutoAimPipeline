@@ -40,7 +40,8 @@ bool GimbalOutput::computeFire(double ref, double pred, double threshold) {
     return std::fabs(diff) < threshold;
 }
 
-void GimbalOutput::update(const PipelineResult& result, RobotController*)
+void GimbalOutput::update(const PipelineResult& result, RobotController*,
+                          OutputContext& ctx)
 {
     // 无新帧时不重发序列，让 McuMpcController 后台 100Hz 线程正常消费已发送序列
     if (!result.valid) return;
@@ -94,6 +95,7 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*)
         last_.pitch_seq       = pitch_out;
         last_.fire_seq        = fire_out;
         last_.mpc_available   = mpc_available;
+        ctx.fire_out = fire_out;   // 回写 fire 序列（可视化取首元素控制井形叉丝颜色）
         rc_.set(/*auto_aim_enable=*/true, /*yaw_torque_only_mode=*/yaw_torque_only_mode_,
                 yaw_out, pitch_out, fire_out,
                 /*integral_enable=*/seq.integral_enable);
@@ -103,6 +105,7 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*)
         last_ = LastOutput{};
         const double hold_yaw   = st.strict.yaw_pos;
         const double hold_pitch = st.strict.pitch_angle;
+        ctx.fire_out = std::vector<bool>{false};   // 预测不可用：无有效 fire（首元素为 false）
         rc_.set(/*auto_aim_enable=*/false, /*yaw_torque_only_mode=*/yaw_torque_only_mode_,
                 std::vector<double>{hold_yaw},
                 std::vector<double>{hold_pitch},

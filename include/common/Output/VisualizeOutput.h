@@ -36,7 +36,9 @@ public:
     void openArmorXYWindow()  { armor_vis_.openXYWindow(); }
     void closeArmorXYWindow() { armor_vis_.closeXYWindow(); }
 
-    void update(const PipelineResult& result, RobotController* rc) override;
+    /// @param ctx 输出上下文（读取 fire_out / gimbal_enabled 控制井形叉丝颜色）
+    void update(const PipelineResult& result, RobotController* rc,
+                OutputContext& ctx) override;
 
     OutputMode type() const override { return OutputMode::VISUALIZE; }
     std::string getName() const override { return "Visualize"; }

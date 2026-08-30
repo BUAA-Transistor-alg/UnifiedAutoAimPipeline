@@ -6,7 +6,7 @@
 
 class NoneOutput : public IOutputMode {
 public:
-    void update(const PipelineResult&, RobotController*) override {}
+    void update(const PipelineResult&, RobotController*, OutputContext&) override {}
     OutputMode type() const override { return OutputMode::NONE; }
     std::string getName() const override { return "None"; }
 };

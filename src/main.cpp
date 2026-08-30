@@ -31,6 +31,7 @@
 #include "Armor/ArmorPipeline.h"
 #include "PowerRune/PowerRunePipeline.h"
 #include "common/Output/IOutputMode.h"
+#include "common/Output/OutputContext.h"
 #include "common/Output/VisualizeOutput.h"
 #include "common/Output/GimbalOutput.h"
 #include "common/Ballistic/SequencePredictor.h"
@@ -590,16 +591,19 @@ int main(int argc, char** argv) {
         RobotController::State st;      // 弹道解算所需云台/串口状态快照
         RobotController* rc = nullptr;  // 转发给可视化线程
         std::unique_ptr<PipelineResult> result;  // 流水线结果（移动转发，含 predictor 快照）
+        std::unique_ptr<OutputContext> ctx;      // 输出上下文（process_thread 产生，逐级转发）
     };
     struct GimbalRequest {
         std::shared_ptr<GimbalOutput> gimbal;   // 当前云台输出（模式关闭时为空 → 短路直通，不处理）
         std::unique_ptr<PipelineResult> result; // 完整流水线结果（云台处理完/短路后转发给可视化）
         RobotController* rc = nullptr;          // 转发给可视化线程
+        std::unique_ptr<OutputContext> ctx;     // 输出上下文（逐级转发给可视化）
     };
     struct VisualizeRequest {
         std::shared_ptr<VisualizeOutput> vis;  // 当前可视化输出（模式关闭时为空 → 仅更新原始帧）
         std::unique_ptr<PipelineResult> result;
         RobotController* rc = nullptr;
+        std::unique_ptr<OutputContext> ctx;    // 输出上下文（最终传给 IOutputMode::update）
     };
     // 输出模式阶段：输入缓冲 + 循环线程 + 循环帧率
     // （云台线程是必建的级联级——可视化级联在其后，启动时无条件创建；
@@ -862,6 +866,7 @@ int main(int argc, char** argv) {
                 req.st = st;
                 req.rc = rc;
                 req.result = std::make_unique<PipelineResult>(std::move(result));
+                req.ctx = std::make_unique<OutputContext>();  // 输出上下文：暂时留空，后续填入所需信息
                 ballistic_slot.publish(std::move(req));
                 fps.tick();
                 pipeline_fps.store(fps.fps(), std::memory_order_relaxed);
@@ -903,6 +908,7 @@ int main(int argc, char** argv) {
                 greq.gimbal = findGimbal();
                 greq.result = std::move(req.result);
                 greq.rc = req.rc;
+                greq.ctx = std::move(req.ctx);
                 gimbal_stage.slot.publish(std::move(greq));
             }
             fps.tick();
@@ -925,7 +931,7 @@ int main(int argc, char** argv) {
                 if (req.gimbal) {
                     // GimbalOutput 仅读取 result.valid（云台状态/瞄准点自行读取）；
                     // 完整结果仍需转发给可视化，故此处也传完整结果（其仅被读取）
-                    req.gimbal->update(*req.result, nullptr);
+                    req.gimbal->update(*req.result, nullptr, *req.ctx);
                     fps.tick();
                     gimbal_stage.fps.store(fps.fps(), std::memory_order_relaxed);
                 } else {
@@ -933,10 +939,13 @@ int main(int argc, char** argv) {
                     gimbal_stage.fps.store(0.0, std::memory_order_relaxed);
                 }
                 // 级联：云台处理完（或未开启短路直通）后，转发给可视化缓冲位
+                // （记录本帧 gimbal 模式开关状态，供可视化按 fire_out 首元素着色）
+                if (req.ctx) req.ctx->gimbal_enabled = (req.gimbal != nullptr);
                 VisualizeRequest vreq;
                 vreq.vis = findVisualize();
                 vreq.result = std::move(req.result);
                 vreq.rc = req.rc;
+                vreq.ctx = std::move(req.ctx);
                 visualize_stage.slot.publish(std::move(vreq));
             }
         });
@@ -959,7 +968,7 @@ int main(int argc, char** argv) {
                 if (got && req.result) {
                     last_qs = req.result->queue_sizes;
                     if (req.vis) {
-                        req.vis->update(*req.result, req.rc);
+                        req.vis->update(*req.result, req.rc, *req.ctx);
                         last_display = req.vis->display();
                         fps.tick();
                         visualize_stage.fps.store(fps.fps(), std::memory_order_relaxed);

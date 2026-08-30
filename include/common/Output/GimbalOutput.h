@@ -19,7 +19,9 @@ public:
     GimbalOutput(SequencePredictor& aim, RobotController& rc);
 
     /// @param rc 参数为 nullptr（本模式构造时已持有 RobotController 引用）
-    void update(const PipelineResult& result, RobotController* rc) override;
+    /// @param ctx 输出上下文（回写本帧 fire 序列等，供可视化等下游消费）
+    void update(const PipelineResult& result, RobotController* rc,
+                OutputContext& ctx) override;
 
     OutputMode type() const override { return OutputMode::GIMBAL; }
     std::string getName() const override { return "Gimbal"; }

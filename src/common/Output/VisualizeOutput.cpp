@@ -72,11 +72,12 @@ void drawCamYAxisCrosshair(cv::Mat& img, const cv::Vec3f& world_pt,
 // 与瞄准点对应的云台位姿可视化（两种流水线模式统一）：
 //   - 当前位姿：cam 系 (0,1,0) 点在 world 系的坐标在图像上的投影（绿色普通十字，恒为图像中心）；
 //   - 需要的位姿：解算出的"需要的云台位姿"下，cam 系 (0,1,0) 点在 world 系的坐标在图像上的
-//     投影（绿色井形叉丝，与当前位姿以形状区分）。
+//     投影（井形叉丝，与当前位姿以形状区分；gimbal 模式开启时按 ctx.fire_out 首元素着色：
+//     false → 红，true → 绿，未开启时保持绿色）。
 // req_tree 为独立复现需要的云台位姿的树（底盘沿用当前，yaw/pitch 用解算原始关节角）。
 void drawGimbalYAxisOverlays(cv::Mat& img, const SequencePredictor::Result& seq,
                              const RobotTfTree& cur_tree, RobotTfTree& req_tree,
-                             const CameraProjection& proj) {
+                             const CameraProjection& proj, const OutputContext& ctx) {
     if (seq.items.empty()) return;
     const SequencePredictor::Item& item = seq.items.front();
 
@@ -97,7 +98,13 @@ void drawGimbalYAxisOverlays(cv::Mat& img, const SequencePredictor::Result& seq,
     req_tree.lockAndComputeCache();
     const cv::Vec3f req_world = req_tree.transformPoint(RobotTfTree::CAMERA, RobotTfTree::WORLD,
                                                        cv::Vec3f(0.0f, 1.0f, 0.0f));
-    drawCamYAxisCrosshair(img, req_world, cur_tree, proj, cv::Scalar(0, 255, 0), true);
+    // 需要的位姿井形叉丝颜色：gimbal 模式开启时取 fire_out 首元素
+    // （false → 红，true → 绿）；未开启或 fire_out 为空时保持绿色
+    cv::Scalar req_color(0, 255, 0);
+    if (ctx.gimbal_enabled && (!ctx.fire_out.empty()) && (!ctx.fire_out.front())) {
+        req_color = cv::Scalar(0, 0, 255);
+    }
+    drawCamYAxisCrosshair(img, req_world, cur_tree, proj, req_color, true);
 }
 
 } // namespace
@@ -118,7 +125,8 @@ void VisualizeOutput::syncTree(const ExtraInputInfo& info)
     tree.lockAndComputeCache();
 }
 
-void VisualizeOutput::update(const PipelineResult& result, RobotController* rc)
+void VisualizeOutput::update(const PipelineResult& result, RobotController* rc,
+                             OutputContext& ctx)
 {
     if (!result.valid) return;   // 无新帧时不重绘
 
@@ -142,7 +150,7 @@ void VisualizeOutput::update(const PipelineResult& result, RobotController* rc)
             drawAimPointOverlay(display_, seq.first_point, seq.first_predict_time,
                                 tree_, *camera_proj_);
             // 与瞄准点对应的云台位姿下 cam 系 (0,1,0) 点投影（紫）/ 当前位姿（绿）
-            drawGimbalYAxisOverlays(display_, seq, tree_, required_pose_tree_, *camera_proj_);
+            drawGimbalYAxisOverlays(display_, seq, tree_, required_pose_tree_, *camera_proj_, ctx);
         }
     }
 }

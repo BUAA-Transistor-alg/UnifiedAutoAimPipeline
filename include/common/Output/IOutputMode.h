@@ -10,6 +10,7 @@
 #include <string>
 
 #include "common/PipelineResult.h"
+#include "common/Output/OutputContext.h"
 #include "RobotController.h"
 
 enum class OutputMode { NONE, VISUALIZE, GIMBAL };
@@ -22,8 +23,11 @@ public:
      * @brief 每周期调用：处理最新一帧流水线输出。
      * @param result 流水线感知结果（valid 为 false 表示本周期没有到时帧）
      * @param rc     RobotController 指针（可能为 nullptr；串口状态应直接读取）
+     * @param ctx    输出上下文（process_thread 每帧产生并沿级联逐级转发；
+     *               GimbalOutput 回写 fire_out 等，可视化等下游读取）
      */
-    virtual void update(const PipelineResult& result, RobotController* rc) = 0;
+    virtual void update(const PipelineResult& result, RobotController* rc,
+                        OutputContext& ctx) = 0;
 
     virtual OutputMode type() const = 0;
     virtual std::string getName() const = 0;
