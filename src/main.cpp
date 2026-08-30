@@ -580,9 +580,11 @@ int main(int argc, char** argv) {
 
     // ── 各处理阶段：缓冲位（LatestSlot，单槽最新覆盖）+ 循环线程（数据流顺序见下）──
     // 数据流：input_thread → 流水线 → process_thread（只填充弹道缓冲位）
-    //   → ballistic_thread（弹道解算；给每一个输出模式的缓冲位填入）
-    //   → gimbal_thread / visualize_thread（各自的输出循环线程，
-    //      模式首次开启时创建，随后不销毁）
+    //   → ballistic_thread（弹道解算；只填充云台缓冲位，完整结果随请求转发）
+    //   → gimbal_thread（云台输出循环线程：gimbal 模式开启时先调用
+    //      GimbalOutput::update，未开启时短路直通；处理完/短路后把完整结果
+    //      转发给可视化缓冲位——可视化级联在云台之后，不再与云台并行）
+    //   → visualize_thread（可视化输出循环线程，模式首次开启时创建，随后不销毁）
     // 各处理阶段所需时间戳直接取最新 shared_frame_timestamp（见各线程体）。
     struct BallisticRequest {
         RobotController::State st;      // 弹道解算所需云台/串口状态快照
@@ -590,14 +592,18 @@ int main(int argc, char** argv) {
         std::unique_ptr<PipelineResult> result;  // 流水线结果（移动转发，含 predictor 快照）
     };
     struct GimbalRequest {
-        std::shared_ptr<GimbalOutput> gimbal;  // 当前云台输出（模式关闭时为空 → 线程跳过）
+        std::shared_ptr<GimbalOutput> gimbal;   // 当前云台输出（模式关闭时为空 → 短路直通，不处理）
+        std::unique_ptr<PipelineResult> result; // 完整流水线结果（云台处理完/短路后转发给可视化）
+        RobotController* rc = nullptr;          // 转发给可视化线程
     };
     struct VisualizeRequest {
         std::shared_ptr<VisualizeOutput> vis;  // 当前可视化输出（模式关闭时为空 → 仅更新原始帧）
         std::unique_ptr<PipelineResult> result;
         RobotController* rc = nullptr;
     };
-    // 输出模式阶段：输入缓冲 + 循环线程（首次开启时创建，随后不销毁）+ 循环帧率
+    // 输出模式阶段：输入缓冲 + 循环线程 + 循环帧率
+    // （云台线程是必建的级联级——可视化级联在其后，启动时无条件创建；
+    //   可视化线程首次开启时创建，随后不销毁）
     struct GimbalStage {
         LatestSlot<GimbalRequest> slot;
         std::unique_ptr<std::thread> thread;
@@ -647,7 +653,7 @@ int main(int argc, char** argv) {
     };
 
     // 初始输出模式（在 ensureGimbalThread/ensureVisualizeThread 赋值后调用，
-    // 见下方"启动"处；首次开启某模式时会创建对应循环线程）
+    // 见下方"启动"处；可视化线程首次开启时创建，云台线程启动时已无条件创建）
     auto makeOutputs = [&](const OutputConfig& oc) {
         {
             std::lock_guard<std::mutex> lock(output_mtx);
@@ -666,7 +672,7 @@ int main(int argc, char** argv) {
         }
         if (oc.gimbal) {
             ensureRobotController();
-            ensureGimbalThread();      // 首次开启时创建云台循环线程（随后不销毁）
+            // 云台线程已在启动时无条件创建（必建级联级，可视化级联在其后）
             auto gimbal = std::make_shared<GimbalOutput>(sequence_predictor, *robot_controller);
             std::lock_guard<std::mutex> lock(output_mtx);
             output_modes.push_back(gimbal);
@@ -743,7 +749,7 @@ int main(int argc, char** argv) {
                 output_modes.push_back(vis);
             } else if (m == OutputMode::GIMBAL) {
                 ensureRobotController();
-                ensureGimbalThread();      // 首次开启时创建云台循环线程（随后不销毁）
+                // 云台线程已在启动时无条件创建（必建级联级，可视化级联在其后）
                 auto gimbal = std::make_shared<GimbalOutput>(sequence_predictor, *robot_controller);
                 std::lock_guard<std::mutex> lock(output_mtx);
                 output_modes.push_back(gimbal);
@@ -890,15 +896,13 @@ int main(int argc, char** argv) {
                     sequence_predictor.invalidate();
                 }
 
-                // 给每一个输出模式的输入缓冲填入（模式关闭时对象为空，对应线程跳过）
-                VisualizeRequest vreq;
-                vreq.vis = findVisualize();
-                vreq.result = std::move(req.result);
-                vreq.rc = req.rc;
-                visualize_stage.slot.publish(std::move(vreq));
-
+                // 只填充云台缓冲位（级联顺序：弹道 → 云台 → 可视化）。
+                // 完整结果随请求转发：gimbal 模式未开启时云台线程短路直通，
+                // 开启时在 GimbalOutput::update 处理完后再转发给可视化缓冲位。
                 GimbalRequest greq;
                 greq.gimbal = findGimbal();
+                greq.result = std::move(req.result);
+                greq.rc = req.rc;
                 gimbal_stage.slot.publish(std::move(greq));
             }
             fps.tick();
@@ -906,8 +910,12 @@ int main(int argc, char** argv) {
         }
     });
 
-    // ── 云台输出循环线程（模式首次开启时创建，随后不销毁）──
-    // 消费云台缓冲位中的请求，调用 GimbalOutput::update（发送控制序列）。
+    // ── 云台输出循环线程（必建的级联级，启动时无条件创建，随后不销毁）──
+    // 消费云台缓冲位中的请求：
+    //  - gimbal 模式开启（req.gimbal 非空）：先调用 GimbalOutput::update
+    //    （发送控制序列），处理完后再把完整结果转发给可视化缓冲位；
+    //  - gimbal 模式未开启（req.gimbal 为空）：短路直通——跳过云台处理，
+    //    直接把完整结果转发给可视化缓冲位（可视化级联在云台之后）。
     ensureGimbalThread = [&]() {
         if (gimbal_stage.thread) return;
         gimbal_stage.thread = std::make_unique<std::thread>([&]() {
@@ -915,14 +923,21 @@ int main(int argc, char** argv) {
             GimbalRequest req;
             while (gimbal_stage.slot.take(req)) {
                 if (req.gimbal) {
-                    // GimbalOutput 仅读取 result.valid（云台状态/瞄准点自行读取），
-                    // 用轻量 stub 传入（完整流水线结果已转给可视化线程）
-                    PipelineResult stub;
-                    stub.valid = true;
-                    req.gimbal->update(stub, nullptr);
+                    // GimbalOutput 仅读取 result.valid（云台状态/瞄准点自行读取）；
+                    // 完整结果仍需转发给可视化，故此处也传完整结果（其仅被读取）
+                    req.gimbal->update(*req.result, nullptr);
                     fps.tick();
                     gimbal_stage.fps.store(fps.fps(), std::memory_order_relaxed);
+                } else {
+                    // gimbal 未开启：不处理（短路），帧率显示 N/A
+                    gimbal_stage.fps.store(0.0, std::memory_order_relaxed);
                 }
+                // 级联：云台处理完（或未开启短路直通）后，转发给可视化缓冲位
+                VisualizeRequest vreq;
+                vreq.vis = findVisualize();
+                vreq.result = std::move(req.result);
+                vreq.rc = req.rc;
+                visualize_stage.slot.publish(std::move(vreq));
             }
         });
     };
@@ -1007,25 +1022,27 @@ int main(int argc, char** argv) {
         });
     };
 
-    // ── 启动：创建初始输出模式（首次开启某模式时创建对应循环线程）──
+    // ── 启动：云台线程是必建的级联级（可视化级联在其后），先无条件创建 ──
+    ensureGimbalThread();
+    // ── 创建初始输出模式（首次开启某模式时创建对应循环线程）──
     makeOutputs(opt.output);
 
     input_thread.join();
     process_thread.join();
 
-    // 停止各阶段循环线程：先停弹道（其消费结束后不再向输出缓冲位发布），
-    // 再停输出线程；stop() 唤醒阻塞的 take() 使线程退出，随后 join。
-    // 注意：云台线程可能在可视化线程内被创建（'g' 热键），故先 join 可视化
-    // 线程（提供 happens-before）再读取/停止云台线程，避免对 thread 指针的竞态。
+    // 停止各阶段循环线程：按数据流上游 → 下游顺序（弹道 → 云台 → 可视化），
+    // 先停上游再停下游；stop() 唤醒阻塞的 take() 使线程退出，随后 join。
+    // 云台线程在启动时无条件创建（必建级联级），可视化线程仅在可视化模式
+    // 开启过时存在。
     ballistic_slot.stop();
     ballistic_thread.join();
-    if (visualize_stage.thread) {
-        visualize_stage.slot.stop();
-        visualize_stage.thread->join();
-    }
     if (gimbal_stage.thread) {
         gimbal_stage.slot.stop();
         gimbal_stage.thread->join();
+    }
+    if (visualize_stage.thread) {
+        visualize_stage.slot.stop();
+        visualize_stage.thread->join();
     }
 
     std::cout << "\nExiting." << std::endl;
