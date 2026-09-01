@@ -135,9 +135,9 @@ common:
     tau_d: 0.0                  # 常数扰动
     max_torque: 1.0             # 最大力矩（N·m）
     max_torque_rate: 40.0       # 最大力矩变化率（N·m/s）
-    Q: 5.0                      # MPC 状态代价
+    Q: 1.0                      # MPC 状态代价
     R: 0.01                     # MPC 控制代价
-    Rd: 0.1                     # MPC 控制变化率代价
+    Rd: 1.0                     # MPC 控制变化率代价
     max_iter: 30                # MPC 迭代上限
     integral_gain: 1.0         # yaw 力矩积分补偿比例系数
     smooth_eps: 1e-6           # 位置跟踪误差平滑绝对值常数 a（代价 = Q*sqrt(err²+a)，很小的正数）
