@@ -12,6 +12,14 @@ int workerGimbalIndex(std::atomic<int>& next) {
     thread_local int idx = next.fetch_add(1);
     return idx;
 }
+
+// 依据目标预测器来源标注自动选择目标策略：PowerRune → LOWEST_Z，其余（Armor）→ NEAREST
+PredictedBallisticSolver::TargetSelection targetSelectionForSource(
+    const SequencePredictor::PredictorSource& source) {
+    return (source.kind == SequencePredictor::PredictorSource::Kind::POWER_RUNE)
+               ? PredictedBallisticSolver::TargetSelection::LOWEST_Z
+               : PredictedBallisticSolver::TargetSelection::NEAREST;
+}
 } // namespace
 
 SequencePredictor::SequencePredictor()
@@ -66,13 +74,26 @@ SequencePredictor::Item SequencePredictor::extrapItem(const Item& A, const Item&
 
 SequencePredictor::Result SequencePredictor::predict(const RobotController::State& st,
                                            const Predictor& predictor,
-                                           const std::chrono::steady_clock::time_point& timestamp,
-                                           const std::chrono::steady_clock::time_point& predictor_timestamp)
+                                           const std::chrono::steady_clock::time_point& timestamp)
 {
+    // ── 自身跨帧状态：target_predictor 来源切换（含首次从无来源进入）时重置 ──
+    // State 当前暂为空；重置逻辑保留：后续在 State 中存放来源相关状态时，
+    // 来源切换（如 Armor 目标种类变化 / Armor → PowerRune）会自动清零。
+    if (!(active_source_ == predictor.source)) {
+        state_ = State{};
+        active_source_ = predictor.source;
+    }
+
+    // 目标选择策略由来源自动选择（Armor → NEAREST，PowerRune → LOWEST_Z），
+    // 不再由外部经 setTargetSelection 透传。predict() 同步前统一设置全部线程
+    // 实例（此时各 solver 均空闲，无竞争）。
+    const PredictedBallisticSolver::TargetSelection sel = targetSelectionForSource(predictor.source);
+    for (auto& s : solvers_) s.setTargetSelection(sel);
+
     // 快照生成到本次消费之间的延迟：额外预测时间叠加该延迟，补偿 dt 零点（快照帧）
     // 与当前时刻的差值
     const double predictor_age = std::chrono::duration<double>(
-        timestamp - predictor_timestamp).count();
+        timestamp - predictor.timestamp).count();
     const double extra_predict_time = extra_predict_time_ + predictor_age;
     // ── 同步所有线程的独立 GimbalSolver 树（预测弹道解算依赖当前 muzzle 原点与弹速）──
     for (auto& g : gimbals_) {
@@ -85,9 +106,9 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
         }
     }
     const double chassis_yaw = st.strict.imu_euler_yaw - st.strict.yaw_pos;  // 底盘 yaw 修正
-    // ── yaw 系原点（world 系）：树已同步，同一线程内计算并加锁缓存，
-    //    供输出模式跨线程读取（弹道线程化后不能直接读 GimbalSolver）──
-    const cv::Vec3f yaw_origin = gimbals_.front()->yawWorldOrigin();
+    // ── yaw 系原点（world 系）：树已同步，同一线程内计算并写入 Result，
+    //    随结果沿级联传递给输出模式（弹道线程化后不能直接读 GimbalSolver）──
+    const cv::Vec3f yaw_world_origin = gimbals_.front()->yawWorldOrigin();
 
     // ── 1. 精确解算点集合（solve 之间并行）──
     // 返回序列 = [前 n 个前导精确点（索引 0..n-1）] 后接 [原划分序列
@@ -112,7 +133,7 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
         const int wid = workerGimbalIndex(next_gimbal_);
         const int ret_idx = solve_idx[(size_t)idx];   // 该实际计算点在返回点序列中的索引
         solved[(size_t)idx] = solvers_[(size_t)(wid % T)].solve(
-            predictor, extra_predict_time + (ret_idx + 1) * dt_control_);
+            predictor.function, extra_predict_time + (ret_idx + 1) * dt_control_);
     });
 
     // ── 2. 组装返回点序列（实际计算点 + 插值/外推/复制点）──
@@ -185,31 +206,17 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
     res.valid = res.items.front().success;             // 第一个返回点 = 前导精确点（实际计算点）
     res.first_point = res.items.front().predicted_point;
     res.first_predict_time = res.items.front().predict_time;
+    res.yaw_world_origin = yaw_world_origin;
     // 积分补偿开关：仅在预测有效且 MCU 自瞄开关打开时启用
     res.integral_enable = res.valid && (st.mcu.auto_aim_switch == 1);
 
-    {
-        std::lock_guard<std::mutex> lock(mtx_);
-        latest_ = res;
-        yaw_origin_ = yaw_origin;
-    }
     return res;
 }
 
 void SequencePredictor::invalidate()
 {
-    std::lock_guard<std::mutex> lock(mtx_);
-    latest_ = Result{};
-}
-
-SequencePredictor::Result SequencePredictor::latest() const
-{
-    std::lock_guard<std::mutex> lock(mtx_);
-    return latest_;
-}
-
-cv::Vec3f SequencePredictor::yawWorldOrigin() const
-{
-    std::lock_guard<std::mutex> lock(mtx_);
-    return yaw_origin_;
+    // 预测器不可用：自身跨帧状态与当前来源记录一并重置；
+    // 下次 predict() 将视为新来源并重新初始化状态
+    state_ = State{};
+    active_source_ = PredictorSource{};
 }

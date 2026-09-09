@@ -1,5 +1,6 @@
 // GimbalOutput.cpp — 云台控制输出模式实现
 #include "common/Output/GimbalOutput.h"
+#include "common/Ballistic/SequencePredictor.h"
 #include "common/RobotConfig.h"
 
 #include <algorithm>
@@ -25,9 +26,8 @@ std::vector<T> truncateKeepLast(const std::vector<T>& seq, int skip, const T& fa
 
 } // namespace
 
-GimbalOutput::GimbalOutput(SequencePredictor& aim, RobotController& rc)
-    : aim_(aim),
-      rc_(rc),
+GimbalOutput::GimbalOutput(RobotController& rc)
+    : rc_(rc),
       yaw_torque_only_mode_(RobotConfig::instance().common.robotController.yawTorqueOnlyMode),
       pitch_seq_lead_(RobotConfig::instance().common.predictSequence.pitchSeqLead),
       fire_seq_lead_(RobotConfig::instance().common.predictSequence.fireSeqLead),
@@ -49,8 +49,9 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*,
     // ── 直接读取串口/MPC 状态（不经流水线）──
     const RobotController::State st = rc_.getState();
 
-    // ── 取 SequencePredictor 最新预测（main 每帧已调用，含预测云台控制序列 + 瞄准点）──
-    const SequencePredictor::Result seq = aim_.latest();
+    // ── 取当帧预测（main 弹道线程经 SequencePredictor::predict 写入 ctx：
+    //    含预测云台控制序列 + 瞄准点 + yaw 系原点）──
+    const SequencePredictor::Result& seq = ctx.predict_result;
 
     if (seq.valid && !seq.items.empty()) {
         // ── fire 序列：ref/pred 每一对按当前方法计算 ──
@@ -60,7 +61,7 @@ void GimbalOutput::update(const PipelineResult& result, RobotController*,
         if (ns > 0) {
             // 动态阈值：基于首个序列元素瞄准目标与 yaw 系原点在 world xy 平面的投影距离
             double threshold = fire_angle_lower_limit_;
-            const cv::Vec3f yaw_origin = aim_.yawWorldOrigin();   // 线程安全缓存（弹道线程写入）
+            const cv::Vec3f yaw_origin = seq.yaw_world_origin;   // 随当帧预测结果传入
             const cv::Vec3f target = seq.first_point;
             const double dist_xy = std::hypot((double)target[0] - (double)yaw_origin[0],
                                               (double)target[1] - (double)yaw_origin[1]);

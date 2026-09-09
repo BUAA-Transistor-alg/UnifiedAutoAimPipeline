@@ -572,7 +572,8 @@ int main(int argc, char** argv) {
     std::mutex output_mtx;
     std::vector<std::shared_ptr<IOutputMode>> output_modes;   // shared_ptr：输出请求跨线程持有对象
     // 预测瞄准点通用类：任何情况下（无论输出模式）每帧调用，生成预测云台控制
-    // 序列 + 瞄准点序列；GimbalOutput 消费控制序列，VisualizeOutput 消费首个瞄准点
+    // 序列 + 瞄准点序列；结果写入当帧 OutputContext（predict_result），由
+    // GimbalOutput 消费控制序列、VisualizeOutput 消费首个瞄准点（两者均不持有本类）
     SequencePredictor sequence_predictor;
     // 相机投影（与输入模式绑定，两个流水线/可视化共用）
     auto camera_proj = std::make_shared<CameraProjection>(
@@ -665,7 +666,7 @@ int main(int argc, char** argv) {
         }
         if (oc.visualize) {
             ensureVisualizeThread();   // 首次开启时创建可视化循环线程（随后不销毁）
-            auto vis = std::make_shared<VisualizeOutput>(camera_proj, sequence_predictor);
+            auto vis = std::make_shared<VisualizeOutput>(camera_proj);
             vis->setMode(active_pipeline->mode());
             // 初始流水线为 Armor 且可视化开启：打开 XY 平面窗口
             if (active_pipeline->mode() == PipelineMode::ARMOR) {
@@ -677,7 +678,7 @@ int main(int argc, char** argv) {
         if (oc.gimbal) {
             ensureRobotController();
             // 云台线程已在启动时无条件创建（必建级联级，可视化级联在其后）
-            auto gimbal = std::make_shared<GimbalOutput>(sequence_predictor, *robot_controller);
+            auto gimbal = std::make_shared<GimbalOutput>(*robot_controller);
             std::lock_guard<std::mutex> lock(output_mtx);
             output_modes.push_back(gimbal);
         }
@@ -743,7 +744,7 @@ int main(int argc, char** argv) {
         if (add) {
             if (m == OutputMode::VISUALIZE) {
                 ensureVisualizeThread();   // 首次开启时创建可视化循环线程（随后不销毁）
-                auto vis = std::make_shared<VisualizeOutput>(camera_proj, sequence_predictor);
+                auto vis = std::make_shared<VisualizeOutput>(camera_proj);
                 vis->setMode(active_pipeline->mode());
                 // 可视化开启且当前为 Armor 模式：打开 XY 平面窗口
                 if (active_pipeline->mode() == PipelineMode::ARMOR) {
@@ -754,7 +755,7 @@ int main(int argc, char** argv) {
             } else if (m == OutputMode::GIMBAL) {
                 ensureRobotController();
                 // 云台线程已在启动时无条件创建（必建级联级，可视化级联在其后）
-                auto gimbal = std::make_shared<GimbalOutput>(sequence_predictor, *robot_controller);
+                auto gimbal = std::make_shared<GimbalOutput>(*robot_controller);
                 std::lock_guard<std::mutex> lock(output_mtx);
                 output_modes.push_back(gimbal);
             }
@@ -866,7 +867,8 @@ int main(int argc, char** argv) {
                 req.st = st;
                 req.rc = rc;
                 req.result = std::make_unique<PipelineResult>(std::move(result));
-                req.ctx = std::make_unique<OutputContext>();  // 输出上下文：暂时留空，后续填入所需信息
+                req.ctx = std::make_unique<OutputContext>();  // 输出上下文：本线程创建并逐级转发，
+                                                              // 弹道线程填入当帧预测结果（predict_result）
                 ballistic_slot.publish(std::move(req));
                 fps.tick();
                 pipeline_fps.store(fps.fps(), std::memory_order_relaxed);
@@ -886,18 +888,29 @@ int main(int argc, char** argv) {
         BallisticRequest req;
         while (ballistic_slot.take(req)) {
             if (req.result) {
-                // 弹道解算：按流水线模式选择目标策略（与原 process_thread 内逻辑一致）
+                // ── 弹道解算：组装 Predictor（预测函数 + 来源标注 + 快照时间戳），
+                //    调 SequencePredictor::predict（内部依据来源自动选择目标策略
+                //    Armor→NEAREST / PowerRune→LOWEST_Z，并在来源切换时重置其
+                //    自身状态），当帧预测结果写入 OutputContext 供输出模式消费 ──
+                //    来源标注：Armor 每种物体（target_label 0~8）各自算一种来源；
+                //    PowerRune 整体算一种来源。
+                const TimePoint timestamp = shared_frame_timestamp.load(std::memory_order_acquire);
                 if (req.result->armor.target_valid && req.result->armor.target_predictor) {
-                    sequence_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::NEAREST);
-                    sequence_predictor.predict(req.st, *req.result->armor.target_predictor,
-                                          shared_frame_timestamp.load(std::memory_order_acquire),
-                                          req.result->armor.target_predictor_timestamp);
+                    SequencePredictor::Predictor predictor;
+                    predictor.function  = *req.result->armor.target_predictor;
+                    predictor.source    = SequencePredictor::PredictorSource::armor(
+                                            req.result->armor.target_label);
+                    predictor.timestamp = req.result->armor.target_predictor_timestamp;
+                    req.ctx->predict_result = sequence_predictor.predict(req.st, predictor, timestamp);
                 } else if (req.result->power_rune.target_predictor) {
-                    sequence_predictor.setTargetSelection(PredictedBallisticSolver::TargetSelection::LOWEST_Z);
-                    sequence_predictor.predict(req.st, *req.result->power_rune.target_predictor,
-                                          shared_frame_timestamp.load(std::memory_order_acquire),
-                                          req.result->power_rune.predictor_timestamp);
+                    SequencePredictor::Predictor predictor;
+                    predictor.function  = *req.result->power_rune.target_predictor;
+                    predictor.source    = SequencePredictor::PredictorSource::powerRune();
+                    predictor.timestamp = req.result->power_rune.predictor_timestamp;
+                    req.ctx->predict_result = sequence_predictor.predict(req.st, predictor, timestamp);
                 } else {
+                    // 预测器不可用：重置 SequencePredictor 内部状态；
+                    // predict_result 保持默认无效 → 输出模式进入保持模式
                     sequence_predictor.invalidate();
                 }
 
@@ -929,8 +942,8 @@ int main(int argc, char** argv) {
             GimbalRequest req;
             while (gimbal_stage.slot.take(req)) {
                 if (req.gimbal) {
-                    // GimbalOutput 仅读取 result.valid（云台状态/瞄准点自行读取）；
-                    // 完整结果仍需转发给可视化，故此处也传完整结果（其仅被读取）
+                    // GimbalOutput 读取 result.valid 与 ctx.predict_result（当帧预测
+                    // 序列/瞄准点）；完整结果仍需转发给可视化，故此处也传完整结果
                     req.gimbal->update(*req.result, nullptr, *req.ctx);
                     fps.tick();
                     gimbal_stage.fps.store(fps.fps(), std::memory_order_relaxed);

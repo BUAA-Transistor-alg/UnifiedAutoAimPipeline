@@ -1,10 +1,19 @@
 // SequencePredictor.h — 预测序列通用类（预测云台控制序列 + 瞄准点序列）
 //
 // 基于 PredictedBallisticSolver：对目标预测函数生成预测云台控制序列与对应的
-// 瞄准点序列，并保存最新结果供多个输出模式消费：
+// 瞄准点序列，并把最新结果返回给调用方：
 //   - GimbalOutput    使用预测云台控制序列（yaw/pitch，已含底盘修正与 yaw/pitch 偏置），
 //                     自行计算 fire 序列并截取后发送；
 //   - VisualizeOutput 使用瞄准点序列中的第一个值绘制预测瞄准点。
+// 结果不再存放在本类的"最新槽"供输出模式跨线程读取：predict() 每帧返回 Result，
+// 由 main 弹道线程写入当帧 OutputContext（含瞄准点 / 云台序列 / yaw 系原点），
+// 沿"弹道 → 云台 → 可视化"级联逐级转发给输出模式（输出模式不再持有本类引用）。
+//
+// 目标预测器以 Predictor 结构体传入（而非仅 std::function）：内含预测函数、
+// 目标预测器来源标注（PredictorSource，见下）与快照时间戳（predictor_timestamp）。
+// predict() 依据来源标注自动选择目标选择策略（Armor → NEAREST、
+// PowerRune → LOWEST_Z，替代原 setTargetSelection 透传），并维护自身跨帧状态
+// State（当前暂为空，预留）：target_predictor 来源切换或 invalidate() 时重置。
 //
 // 序列生成（config common.predict_sequence）：
 //   - 原划分：只精确解算 prediction_points（M）个实际计算点，时间间隔
@@ -22,14 +31,14 @@
 //     改用前导精确区最后一个点 items[n-1]（要求与段左端点目标相同，否则
 //     复制左端点）；其余段仍用原规则（上一实际计算点 items[a-K]）。
 //
-// 任何情况下（无论输出模式）由 main 每帧调用 predict()，保证瞄准点始终可用。
+// 任何情况下（无论输出模式）由 main 每帧调用 predict()，保证当帧瞄准点
+// 序列可写入 OutputContext。
 #ifndef SEQUENCE_PREDICTOR_H
 #define SEQUENCE_PREDICTOR_H
 
+#include <atomic>
 #include <chrono>
-#include <functional>
 #include <memory>
-#include <mutex>
 #include <vector>
 
 #include <opencv2/opencv.hpp>
@@ -41,7 +50,33 @@
 
 class SequencePredictor {
 public:
-    using Predictor = PredictedBallisticSolver::Predictor;
+    // 目标预测器来源标注：标识 predict() 所用 target_predictor 的目标来源。
+    // 用作 predict() 内部目标选择策略（NEAREST/LOWEST_Z）与自身跨帧状态
+    // （State）重置的判断依据：
+    //   - Armor 流水线：每种物体（类别 label 0~8，见 ArmorInfer.h 类别映射）
+    //     各自算一种来源 —— armor_label 不同即来源不同；
+    //   - PowerRune 流水线：整体算一种来源。
+    struct PredictorSource {
+        enum class Kind { NONE = 0, ARMOR, POWER_RUNE };
+        Kind kind = Kind::NONE;
+        int  armor_label = -1;   // kind == ARMOR：物体类别（0~8）；否则无效
+
+        static PredictorSource armor(int label) { return {Kind::ARMOR, label}; }
+        static PredictorSource powerRune() { return {Kind::POWER_RUNE, -1}; }
+
+        bool operator==(const PredictorSource& o) const {
+            return kind == o.kind && armor_label == o.armor_label;
+        }
+        bool operator!=(const PredictorSource& o) const { return !(*this == o); }
+    };
+
+    // 目标预测器（predict() 输入）：原预测函数 + 来源标注 + 快照时间戳
+    struct Predictor {
+        PredictedBallisticSolver::Predictor function;   // 原预测函数 std::vector<cv::Point3f>(double)（world 系）
+        PredictorSource source;                         // 来源标注
+        std::chrono::steady_clock::time_point timestamp;  // predictor_timestamp：
+                                                          // 产生该预测器快照的那一帧的时间戳（dt 零点）
+    };
 
     // 单个序列返回点（云台控制值 + 瞄准点；实际计算点或插值/外推/复制生成）
     struct Item {
@@ -65,40 +100,31 @@ public:
         std::vector<Item> items;     // 总返回点数 = (M-1)*K + 1 + n（前导精确点 + 原划分序列）
         cv::Vec3f first_point;       // 瞄准点序列第一个值（可视化用）
         double first_predict_time = 0.0;
+        cv::Vec3f yaw_world_origin = cv::Vec3f(0, 0, 0);   // 本帧预测所用云台 yaw 系原点（world 系，
+                                                           // 弹道解算线程化后随 Result 传递给输出模式）
     };
 
     /// 构造时创建内部 GimbalSolver，序列/弹道/偏置参数从 RobotConfig common 段读取
     SequencePredictor();
 
-    // 目标选择策略透传（Armor NEAREST / PowerRune LOWEST_Z），作用于全部线程实例
-    void setTargetSelection(PredictedBallisticSolver::TargetSelection sel) {
-        for (auto& s : solvers_) s.setTargetSelection(sel);
-    }
-
     /// 同步内部树（st.strict + MCU 弹速）并生成预测云台控制序列 + 瞄准点序列。
     /// 实际计算点（solve）经内部线程池并行执行；每个工作线程通过 thread_local
-    /// 绑定一个独立的 GimbalSolver（内部 pitch 粗搜索保持并行且互不竞争），
-    /// 结果同时写入最新槽（线程安全）。
+    /// 绑定一个独立的 GimbalSolver（内部 pitch 粗搜索保持并行且互不竞争）。
     ///
-    /// @param timestamp          调用时刻（当前帧时间戳）
-    /// @param predictor_timestamp 产生 predictor 快照的那一帧的时间戳（dt 的零点）；
-    ///                            额外预测时间自动加上 (timestamp - predictor_timestamp)，
-    ///                            补偿快照生成到消费之间的延迟
+    /// 目标选择策略不在此透传：predict() 依据 predictor.source 自动选择
+    /// （Armor → NEAREST，PowerRune → LOWEST_Z），并在来源切换时重置自身
+    /// 跨帧状态 State。
+    ///
+    /// @param predictor  目标预测器（预测函数 + 来源标注 + 快照时间戳）
+    /// @param timestamp  调用时刻（当前帧时间戳）；额外预测时间自动加上
+    ///                   (timestamp - predictor.timestamp)，补偿快照生成到
+    ///                   消费之间的延迟
     Result predict(const RobotController::State& st, const Predictor& predictor,
-                   const std::chrono::steady_clock::time_point& timestamp,
-                   const std::chrono::steady_clock::time_point& predictor_timestamp);
+                   const std::chrono::steady_clock::time_point& timestamp);
 
-    /// 预测器不可用：使最新结果失效
+    /// 预测器不可用：重置自身跨帧状态（State）与当前来源记录；
+    /// 下次 predict() 从新来源重新开始维护状态
     void invalidate();
-
-    /// 最新一次预测结果（无有效预测时 valid == false）
-    Result latest() const;
-
-    /// 最近一次预测所用云台 yaw 系原点（world 系，线程安全）。
-    /// 弹道解算运行在独立循环线程后，输出模式（GimbalOutput 等）跨线程读取，
-    /// 不能直接访问内部 GimbalSolver（predict 期间会被写）；本值由 predict()
-    /// 在同一线程内计算并加锁缓存。
-    cv::Vec3f yawWorldOrigin() const;
 
     /// 任一内部云台解算器（仅弹道线程内使用；外部请勿直接访问）
     std::shared_ptr<GimbalSolver> gimbal() const { return gimbals_.front(); }
@@ -119,15 +145,18 @@ private:
     int    interpolation_refine_;    // K：插值细化倍数
     int    exact_lead_points_;       // n：序列最前面拼接的精确解算前导点数（0 = 关闭）
 
+    // 自身跨帧状态（predict() 内部维护；当前暂为空，预留后续使用）：
+    // 当 target_predictor 来源（PredictorSource）切换或 invalidate() 时重置
+    struct State {
+        // 预留：后续可存放来源相关、需在来源切换时清零的跨帧状态
+    };
+    State state_;
+    PredictorSource active_source_;   // 当前 state_ 对应的来源（无有效预测时为 NONE）
+
     // 线性插值：lo + t*(hi - lo)（t ∈ [0,1]）
     static Item lerpItem(const Item& lo, const Item& hi, double t);
     // 沿段 (P, A) 方向外推 s 步长：A + s*(A - P)（P 为 A 的前一实际计算点）
     static Item extrapItem(const Item& A, const Item& P, double s);
-
-    // 最新结果槽
-    mutable std::mutex mtx_;
-    Result latest_;
-    cv::Vec3f yaw_origin_ = cv::Vec3f(0, 0, 0);   // 最近一次预测的 yaw 系原点（world 系）
 };
 
 #endif // SEQUENCE_PREDICTOR_H

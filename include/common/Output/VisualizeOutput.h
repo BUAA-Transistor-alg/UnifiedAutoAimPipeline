@@ -3,8 +3,9 @@
 // 按当前流水线模式（Armor / PowerRune）渲染对应画面：
 //  - 每帧从 PipelineResult.extra_info 同步自己的 RobotTfTree（world→cam 投影）；
 //  - Armor 用 ArmorVisualizer，PowerRune 用 PowerRuneVisualizer；
-//  - 预测瞄准点取自 SequencePredictor 瞄准点序列的第一个值（main 每帧统一预测，
-//    两种流水线模式一致绘制，任何输出状态下都可用）。
+//  - 预测瞄准点取自 OutputContext 中当帧 SequencePredictor::predict 结果的
+//    瞄准点序列第一个值（main 每帧统一预测，两种流水线模式一致绘制），
+//    本模式不持有 SequencePredictor。
 #ifndef VISUALIZE_OUTPUT_H
 #define VISUALIZE_OUTPUT_H
 
@@ -24,9 +25,7 @@
 class VisualizeOutput : public IOutputMode {
 public:
     /// @param camera_proj 相机投影（由输入模式选择的相机参数构建）
-    /// @param aim         预测瞄准点通用类（读取瞄准点序列第一个值绘制）
-    explicit VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj,
-                             SequencePredictor& aim);
+    explicit VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj);
 
     /// 切换当前渲染的流水线模式（相机投影与输入模式绑定，不随流水线切换）
     void setMode(PipelineMode mode) { mode_.store(mode, std::memory_order_relaxed); }
@@ -36,7 +35,8 @@ public:
     void openArmorXYWindow()  { armor_vis_.openXYWindow(); }
     void closeArmorXYWindow() { armor_vis_.closeXYWindow(); }
 
-    /// @param ctx 输出上下文（读取 fire_out / gimbal_enabled 控制井形叉丝颜色）
+    /// @param ctx 输出上下文（读取 predict_result / fire_out / gimbal_enabled
+    ///            控制瞄准点与井形叉丝绘制）
     void update(const PipelineResult& result, RobotController* rc,
                 OutputContext& ctx) override;
 
@@ -51,8 +51,9 @@ private:
     void syncTree(const ExtraInputInfo& info);
     // 渲染当前流水线模式的画面到 render_buf_（仅可视化线程访问；create+copyTo
     // 复用缓冲，避免每帧 clone 的分配/释放。像素拷贝仍需保留：result.frame 另被
-    // 主线程保存为原始画面，不可原地绘制）
-    void renderArmor(const PipelineResult& result, RobotController* rc);
+    // 主线程保存为原始画面，不可原地绘制）。seq 为当帧预测结果（源自 OutputContext）。
+    void renderArmor(const PipelineResult& result, RobotController* rc,
+                     const SequencePredictor::Result& seq);
     void renderPowerRune(const PipelineResult& result, RobotController* rc);
 
     // 当前渲染模式（主线程 setMode 写 / 可视化线程 update 读，需原子）
@@ -69,7 +70,6 @@ private:
     cv::Mat render_buf_;              // 渲染目标缓冲（可视化线程独占）
     cv::Mat display_;
     mutable std::mutex display_mtx_;   // 保护 display_（可视化线程写 / 主线程读）
-    SequencePredictor& aim_;
 };
 
 #endif // VISUALIZE_OUTPUT_H

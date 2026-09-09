@@ -109,10 +109,8 @@ void drawGimbalYAxisOverlays(cv::Mat& img, const SequencePredictor::Result& seq,
 
 } // namespace
 
-VisualizeOutput::VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj,
-                                 SequencePredictor& aim)
-    : camera_proj_(std::move(camera_proj)),
-      aim_(aim) {}
+VisualizeOutput::VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj)
+    : camera_proj_(std::move(camera_proj)) {}
 
 void VisualizeOutput::syncTree(const ExtraInputInfo& info)
 {
@@ -133,19 +131,21 @@ void VisualizeOutput::update(const PipelineResult& result, RobotController* rc,
     syncTree(result.extra_info);
     fps_.tick();
 
+    // 当帧预测结果（main 弹道线程经 SequencePredictor::predict 写入 ctx）
+    const SequencePredictor::Result& seq = ctx.predict_result;
+
     // 渲染当前流水线模式的画面（写入成员缓冲 render_buf_，复用以免每帧分配）
     const PipelineMode mode = mode_.load(std::memory_order_relaxed);
     if (mode == PipelineMode::ARMOR)
-        renderArmor(result, rc);
+        renderArmor(result, rc, seq);
     else
         renderPowerRune(result, rc);
 
-    // 预测瞄准点：取自 SequencePredictor 瞄准点序列的第一个值（两种模式统一绘制；
+    // 预测瞄准点：取自当帧预测结果瞄准点序列的第一个值（两种模式统一绘制；
     // 无有效瞄准点时不画）。display_ 由可视化线程写入、主线程读取，加锁保护。
     std::lock_guard<std::mutex> lock(display_mtx_);
     display_ = render_buf_;
     if (!display_.empty()) {
-        const SequencePredictor::Result seq = aim_.latest();
         if (seq.valid) {
             drawAimPointOverlay(display_, seq.first_point, seq.first_predict_time,
                                 tree_, *camera_proj_);
@@ -161,7 +161,8 @@ cv::Mat VisualizeOutput::display() const
     return display_;   // 浅拷贝：共享像素数据（引用计数原子安全）
 }
 
-void VisualizeOutput::renderArmor(const PipelineResult& result, RobotController* rc)
+void VisualizeOutput::renderArmor(const PipelineResult& result, RobotController* rc,
+                                  const SequencePredictor::Result& seq)
 {
     const ArmorPerception& p = result.armor;
 
@@ -183,11 +184,10 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, RobotController*
     vis.aim.auto_aim_enable = false;
 
     // XY 平面窗口数据：自身底盘位置（取帧时刻 ExtraInputInfo 快照）+ 瞄准目标
-    // （SequencePredictor 瞄准点序列第一个值，与主画面瞄准点绘制同源）
+    // （当帧预测结果瞄准点序列第一个值，与主画面瞄准点绘制同源）
     vis.xy.chassis_position = cv::Vec3f((float)result.extra_info.chassis_x,
                                         (float)result.extra_info.chassis_y,
                                         (float)result.extra_info.chassis_z);
-    const SequencePredictor::Result seq = aim_.latest();
     vis.xy.aim_valid = seq.valid;
     vis.xy.aim_point = seq.first_point;
 

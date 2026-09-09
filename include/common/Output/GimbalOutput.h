@@ -1,25 +1,27 @@
 // GimbalOutput.h — 云台控制输出模式
 //
-// 消费 SequencePredictor 的预测云台控制序列（yaw/pitch，已含底盘修正与偏置）：
+// 消费 OutputContext 携带的预测云台控制序列（yaw/pitch，已含底盘修正与偏置）：
 //  - 计算 fire 序列（MPC ref/pred 逐对判定 + 动态角度阈值）并按配置截取
 //    （pitch 截第 m 个之后 / fire 截第 o 个之后）后发送到 RobotController；
 //  - 预测不可用时进入保持模式（自瞄关闭，保持当前严格反解位置）。
-// 瞄准点预测由 SequencePredictor 统一完成（main 每帧调用），本模式不做解算。
+// 瞄准点预测由 SequencePredictor 统一完成（main 每帧调用并把结果写入当帧
+// OutputContext），本模式不做解算、不持有 SequencePredictor。
 #ifndef GIMBAL_OUTPUT_H
 #define GIMBAL_OUTPUT_H
 
 #include "common/Output/IOutputMode.h"
-#include "common/Ballistic/SequencePredictor.h"
+#include "RobotController.h"
 
-#include <memory>
+#include <opencv2/opencv.hpp>
 #include <vector>
 
 class GimbalOutput : public IOutputMode {
 public:
-    GimbalOutput(SequencePredictor& aim, RobotController& rc);
+    explicit GimbalOutput(RobotController& rc);
 
     /// @param rc 参数为 nullptr（本模式构造时已持有 RobotController 引用）
-    /// @param ctx 输出上下文（回写本帧 fire 序列等，供可视化等下游消费）
+    /// @param ctx 输出上下文（读取本帧预测结果，回写本帧 fire 序列等，
+    ///            供可视化等下游消费）
     void update(const PipelineResult& result, RobotController* rc,
                 OutputContext& ctx) override;
 
@@ -43,7 +45,6 @@ private:
     // 单对 (ref, pred) 的 fire 判定：角度差解缠绕后小于动态阈值
     static bool computeFire(double ref, double pred, double threshold);
 
-    SequencePredictor& aim_;
     RobotController& rc_;
 
     // ── 配置（构造时从 RobotConfig common 读取）──
