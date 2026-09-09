@@ -888,29 +888,21 @@ int main(int argc, char** argv) {
         BallisticRequest req;
         while (ballistic_slot.take(req)) {
             if (req.result) {
-                // ── 弹道解算：组装 Predictor（预测函数 + 来源标注 + 快照时间戳），
-                //    调 SequencePredictor::predict（内部依据来源自动选择目标策略
-                //    Armor→NEAREST / PowerRune→LOWEST_Z，并在来源切换时重置其
-                //    自身状态），当帧预测结果写入 OutputContext 供输出模式消费 ──
-                //    来源标注：Armor 每种物体（target_label 0~8）各自算一种来源；
-                //    PowerRune 整体算一种来源。
+                // ── 弹道解算：目标预测器（Predictor）已由两条流水线在输出结果
+                //    时组装完成并随 PipelineResult 输出（result.predictor：预测
+                //    函数快照 + 来源标注 + 快照时间戳 + 屏蔽索引），此处直接调
+                //    SequencePredictor::predict —— 内部依据来源自动选择目标策略
+                //    （Armor→NEAREST / PowerRune→LOWEST_Z）、跳过屏蔽的瞄准点、
+                //    在来源切换时重置其自身状态；当帧预测结果写入 OutputContext
+                //    供输出模式消费 ──
+                //    predictor_valid == false（本帧无可用目标预测器）时调
+                //    invalidate() 重置 SequencePredictor 内部状态；
+                //    predict_result 保持默认无效 → 输出模式进入保持模式。
                 const TimePoint timestamp = shared_frame_timestamp.load(std::memory_order_acquire);
-                if (req.result->armor.target_valid && req.result->armor.target_predictor) {
-                    SequencePredictor::Predictor predictor;
-                    predictor.function  = *req.result->armor.target_predictor;
-                    predictor.source    = SequencePredictor::PredictorSource::armor(
-                                            req.result->armor.target_label);
-                    predictor.timestamp = req.result->armor.target_predictor_timestamp;
-                    req.ctx->predict_result = sequence_predictor.predict(req.st, predictor, timestamp);
-                } else if (req.result->power_rune.target_predictor) {
-                    SequencePredictor::Predictor predictor;
-                    predictor.function  = *req.result->power_rune.target_predictor;
-                    predictor.source    = SequencePredictor::PredictorSource::powerRune();
-                    predictor.timestamp = req.result->power_rune.predictor_timestamp;
-                    req.ctx->predict_result = sequence_predictor.predict(req.st, predictor, timestamp);
+                if (req.result->predictor_valid) {
+                    req.ctx->predict_result = sequence_predictor.predict(
+                        req.st, req.result->predictor, timestamp);
                 } else {
-                    // 预测器不可用：重置 SequencePredictor 内部状态；
-                    // predict_result 保持默认无效 → 输出模式进入保持模式
                     sequence_predictor.invalidate();
                 }
 

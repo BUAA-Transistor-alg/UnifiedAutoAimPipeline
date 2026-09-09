@@ -28,16 +28,19 @@ TargetStrategy targetStrategyForSource(const SequencePredictor::PredictorSource&
 // 在单个实际计算点解出的全部目标点结果中，按策略选出实际使用的目标：
 //   - NEAREST：预测点距离当前 muzzle 原点最近（默认）；
 //   - LOWEST_Z：预测点 world z 最低（PowerRune 能量机关模式）。
+// predictor.masked_indices 中索引对应的瞄准点（目标）不参与选择。
 // 结果为空（无可用目标）时返回默认无效 Result（success=false）。
 PredictedBallisticSolver::Result selectTargetResult(
     const std::vector<PredictedBallisticSolver::Result>& candidates,
-    TargetStrategy strategy, const cv::Vec3f& muzzle_origin) {
+    TargetStrategy strategy, const cv::Vec3f& muzzle_origin,
+    const SequencePredictor::Predictor& predictor) {
     PredictedBallisticSolver::Result best;
     if (candidates.empty()) return best;
 
     double best_criterion = std::numeric_limits<double>::infinity();
     const bool lowest_z = (strategy == TargetStrategy::LOWEST_Z);
     for (const auto& c : candidates) {
+        if (predictor.isIndexMasked(c.target_index)) continue;   // 屏蔽目标不参与选择
         const double criterion = lowest_z
             ? (double)c.predicted_point[2]                       // world z，取最小
             : (double)cv::norm(muzzle_origin - c.predicted_point); // muzzle 距离，取最小
@@ -104,6 +107,26 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
                                            const Predictor& predictor,
                                            const std::chrono::steady_clock::time_point& timestamp)
 {
+    // ── 目标屏蔽检查：predictor.masked_indices 中索引对应的瞄准点不参与目标
+    // 选择；但须保证屏蔽后至少还有一个瞄准点可选——若预测函数当前返回的全部
+    // 瞄准点都被屏蔽（全被屏蔽），本帧预测器等同不可用：自动转为调用
+    // invalidate()（重置自身跨帧状态与来源记录）并返回无效结果，与 main 在
+    // "无可用预测器"时直接 invalidate() 的行为一致（输出模式进入保持模式）。
+    if (!predictor.masked_indices.empty()) {
+        const std::vector<cv::Point3f> aims_now = predictor.function(0.0);
+        bool any_aim_left = false;
+        for (int i = 0; i < (int)aims_now.size(); ++i) {
+            if (!predictor.isIndexMasked(i)) {
+                any_aim_left = true;
+                break;
+            }
+        }
+        if (!any_aim_left) {
+            invalidate();
+            return Result{};
+        }
+    }
+
     // ── 自身跨帧状态：target_predictor 来源切换（含首次从无来源进入）时重置 ──
     // State 当前暂为空；重置逻辑保留：后续在 State 中存放来源相关状态时，
     // 来源切换（如 Armor 目标种类变化 / Armor → PowerRune）会自动清零。
@@ -165,10 +188,11 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
         const int ret_idx = solve_idx[(size_t)idx];   // 该实际计算点在返回点序列中的索引
         // solve() 返回预测函数列表中全部目标点的解算结果（不再内部选目标）；
         // 本类在此按策略（sel）从中选出该实际计算点实际使用的目标
+        // （predictor.masked_indices 中索引对应的目标点不参与选择）
         const std::vector<PredictedBallisticSolver::Result> candidates =
             solvers_[(size_t)(wid % T)].solve(
                 predictor.function, extra_predict_time + (ret_idx + 1) * dt_control_);
-        solved[(size_t)idx] = selectTargetResult(candidates, sel, muzzle_origin);
+        solved[(size_t)idx] = selectTargetResult(candidates, sel, muzzle_origin, predictor);
     });
 
     // ── 2. 组装返回点序列（实际计算点 + 插值/外推/复制点）──

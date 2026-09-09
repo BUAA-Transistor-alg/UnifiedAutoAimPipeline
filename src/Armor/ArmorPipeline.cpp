@@ -358,14 +358,14 @@ void ArmorPipeline::processStage4(DataDeque& data)
         //    7/8（基地）不约束，保持纯 OpenCV ──
         // 约束（仅一条）：本体 y(前向/法线)轴 与「world 系 (0,0,1) 竖直向上经 tf
         // 变换到 cam 系的方向」的夹角余弦 = cos75°/cos105°（0~5 / 6 前哨站）
-        const bool use_constraints = (obj.label >= 0 && obj.label <= ArmorDetect::ARMOR_CLASS);
+        const bool use_constraints = (obj.label >= 0 && obj.label <= ArmorDetect::OUTPOST_CLASS);
         std::vector<AxisCosConstraintParam> constraints;
         std::vector<int> flags = {cv::SOLVEPNP_IPPE, cv::SOLVEPNP_ITERATIVE};
         if (use_constraints) {
             AxisCosConstraintParam c2;
             c2.axis_body_cam = cv::Vec3f(0, 1, 0);
             c2.dir_cam       = world_up_cam;
-            c2.target_cos    = (obj.label == ArmorDetect::ARMOR_CLASS) ? kArmorCos75 : kArmorCos105;
+            c2.target_cos    = (obj.label == ArmorDetect::OUTPOST_CLASS) ? kArmorCos75 : kArmorCos105;
             constraints.push_back(c2);
             flags.push_back(CameraProjection::SOLVEPNP_CERES);
         }
@@ -415,7 +415,7 @@ void ArmorPipeline::processStage5(DataDeque& data)
     // ── OutpostESEKF 统一帧处理（label 6 装甲板）──
     // 观测超时重置 / 初始化 / 更新（观测截断）/ 无观测仅预测均由
     // OutpostESEKF::processFrame 内部自动分派
-    const auto& armor_cat = d->stage4.categories[ArmorDetect::ARMOR_CLASS];
+    const auto& armor_cat = d->stage4.categories[ArmorDetect::OUTPOST_CLASS];
     const bool esekf_initialized = s5_.esekf->processFrame(armor_cat.all_image_points, ts);
 
     // ── 移植 SuperPower EKF：label 0~5 每类一个 ──
@@ -445,7 +445,7 @@ void ArmorPipeline::processStage5(DataDeque& data)
         const double dist = cv::norm(s5_.esekf->getPosition() - chassis_origin);
         if (dist < best_dist) {
             best_dist = dist;
-            best_label = ArmorDetect::ARMOR_CLASS;   // 6：OutpostESEKF
+            best_label = ArmorDetect::OUTPOST_CLASS;   // 6：OutpostESEKF
         }
     }
     for (int label = 0; label < NUM_CLASS_EKF; ++label) {
@@ -470,7 +470,7 @@ void ArmorPipeline::processStage5(DataDeque& data)
     d->stage5.target_valid = (best_label >= 0);
     d->stage5.target_label = best_label;
     d->stage5.target_filter_type = TargetFilterType::NONE;
-    if (best_label == ArmorDetect::ARMOR_CLASS) {
+    if (best_label == ArmorDetect::OUTPOST_CLASS) {
         // OutpostESEKF（label 6 装甲板）结果
         d->stage5.target_filter_type = TargetFilterType::OUTPOST_ESEKF;
         d->stage5.target_world_points = s5_.esekf->getWorldPoints();
@@ -599,10 +599,9 @@ void ArmorPipeline::fillPerception(ArmorPipelineData* d, ArmorPerception& out)
     out.target_R64 = d->stage5.target_R64;
     out.target_world_points = d->stage5.target_world_points;
     out.target_pred_center_points = d->stage5.target_pred_center_points;
-    if (d->stage5.target_predictor) {
-        out.target_predictor = std::move(d->stage5.target_predictor);
-    }
-    out.target_predictor_timestamp = d->stage5.target_predictor_timestamp;
+    // 目标预测函数快照（d->stage5.target_predictor）不再复制到感知结果：由
+    // tryPopFrame 组装进 PipelineResult::predictor（Predictor::function）后随
+    // 结果输出（见 tryPopFrame）。
     out.detection_count = d->stage3.objects.size();
     out.valid = true;
 }
@@ -629,6 +628,23 @@ PipelineResult ArmorPipeline::tryPopFrame(const std::chrono::steady_clock::time_
         result.extra_info = front->initial.extra_info;
         result.frame = std::move(front->initial.frame);
         fillPerception(front.get(), result.armor);
+        // ── 组装弹道解算所需的目标预测器（sequence_predictor.predict 的直接
+        //    输入，随 PipelineResult 输出）：预测函数快照（从本帧 stage5 移出，
+        //    本流水线内部持有）+ 来源标注（每类 label 0~8 各算一种来源：
+        //    6=OutpostESEKF、0~5=移植 EKF、7~8=最新物体）+ 快照时间戳（dt 零点
+        //    = 快照帧时间戳）+ 屏蔽的瞄准点索引（本帧 stage5.masked_indices）。
+        //    无可用预测函数（target_predictor 为空）时 predictor_valid 保持
+        //    false，main 弹道线程据此调 sequence_predictor.invalidate()。──
+        if (front->stage5.target_predictor) {
+            result.predictor_valid = true;
+            result.predictor.function =
+                std::move(*front->stage5.target_predictor);
+            result.predictor.source = SequencePredictor::PredictorSource::armor(
+                front->stage5.target_label);
+            result.predictor.timestamp = front->stage5.target_predictor_timestamp;
+            result.predictor.masked_indices =
+                std::move(front->stage5.masked_indices);
+        }
         result.valid = true;
         output_queue_.pop_front();
         // 输出队列腾出空间：唤醒调度器推进各阶段（尤其输出队列满导致阶段5停顿时）

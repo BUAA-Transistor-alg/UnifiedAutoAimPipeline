@@ -10,13 +10,15 @@
 // 沿"弹道 → 云台 → 可视化"级联逐级转发给输出模式（输出模式不再持有本类引用）。
 //
 // 目标预测器以 Predictor 结构体传入（而非仅 std::function）：内含预测函数、
-// 目标预测器来源标注（PredictorSource，见下）与快照时间戳（predictor_timestamp）。
+// 目标预测器来源标注（PredictorSource，见下）、快照时间戳（predictor_timestamp）
+// 与目标屏蔽索引列表（masked_indices，见 Predictor）。
 // PredictedBallisticSolver::solve 已不再参与目标（瞄准点）选择：它对预测函数
 // 返回列表中的每个目标点独立求解并返回全部结果；实际目标选择由本类 predict()
 // 完成——依据来源标注自动选择目标选择策略（Armor → NEAREST、PowerRune →
-// LOWEST_Z），并在每个实际计算点的求解结果之间按该策略选出该点使用的目标。
-// 同时 predict() 维护自身跨帧状态 State（当前暂为空，预留）：target_predictor
-// 来源切换或 invalidate() 时重置。
+// LOWEST_Z），并在每个实际计算点的求解结果之间按该策略选出该点使用的目标
+// （masked_indices 中索引对应的瞄准点不参与选择）。同时 predict() 维护自身
+// 跨帧状态 State（当前暂为空，预留）：target_predictor 来源切换或
+// invalidate() 时重置。
 //
 // 序列生成（config common.predict_sequence）：
 //   - 原划分：只精确解算 prediction_points（M）个实际计算点，时间间隔
@@ -73,12 +75,29 @@ public:
         bool operator!=(const PredictorSource& o) const { return !(*this == o); }
     };
 
-    // 目标预测器（predict() 输入）：原预测函数 + 来源标注 + 快照时间戳
+    // 目标预测器（predict() 输入）：原预测函数 + 来源标注 + 快照时间戳 +
+    // 目标屏蔽索引列表（两条流水线在输出结果时组装本结构并存于 PipelineResult，
+    // main 弹道线程直接传入 predict()）
     struct Predictor {
         PredictedBallisticSolver::Predictor function;   // 原预测函数 std::vector<cv::Point3f>(double)（world 系）
         PredictorSource source;                         // 来源标注
         std::chrono::steady_clock::time_point timestamp;  // predictor_timestamp：
                                                           // 产生该预测器快照的那一帧的时间戳（dt 零点）
+        // 目标屏蔽索引列表：位于本列表中的索引（对应当前预测函数返回列表中
+        // 瞄准点的下标，即 PredictedBallisticSolver::Result::target_index）对应
+        // 的瞄准点不参与目标选择。须保证屏蔽后至少还有一个瞄准点未被屏蔽：
+        // 若预测函数返回的全部瞄准点都被屏蔽（全被屏蔽，无点可选），
+        // predict() 自动转为调用 invalidate() 并返回无效结果（等同无可用预测器，
+        // 输出模式进入保持模式）。
+        std::vector<int> masked_indices;
+
+        /// 目标索引 index 是否被屏蔽（即位于 masked_indices 中）
+        bool isIndexMasked(int index) const {
+            for (int m : masked_indices) {
+                if (m == index) return true;
+            }
+            return false;
+        }
     };
 
     // 单个序列返回点（云台控制值 + 瞄准点；实际计算点或插值/外推/复制生成）
@@ -117,9 +136,13 @@ public:
     /// 目标（瞄准点）选择已从 PredictedBallisticSolver 移入本类：solve() 返回
     /// 预测函数列表中全部目标点的结果，predict() 在每个实际计算点的结果之间
     /// 按 predictor.source 自动选择的策略（Armor → NEAREST，PowerRune →
-    /// LOWEST_Z）选出该点实际使用的目标，并在来源切换时重置自身跨帧状态 State。
+    /// LOWEST_Z）选出该点实际使用的目标（predictor.masked_indices 中索引对应
+    /// 的瞄准点不参与选择），并在来源切换时重置自身跨帧状态 State。
+    /// 全被屏蔽（屏蔽后无任何瞄准点可选）时自动转为调用 invalidate() 并返回
+    /// 无效结果。
     ///
-    /// @param predictor  目标预测器（预测函数 + 来源标注 + 快照时间戳）
+    /// @param predictor  目标预测器（预测函数 + 来源标注 + 快照时间戳 +
+    ///                   目标屏蔽索引列表）
     /// @param timestamp  调用时刻（当前帧时间戳）；额外预测时间自动加上
     ///                   (timestamp - predictor.timestamp)，补偿快照生成到
     ///                   消费之间的延迟

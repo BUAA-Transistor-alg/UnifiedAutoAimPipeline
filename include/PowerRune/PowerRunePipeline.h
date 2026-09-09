@@ -89,6 +89,9 @@ struct PowerRunePipelineData {
         // 已为 SequencePredictor 统一签名，无需外部包装）
         std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> target_predictor;
         std::chrono::steady_clock::time_point predictor_timestamp;  // 快照对应帧的时间戳（dt 零点）
+        // 本帧屏蔽的目标点索引：索引对应 target_predictor 返回列表中瞄准点的下标
+        // （预留：由本流水线按需填写；tryPopFrame 组装结果 Predictor 时一并移出）
+        std::vector<int> masked_indices;
     } stage5;
 };
 

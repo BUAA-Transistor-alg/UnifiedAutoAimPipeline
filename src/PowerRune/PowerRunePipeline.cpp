@@ -455,10 +455,9 @@ void PowerRunePipeline::fillPerception(PowerRunePipelineData* d, PowerRunePercep
     if (d->stage5.predictor_lambda) {
         out.predictor_lambda = std::move(d->stage5.predictor_lambda);
     }
-    if (d->stage5.target_predictor) {
-        out.target_predictor = std::move(d->stage5.target_predictor);
-    }
-    out.predictor_timestamp = d->stage5.predictor_timestamp;
+    // 靶点预测函数快照（d->stage5.target_predictor）不再复制到感知结果：由
+    // tryPopFrame 组装进 PipelineResult::predictor（Predictor::function）后随
+    // 结果输出（见 tryPopFrame）。
     out.detection_count = d->stage3.detections.size();
     out.valid = true;
 }
@@ -485,6 +484,23 @@ PipelineResult PowerRunePipeline::tryPopFrame(const std::chrono::steady_clock::t
         result.extra_info = front->initial.extra_info;
         result.frame = std::move(front->initial.frame);
         fillPerception(front.get(), result.power_rune);
+        // ── 组装弹道解算所需的目标预测器（sequence_predictor.predict 的直接
+        //    输入，随 PipelineResult 输出）：靶点预测函数快照（从本帧 stage5
+        //    移出，本流水线内部持有；组合自 RollPredictor 位姿预测 + 旋转次数）
+        //    + 来源标注（powerRune()，整体算一种来源）+ 快照时间戳（dt 零点 =
+        //    快照帧时间戳）+ 屏蔽的瞄准点索引（本帧 stage5.masked_indices）。
+        //    无可用靶点预测函数（target_predictor 为空）时 predictor_valid 保持
+        //    false，main 弹道线程据此调 sequence_predictor.invalidate()。──
+        if (front->stage5.target_predictor) {
+            result.predictor_valid = true;
+            result.predictor.function =
+                std::move(*front->stage5.target_predictor);
+            result.predictor.source =
+                SequencePredictor::PredictorSource::powerRune();
+            result.predictor.timestamp = front->stage5.predictor_timestamp;
+            result.predictor.masked_indices =
+                std::move(front->stage5.masked_indices);
+        }
         result.valid = true;
         output_queue_.pop_front();
         // 输出队列腾出空间：唤醒调度器推进各阶段（尤其输出队列满导致阶段5停顿时）

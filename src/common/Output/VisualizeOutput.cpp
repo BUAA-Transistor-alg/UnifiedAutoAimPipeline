@@ -242,10 +242,11 @@ void VisualizeOutput::renderPowerRune(const PipelineResult& result, RobotControl
     if (p.fit_valid && p.predictor_lambda) {
         vis.roll_predictor.predictor_prediction = (*p.predictor_lambda)(0.3f);
     }
-    if (p.fit_valid && p.target_predictor) {
-        // target_predictor 已为统一签名 std::vector<cv::Point3f>(double)；
-        // 可视化数据仍用 Vec3f，逐个转换
-        const auto pts = (*p.target_predictor)(0.3);
+    if (result.predictor_valid) {
+        // 靶点预测函数由流水线组装进 result.predictor（Predictor::function，
+        // 统一签名 std::vector<cv::Point3f>(double)）；可视化数据仍用 Vec3f，
+        // 逐个转换
+        const auto pts = result.predictor.function(0.3);
         vis.predictor_target_points.clear();
         vis.predictor_target_points.reserve(pts.size());
         for (const auto& pt : pts) {

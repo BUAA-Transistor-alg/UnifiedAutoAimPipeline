@@ -29,8 +29,8 @@ constexpr int NUM_CLASSES   = 9;
 
 // 类别映射（模型训练标签）：0-5 哨兵/1~5号机器人，6 装甲板，7-8 基地/基地大装甲。
 // 后处理保留所有类别（label 0~8），类别分类由下游流水线 processStage4 按 obj.label
-// 处理；ARMOR_CLASS（label 6 装甲板）用于 OutpostESEKF 等仅关注装甲板的目标。
-constexpr int ARMOR_CLASS = 6;
+// 处理；OUTPOST_CLASS（label 6 装甲板）用于 OutpostESEKF 等仅关注装甲板的目标。
+constexpr int OUTPOST_CLASS = 6;
 constexpr int BASE_CLASS = 7;        // 基地
 constexpr int BASE_LARGE_CLASS = 8;  // 基地大装甲
 

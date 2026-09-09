@@ -109,6 +109,9 @@ struct ArmorPipelineData {
         std::vector<cv::Point3f> target_pred_center_points;  // 预测目标关键点 t+0（world）
         std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> target_predictor;  // 快照
         std::chrono::steady_clock::time_point target_predictor_timestamp;  // 快照对应帧的时间戳（dt 零点）
+        // 本帧屏蔽的目标点索引：索引对应 target_predictor 返回列表中瞄准点的下标
+        // （预留：由本流水线按需填写；tryPopFrame 组装结果 Predictor 时一并移出）
+        std::vector<int> masked_indices;
     } stage5;
 };
 
