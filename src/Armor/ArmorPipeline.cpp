@@ -479,6 +479,10 @@ void ArmorPipeline::processStage5(DataDeque& data)
         d->stage5.target_predictor = s5_.esekf->capturePosePredictor();
         d->stage5.target_predictor_timestamp = ts;   // 快照的 dt 零点 = 本帧时间戳
         d->stage5.target_pred_center_points = (*d->stage5.target_predictor)(0.0);
+        // 屏蔽目标：自上次 reset 以来从未被观测到的装甲面（对应预测函数返回
+        // 列表中这些面的瞄准点索引）不参与目标选择（随 Predictor 输出，
+        // 由 SequencePredictor 过滤）
+        d->stage5.masked_indices = s5_.esekf->unseenPlateIndices();
     } else if (best_label >= 0 && best_label < NUM_CLASS_EKF) {
         // 移植 EKF（label 0~5）结果：车体中心 / 旋转矩阵 / 4 块装甲位置预测器
         d->stage5.target_filter_type = TargetFilterType::CLASS_EKF;
@@ -487,6 +491,10 @@ void ArmorPipeline::processStage5(DataDeque& data)
         d->stage5.target_R64 = class_ekf.getRotationMatrix();
         d->stage5.target_predictor = class_ekf.capturePosePredictor();  // state 可用时非空
         d->stage5.target_predictor_timestamp = ts;
+        // 屏蔽目标：自上次 reset 以来从未被观测到的装甲板（对应预测函数返回
+        // 列表中这些板的瞄准点索引）不参与目标选择（随 Predictor 输出，
+        // 由 SequencePredictor 过滤）
+        d->stage5.masked_indices = class_ekf.unseenArmorIndices();
         if (d->stage5.target_predictor) {
             const std::vector<cv::Point3f> pts = (*d->stage5.target_predictor)(0.0);
             d->stage5.target_pred_center_points = pts;

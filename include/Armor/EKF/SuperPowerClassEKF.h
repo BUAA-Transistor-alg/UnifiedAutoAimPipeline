@@ -122,10 +122,26 @@ public:
     /// 形式一致，只是仅含绕世界系 z 轴的旋转（车体 yaw）。
     cv::Mat getRotationMatrix() const { return R_; }
 
+    /**
+     * @brief 自上次 reset() 以来从未被观测匹配到的装甲板索引。
+     *
+     * 索引 0..armorNum-1（普通四装甲共 4 块），与 capturePosePredictor() 返回的
+     * 装甲中心列表顺序一致（等价于原接口 matched_id 的装甲编号；初始化首观测
+     * 按 0 号板处理并记为该板已见，后续观测帧用关联结果标记被匹配到的板）。
+     * reset() 时全部清除。这些从未被直接观测、仅由几何模型外推的板对应的
+     * 瞄准点应作为屏蔽目标：调用方（ArmorPipeline）把它们填入
+     * Predictor::masked_indices，使目标选择（SequencePredictor）跳过它们。
+     */
+    std::vector<int> unseenArmorIndices() const;
+
 private:
     // 按 Params 构造原接口（SuperPowerPredictor）的 YAML 配置节点：段内字段与
     // config armor.super_power_ekf 一一对应，全部下发到原接口（普通四装甲）。
     static std::shared_ptr<YAML::Node> buildConfig(const Params& params);
+
+    // 用最近一帧关联结果（原接口 debugState()：matched_id / joint_second_id）
+    // 把实际观测（匹配）到的装甲板标记为已见；仅观测帧调用。
+    void markSeenFromLastFrame();
 
     Params params_;
     std::shared_ptr<YAML::Node> config_;       // 原接口配置节点（构造 SuperPowerPredictor 时传入）
@@ -135,6 +151,9 @@ private:
     bool state_available_ = false;             // state_ 是否有效（最近一帧 predictor_->ready()）
     cv::Vec3d position_ = cv::Vec3d(0, 0, 0);  // state 有效时的车体中心（world，米，state_ mm→m）
     cv::Mat   R_;                              // state 有效时的车体旋转矩阵（CV_64F，由 yaw 构造）
+    // 装甲板观测记录：索引 0..armorNum-1（与 capturePosePredictor() 返回的装甲
+    // 中心列表顺序一致）是否自上次 reset() 以来被观测匹配到；reset() 时清除。
+    std::vector<bool> seen_armors_;
 };
 
 }  // namespace sp_ekf

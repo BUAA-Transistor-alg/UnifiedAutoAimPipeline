@@ -167,6 +167,9 @@ public:
 
     bool ready() const;
     bool hasState() const;
+    // 最近一帧是否新建了目标（LOST → 首条观测初始化 / 超时 clear 后重建）：
+    // 供外层判断"目标生命期"是否从头开始（例如重置"已观测到哪些装甲板"）。
+    bool lastFrameInitializedTarget() const { return last_result_.initialized_this_frame; }
     int debugFlipFlag() const { return debug_flip_flag_; }
 
 private:

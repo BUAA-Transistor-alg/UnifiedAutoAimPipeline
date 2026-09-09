@@ -58,7 +58,9 @@ superpower_ekf:
 
 ClassEKF::ClassEKF(const Params& params)
     : params_(params),
-      config_(buildConfig(params_)) {}
+      config_(buildConfig(params_)),
+      seen_armors_(static_cast<std::size_t>(std::max(1, params_.armorNum)),
+                   false) {}
 
 bool ClassEKF::processFrame(const std::vector<cv::Vec3f>& world_pos,
                             const std::vector<cv::Vec3f>& world_euler,
@@ -90,7 +92,9 @@ bool ClassEKF::processFrame(const std::vector<cv::Vec3f>& world_pos,
     if (!observations.empty()) {
         const EKFTargetObservation& primary = observations.front();
         if (!predictor_) {
-            // 初始化：首条观测构造 SuperPowerPredictor（内部建立 Target，dt=0）
+            // 初始化：首条观测构造 SuperPowerPredictor（内部建立 Target，dt=0）。
+            // "已见装甲板"记录随下方 markSeenFromLastFrame() 按新目标初始化帧重置，
+            // 并从该帧关联结果（0 号板锚定）重新开始记录。
             predictor_ = std::make_unique<SuperPowerPredictor>(
                 primary,
                 params_.initialRadiusM * kMillimetersPerMeter,
@@ -103,6 +107,9 @@ bool ClassEKF::processFrame(const std::vector<cv::Vec3f>& world_pos,
             // 单板观测更新：由原接口内部按“距上一次更新”的 dt 完成 predict+update
             predictor_->update(primary);
         }
+        // 用最近一帧关联结果标记实际观测到的装甲板（primary 及联合更新用到的
+        // 副板）；若该帧新建了目标（LOST→首观测 / clear 后重建），记录先重置
+        markSeenFromLastFrame();
         last_obs_ts_ = t;
     } else if (predictor_) {
         // 本帧无观测（失检）：连续超过超时阈值 → 经原接口 clear() 销毁内部目标
@@ -170,12 +177,47 @@ ClassEKF::capturePosePredictor() const {
         });
 }
 
+void ClassEKF::markSeenFromLastFrame() {
+    if (!predictor_) return;
+    // 该帧新建目标（LOST → 首条观测初始化 / 观测超时 clear 或发散后重建 /
+    // 时间不连续 LOST 后重建）：新目标生命期从零开始，"已见装甲板"记录重置
+    // （与 reset() 语义一致；原接口初始化首观测按 0 号板锚定，由下方关联
+    // 结果统一标记）。
+    if (predictor_->lastFrameInitializedTarget()) {
+        std::fill(seen_armors_.begin(), seen_armors_.end(), false);
+    }
+    // debugState() 镜像最近一帧关联结果：matched_id 为实际更新的主板装甲编号；
+    // joint_pair_used 时 joint_second_id 为联合更新用到的副板编号（均与
+    // capturePosePredictor() 返回的装甲中心列表索引一致）。
+    const EKFTargetDebugState dbg = predictor_->debugState();
+    auto mark = [this](int id) {
+        if (id >= 0 &&
+            id < static_cast<int>(seen_armors_.size())) {
+            seen_armors_[static_cast<std::size_t>(id)] = true;
+        }
+    };
+    mark(dbg.matched_id);
+    if (dbg.joint_pair_used) mark(dbg.joint_second_id);
+}
+
+std::vector<int> ClassEKF::unseenArmorIndices() const {
+    // 从未被观测匹配到的装甲板（索引与 capturePosePredictor() 返回列表一致）
+    // → 屏蔽目标索引（不参与瞄准点选择）
+    std::vector<int> unseen;
+    for (std::size_t id = 0; id < seen_armors_.size(); ++id) {
+        if (!seen_armors_[id]) unseen.push_back(static_cast<int>(id));
+    }
+    return unseen;
+}
+
 void ClassEKF::reset() {
     if (predictor_) predictor_->clear();
     last_obs_ts_ = TimePoint{};
     state_available_ = false;
     position_ = cv::Vec3d(0, 0, 0);
     R_ = cv::Mat();
+    // 装甲板观测记录一并复位（下次初始化重新从 0 号板开始计）
+    std::fill(seen_armors_.begin(), seen_armors_.end(), false);
 }
 
 }  // namespace sp_ekf

@@ -85,6 +85,19 @@ public:
     std::vector<cv::Point3f> getWorldPoints() const;
 
     /**
+     * @brief 自上次 reset() 以来从未被观测匹配到的装甲面索引。
+     *
+     * 索引 0..points_3d_list_.size()-1（共 3 个面），与 capturePosePredictor()
+     * 返回的目标中心列表顺序一致（面 i = OUTPOST_TARGET_CENTER_3D_LIST[i]）。
+     * init() 首帧观测按面 0 处理并记为该面已见，update() 每帧用 2D→3D 关联结果
+     * （assignment）标记被匹配到的面。reset() / 观测超时自动 reset 时全部清除。
+     * 这些从未见过的面（尚未被直接观测、仅由几何模型外推）对应的瞄准点应作为
+     * 屏蔽目标：调用方（ArmorPipeline）把它们填入 Predictor::masked_indices，
+     * 使目标选择（SequencePredictor）跳过它们。
+     */
+    std::vector<int> unseenPlateIndices() const;
+
+    /**
      * @brief 捕获当前滤波器状态的快照，返回一个独立于后续状态变化的自身位姿预测函数。
      *
      * 仿照 RollPredictor::capturePredictor：返回的 function 内部复制了调用时刻的
@@ -173,6 +186,12 @@ private:
     TimePoint          last_observation_time_;  // 最近一次观测时刻（观测缺失时推进超时判断）
     bool               has_observation_time_;   // 是否收到过至少一次观测
     double             observation_lost_timeout_; // 观测丢失重置阈值（秒，取自 Params）
+
+    // 装甲面观测记录：面 i（0..points_3d_list_.size()-1，共 3 面，与目标中心预测
+    // 函数返回列表顺序一致）是否自上次 reset() 以来被观测匹配到
+    // （init 首帧按面 0 处理；update 每帧按关联结果 assignment 标记）。
+    // 随 reset() 一并复位（见 unseenPlateIndices()）。
+    std::vector<bool>  seen_plates_;
 
     Eigen::Matrix<double, 9, 9> P_;
 

@@ -39,6 +39,8 @@ OutpostESEKF::OutpostESEKF(std::shared_ptr<RobotTfTree> tf_tree,
     const size_t np = points_3d_list_[0].size();
     for (const auto& p : points_3d_list_) CV_Assert(p.size() == np);
     P_.setIdentity();
+    // 面观测记录初始化为全"未见"（点数 = 装甲面数）
+    seen_plates_.assign(points_3d_list_.size(), false);
 }
 
 bool OutpostESEKF::init(const std::vector<cv::Point2f>& points_2d,
@@ -72,6 +74,9 @@ bool OutpostESEKF::init(const std::vector<cv::Point2f>& points_2d,
     P_(6, 6) = init_yaw_rate_noise_;   // 绕 z 轴旋转速度的初始不确定性
     P_(7, 7) = init_dz2_noise_;
     P_(8, 8) = init_dz3_noise_;
+
+    // 初始化观测按面 0 模型处理：首帧即记面 0 已见
+    if (!seen_plates_.empty()) seen_plates_[0] = true;
     return true;
 }
 
@@ -88,6 +93,8 @@ void OutpostESEKF::reset() {
     has_observation_time_ = false;
     last_time_ = TimePoint();
     P_.setIdentity();
+    // 面观测记录一并复位（下次 init 重新从面 0 开始计）
+    std::fill(seen_plates_.begin(), seen_plates_.end(), false);
 }
 
 bool OutpostESEKF::processFrame(const std::vector<std::vector<cv::Point2f>>& all_image_points,
@@ -150,6 +157,10 @@ void OutpostESEKF::update(const std::vector<std::vector<cv::Point2f>>& points_2d
     for (size_t i = 0; i < M; ++i) {
         if (best_assignment[i] == 1) dz2_initialized_ = true;
         else if (best_assignment[i] == 2) dz3_initialized_ = true;
+        // 关联结果即"哪些装甲面被实际观测到"：标记为已见（reset 时清除）
+        if (best_assignment[i] < seen_plates_.size()) {
+            seen_plates_[best_assignment[i]] = true;
+        }
     }
 
     // 4. 误差与雅可比（使用状态 dz2_/dz3_）
@@ -201,6 +212,15 @@ std::vector<cv::Point3f> OutpostESEKF::getWorldPoints() const {
         all_local.insert(all_local.end(), pts.begin(), pts.end());
     }
     return localToWorld(position_, R, all_local);
+}
+
+std::vector<int> OutpostESEKF::unseenPlateIndices() const {
+    // 从未被观测匹配到的装甲面（索引与目标中心预测列表一致）→ 屏蔽目标索引
+    std::vector<int> unseen;
+    for (size_t i = 0; i < seen_plates_.size(); ++i) {
+        if (!seen_plates_[i]) unseen.push_back(static_cast<int>(i));
+    }
+    return unseen;
 }
 
 std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>>
