@@ -3,16 +3,15 @@
 // 与 CameraProjection 同置于 common/pose/，由 solvePnP_Cam 的自定义 flag
 // （CameraProjection::SOLVEPNP_CERES）调用。
 //
-// 支持三种用法：
+// 支持两种用法（均已含物体轴-方向夹角硬约束参数，vec 可为空）：
 //   1) 传入初始位姿（rvec_init/tvec_init）→ 以该位姿为初值做进一步优化（精化），
 //      适合接在 cv::solvePnP 等粗解之后使用；
-//   2) 不传初始位姿 → 从默认位姿（rvec=0、tvec 前向 z=1）开始优化（从头求解）；
-//   3) 额外传入一组 AxisCosConstraintParam 约束（物体轴-方向夹角硬约束模式）→
-//      在重投影 + FoV 硬边界之外，再以「硬等号约束」要求：每条约束中被指定的
-//      物体本体轴（cam 系表示，如本体 z 轴 = (0,0,1)）经位姿旋转后在 cam 系下
-//      的单位方向，与其 cam 系目标方向向量的夹角余弦 == 该条 target_cos。
-//      约束与 FoV 硬边界一样以极大权重近似硬边界，传入非空即全程生效；
-//      传入空 vector 等价于普通求解（详见下方 solve 重载注释）。
+//   2) 不传初始位姿 → 从默认位姿（rvec=0、tvec 前向 z=1）开始优化（从头求解）。
+// constraints（AxisCosConstraintParam 列表，可为空）：
+//   在重投影 + FoV 硬边界之外，以「硬等号约束」要求：每条约束中被指定的物体本体轴
+//   （cam 系表示，如本体 z 轴 = (0,0,1)）经位姿旋转后在 cam 系下的单位方向，与其
+//   cam 系目标方向向量的夹角余弦 == 该条 target_cos。约束与 FoV 硬边界一样以极大
+//   权重近似硬边界，传入非空即全程生效；传入空 vector 等价于普通无约束求解。
 #ifndef CERES_POSE_ESTIMATOR_H
 #define CERES_POSE_ESTIMATOR_H
 
@@ -23,21 +22,7 @@
 #include <ceres/rotation.h>
 #include <Eigen/Core>
 
-#include "common/pose/CameraProjection.h"
-
-// ── 单条「物体本体轴-方向」夹角硬约束参数 ──
-// axis_body_cam：要约束的物体本体坐标系下的向量，坐标按 cam 系给出（如本体 z 轴
-//   = (0,0,1)）。求解时按与 points_3d 相同的约定先换算到 PnP 系再参与旋转；
-//   cam 系 +x/+y/+z 分别对应位姿为零时物体本体 +x/+y/+z。
-// dir_cam：cam 系下的目标方向向量。
-// target_cos：要求「axis_body_cam 经位姿旋转后在 cam 系的单位方向 ⊙ dir_cam 的
-//   单位方向 == target_cos」。
-// 两个方向向量长度任意，内部都会归一化；传入零向量/余弦越界会断言。
-struct AxisCosConstraintParam {
-    cv::Vec3f axis_body_cam;   // 物体本体坐标系的被约束向量（cam 系表示）
-    cv::Vec3f dir_cam;         // cam 系目标方向向量
-    double    target_cos = 0.0; // 目标夹角余弦 ∈ [-1, 1]
-};
+#include "common/pose/CameraProjection.h"   // 含 AxisCosConstraintParam 定义
 
 class CeresPoseEstimator {
 public:
@@ -45,28 +30,22 @@ public:
     explicit CeresPoseEstimator(const CameraProjection& camera_proj);
     explicit CeresPoseEstimator(std::shared_ptr<CameraProjection> camera_proj);
 
-    // ── PnP 求解 ──
+    // ── PnP 求解（物体轴-方向夹角硬约束模式；唯一入口，constraints 可传空）──
     // points_3d / points_2d：PnP 系 3D 点与对应图像点（点数相同且 ≥ 4）。
+    // constraints：AxisCosConstraintParam 列表（可为空 → 等价普通 PnP 求解）。
     // rvec_init / tvec_init：可选初始位姿（CV_64F 3x1）。两者均非空 → 以初始位姿
     //   进一步优化；为空（缺省）→ 从默认位姿开始优化。
     // 输出 rvec/tvec（CV_64F 3x1，与 cv::solvePnP 同语义的角轴 + 平移）。
     // 返回 Ceres 是否收敛成功。
-    bool solve(const std::vector<cv::Point3f>& points_3d,
-               const std::vector<cv::Point2f>& points_2d,
-               cv::Mat& rvec, cv::Mat& tvec,
-               const cv::Mat& rvec_init = cv::Mat(),
-               const cv::Mat& tvec_init = cv::Mat());
-
-    // ── PnP 求解（物体轴-方向夹角硬约束模式）──
-    // 在前述重投影 + FoV 硬边界求解基础上，对 constraints 中的每条约束额外以
-    // 「硬等号约束」要求：该物体本体轴经位姿旋转后在 cam 系下的单位方向，与
-    // dir_cam（cam 系）的夹角余弦 == target_cos。
-    //   每条约束：残差 = (R·axis_pnp)·d_pnp - target_cos（axis_pnp/d_pnp 为该轴与
-    //   方向向量按 camToPnp 换算到 PnP 系并归一化后的单位向量，等价于 cam 系
-    //   下的夹角余弦）；与 FoV 硬边界同样以 ~1e8 权重加入，全程作为硬等号约束
-    //   生效（不依赖 3D 点是否落在画面内）。多条约束互不干扰，逐条各加一个残差块。
-    //   传入空 vector 等价于不开启该模式（同普通 solve）。
-    // 其余参数/输出语义与上方 solve 相同。返回 Ceres 是否收敛成功。
+    //
+    // 每条约束语义：
+    //   该物体本体轴（cam 系 axis_body_cam，如本体 z 轴 = (0,0,1)）经位姿旋转后
+    //   在 cam 系下的单位方向，与 dir_cam（cam 系）的夹角余弦 == target_cos。
+    //   由于 points_3d 为 PnP 系点（cam 系点经 camToPnp 换算得到，cam (x,y,z) →
+    //   pnp (x,-z,y)，与 solvePnP_Cam 一致），轴与方向在实现内部按同样的 camToPnp
+    //   换算到 PnP 系并归一化后再点乘（残差 = (R·axis)·d - target_cos），等价于
+    //   cam 系下的夹角余弦；与 FoV 硬边界同样以 ~1e8 权重加入，全程作为硬等号
+    //   约束生效（不依赖 3D 点是否落在画面内）。多条约束逐条各加一个残差块。
     bool solve(const std::vector<cv::Point3f>& points_3d,
                const std::vector<cv::Point2f>& points_2d,
                cv::Mat& rvec, cv::Mat& tvec,
@@ -84,7 +63,7 @@ private:
     // ── 上述两个 solve 接口的共同实现 ──
     // constraints 非空时，对每条约束各加入一条物体轴-方向夹角硬等号残差块；
     // 轴/方向向量（cam 系表示）在实现内部按 camToPnp 换算到 points_3d 所在 PnP
-    // 系并归一化后再参与点乘。为空 vector 表示未开启该模式（同普通 solve）。
+    // 系并归一化后再参与点乘。为空 vector 表示未开启该模式（同普通 PnP）。
     bool solveImpl(const std::vector<cv::Point3f>& points_3d,
                    const std::vector<cv::Point2f>& points_2d,
                    cv::Mat& rvec, cv::Mat& tvec,

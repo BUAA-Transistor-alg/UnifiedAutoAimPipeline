@@ -131,7 +131,8 @@ bool CameraProjection::solvePnP_Cam(const std::vector<cv::Point3f>& object_point
                                     const std::vector<cv::Point2f>& image_points,
                                     const std::vector<int>& flags,
                                     cv::Vec3f& position_cam,
-                                    cv::Vec3f& euler_cam) const {
+                                    cv::Vec3f& euler_cam,
+                                    const std::vector<AxisCosConstraintParam>& constraints) const {
     if (flags.empty()) {
         return false;
     }
@@ -147,13 +148,14 @@ bool CameraProjection::solvePnP_Cam(const std::vector<cv::Point3f>& object_point
     bool has_pose = false;   // 是否已有上一阶段解算结果（作为 guess / Ceres 初值）
     for (size_t i = 0; i < flags.size(); ++i) {
         if (flags[i] == SOLVEPNP_CERES) {
-            // ── 自定义 flag：Ceres 位姿优化/精化 ──
+            // ── 自定义 flag：Ceres 位姿优化/精化（附加 constraints 硬约束）──
             // 已有上一阶段结果 → 以其为初始位姿进一步优化；
             // 否则（为首个 flag）→ 从默认位姿开始优化（从头求解）。
             CeresPoseEstimator estimator(*this);
             const bool ok = has_pose
-                ? estimator.solve(pnp_points, image_points, rvec, tvec, rvec, tvec)
-                : estimator.solve(pnp_points, image_points, rvec, tvec);
+                ? estimator.solve(pnp_points, image_points, rvec, tvec,
+                                  rvec, tvec, constraints)
+                : estimator.solve(pnp_points, image_points, rvec, tvec, constraints);
             if (!ok) {
                 return false;
             }

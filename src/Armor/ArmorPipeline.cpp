@@ -11,6 +11,12 @@
 
 namespace {
 
+// ── stage4 装甲板轴-方向夹角硬约束的目标余弦（Python 精确计算）──
+//   cos75° = (√6−√2)/4 = 0.25881904510252074
+//   cos105° = −cos75°  = −0.25881904510252074
+constexpr double kArmorCos75  = 0.25881904510252074;   // 本体 y(前)轴与 world 竖直方向夹角 75°
+constexpr double kArmorCos105 = -0.25881904510252074;  // 本体 y(前)轴与 world 竖直方向夹角 105°
+
 // 配置文件 armor 段 → OutpostESEKF::Params（字段一一对应）
 OutpostESEKF::Params makeEsekfParams(const RobotConfig::ArmorParams& p) {
     OutpostESEKF::Params r;
@@ -313,6 +319,11 @@ void ArmorPipeline::processStage4(DataDeque& data)
     tree.setPitch((float)info.pitch_angle);
     tree.lockAndComputeCache();
 
+    // world 系竖直向上 (0,0,1) 经 tf 旋转到 cam 系（仅方向，不带平移；云台
+    // yaw/pitch 每帧变化，故每帧重算一次；供 stage4 轴-方向夹角约束用）
+    const cv::Vec3f world_up_cam = tree.transformVector(
+        RobotTfTree::WORLD, RobotTfTree::CAMERA, cv::Vec3f(0.0f, 0.0f, 1.0f));
+
     const auto& objects = d->stage3.objects;
     auto& world_positions  = d->stage4.world_positions;
     auto& world_eulers     = d->stage4.world_eulers;
@@ -343,11 +354,26 @@ void ArmorPipeline::processStage4(DataDeque& data)
             ArmorModel::BIG_ARMOR_POINTS_3D_LOCAL : 
             ArmorModel::SMALL_ARMOR_POINTS_3D_LOCAL;
 
+        // ── label 0~6：带轴-方向夹角硬约束的 Ceres 精化（先 OpenCV 粗解再精化）；
+        //    7/8（基地）不约束，保持纯 OpenCV ──
+        // 约束（仅一条）：本体 y(前向/法线)轴 与「world 系 (0,0,1) 竖直向上经 tf
+        // 变换到 cam 系的方向」的夹角余弦 = cos75°/cos105°（0~5 / 6 前哨站）
+        const bool use_constraints = (obj.label >= 0 && obj.label <= ArmorDetect::ARMOR_CLASS);
+        std::vector<AxisCosConstraintParam> constraints;
+        std::vector<int> flags = {cv::SOLVEPNP_IPPE, cv::SOLVEPNP_ITERATIVE};
+        if (use_constraints) {
+            AxisCosConstraintParam c2;
+            c2.axis_body_cam = cv::Vec3f(0, 1, 0);
+            c2.dir_cam       = world_up_cam;
+            c2.target_cos    = (obj.label == ArmorDetect::ARMOR_CLASS) ? kArmorCos75 : kArmorCos105;
+            constraints.push_back(c2);
+            flags.push_back(CameraProjection::SOLVEPNP_CERES);
+        }
+
         cv::Vec3f position_cam, euler_cam;
         bool pnp_ok = s4_.camera_proj->solvePnP_Cam(
             loacl_points_3d, image_points,
-            {cv::SOLVEPNP_IPPE, cv::SOLVEPNP_ITERATIVE},
-            position_cam, euler_cam);
+            flags, position_cam, euler_cam, constraints);
 
         cv::Vec3f world_pos(0, 0, 0);
         cv::Vec3f world_euler(0, 0, 0);

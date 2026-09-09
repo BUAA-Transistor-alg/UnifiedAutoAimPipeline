@@ -18,6 +18,22 @@ struct ImageResolution {
     int height = 0;  // 图像高
 };
 
+// ── 单条「物体本体轴-方向」夹角硬约束参数 ──
+// axis_body_cam：要约束的物体本体坐标系下的向量，坐标按 cam 系给出（如本体 z 轴
+//   = (0,0,1)）。求解时按与 PnP 点相同的约定先换算到 PnP 系再参与旋转；
+//   cam 系 +x/+y/+z 分别对应位姿为零时物体本体 +x/+y/+z（cam 系：x 右、y 前=光轴、z 上）。
+// dir_cam：cam 系下的目标方向向量。
+// target_cos：要求「axis_body_cam 经位姿旋转后在 cam 系的单位方向 ⊙ dir_cam 的
+//   单位方向 == target_cos」。
+// 两个方向向量长度任意，内部都会归一化；传入零向量/余弦越界会断言。
+// 仅当 solvePnP_Cam 的 flags 含 CameraProjection::SOLVEPNP_CERES（即真正走
+// CeresPoseEstimator）时才会生效。
+struct AxisCosConstraintParam {
+    cv::Vec3f axis_body_cam;    // 物体本体坐标系的被约束向量（cam 系表示）
+    cv::Vec3f dir_cam;          // cam 系目标方向向量
+    double    target_cos = 0.0; // 目标夹角余弦 ∈ [-1, 1]
+};
+
 class CameraProjection {
 public:
     // ── 自定义 PnP flag（非 OpenCV 标准值；仅 solvePnP_Cam 识别，cv::solvePnP 不接受）──
@@ -65,13 +81,16 @@ public:
     // 将 Cam 系下的点转换到 PnP 系，按 flags 顺序依次求解位姿：
     //   · OpenCV 标准 flag（cv::SOLVEPNP_*）→ 调用 cv::solvePnP；
     //   · CameraProjection::SOLVEPNP_CERES（自定义 flag）→ 调用 CeresPoseEstimator，
-    //     以上一阶段的解算结果作为初始位姿做精化（若为首个 flag 则从默认位姿开始）。
+    //     以上一阶段的解算结果作为初始位姿做精化（若为首个 flag 则从默认位姿开始）；
+    //     每个 Ceres 阶段都会附加 constraints 指定的物体轴-方向夹角硬约束
+    //     （见 AxisCosConstraintParam；为空则纯精化，不带夹角约束）。
     // 除首个 flag 外均以之前结果作为 extrinsic guess / 初始位姿，最终结果转回 Cam 系。
     bool solvePnP_Cam(const std::vector<cv::Point3f>& object_points_cam,
                       const std::vector<cv::Point2f>& image_points,
                       const std::vector<int>& flags,
                       cv::Vec3f& position_cam,
-                      cv::Vec3f& euler_cam) const;
+                      cv::Vec3f& euler_cam,
+                      const std::vector<AxisCosConstraintParam>& constraints = {}) const;
 
 private:
     cv::Mat camera_matrix_;

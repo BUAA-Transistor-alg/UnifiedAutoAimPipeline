@@ -34,18 +34,8 @@ CeresPoseEstimator::CeresPoseEstimator(std::shared_ptr<CameraProjection> camera_
     initFrom(*camera_proj);
 }
 
-// ── 原接口（无轴-方向夹角约束）→ 内部走共同实现，约束为空 ──
-bool CeresPoseEstimator::solve(
-    const std::vector<cv::Point3f>& points_3d,
-    const std::vector<cv::Point2f>& points_2d,
-    cv::Mat& rvec, cv::Mat& tvec,
-    const cv::Mat& rvec_init, const cv::Mat& tvec_init)
-{
-    return solveImpl(points_3d, points_2d, rvec, tvec,
-                     rvec_init, tvec_init, {});
-}
-
-// ── 物体轴-方向夹角硬约束模式（无初始位姿重载）──
+// ── solve：物体轴-方向夹角硬约束模式（无初始位姿重载）──
+// 不传初始位姿 → 从默认位姿（rvec=0、tvec 前向 z=1）开始优化（从头求解）。
 bool CeresPoseEstimator::solve(
     const std::vector<cv::Point3f>& points_3d,
     const std::vector<cv::Point2f>& points_2d,
@@ -56,7 +46,7 @@ bool CeresPoseEstimator::solve(
                  cv::Mat(), cv::Mat(), constraints);
 }
 
-// ── 物体轴-方向夹角硬约束模式（带初始位姿重载）──
+// ── solve：物体轴-方向夹角硬约束模式（带初始位姿重载）──
 bool CeresPoseEstimator::solve(
     const std::vector<cv::Point3f>& points_3d,
     const std::vector<cv::Point2f>& points_2d,
@@ -154,6 +144,9 @@ bool CeresPoseEstimator::solveImpl(
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_SCHUR;
     options.max_num_iterations = 100;
+    // 硬性时间上限 50ms：超时即停止（配合步数上限双保险，避免拖慢实时流水线；
+    // 实际收敛通常远早于两者，仅在步数/收敛判据内提前 CONVERGENCE）
+    options.max_solver_time_in_seconds = 0.05;
     options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
     options.minimizer_progress_to_stdout = false;
 

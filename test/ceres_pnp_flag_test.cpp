@@ -3,12 +3,14 @@
 //      · {IPPE, ITERATIVE}          —— 纯 OpenCV（原有行为）
 //      · {IPPE, ITERATIVE, CERES}   —— OpenCV 粗解 + Ceres 精化（初值=上一阶段结果）
 //      · {CERES}                    —— 仅 Ceres，从默认位姿开始求解
-//   2) CeresPoseEstimator::solve 支持传入初始位姿进一步优化。
+//   2) CeresPoseEstimator::solve 支持传入初始位姿进一步优化（constraints 传空）。
 //   3) CeresPoseEstimator::solve 新增物体轴-方向夹角硬约束模式：传入
 //      std::vector<AxisCosConstraintParam>，每条含（物体本体轴 cam 系表示、
 //      cam 系目标方向、目标夹角余弦），要求该本体轴经位姿旋转后在 cam 系方向
 //      与目标方向的夹角余弦==目标值，以 ~1e8 权重作硬等号约束全程生效
 //      （含与重投影最优冲突时仍被强制满足；多条约束可并存）。
+//   4) CameraProjection::solvePnP_Cam 支持透传 constraints（flags 含
+//      SOLVEPNP_CERES 时经 Ceres 生效，缺省为空）。
 // 合成数据：小装甲板 4 角点（与 ArmorModel 同尺寸），标准相机内参，
 // 由已知 rvec/tvec 生成像素观测，比较各 flags 恢复的位姿/重投影误差。
 #include <cstdio>
@@ -111,16 +113,17 @@ int main() {
         double rms0 = reprojRms(pts_pnp, p2d, rvec_init, tvec_init, cp);
 
         cv::Mat rvec_out, tvec_out;
-        bool ok = est.solve(pts_pnp, p2d, rvec_out, tvec_out, rvec_init, tvec_init);
+        // 传空 constraints = 普通精化（无轴-方向夹角约束）
+        bool ok = est.solve(pts_pnp, p2d, rvec_out, tvec_out, rvec_init, tvec_init, {});
         double rms1 = reprojRms(pts_pnp, p2d, rvec_out, tvec_out, cp);
         double dist = norm(CameraProjection::pnpTvecToCamPosi(tvec_out) - pos_true_cam);
         printf("[ceres refine w/ init pose] ok=%d rms %.3f px -> %.3f px, |pos-pos_true|=%.4f m\n",
                ok ? 1 : 0, rms0, rms1, dist);
         if (!ok || rms1 >= rms0) fails++;
 
-        // 同一接口不传初值（默认位姿开始）
+        // 同一接口不传初值（默认位姿开始，constraints 为空）
         cv::Mat rvec_d, tvec_d;
-        bool ok2 = est.solve(pts_pnp, p2d, rvec_d, tvec_d);
+        bool ok2 = est.solve(pts_pnp, p2d, rvec_d, tvec_d, {});
         double rms2 = reprojRms(pts_pnp, p2d, rvec_d, tvec_d, cp);
         double dist2 = norm(CameraProjection::pnpTvecToCamPosi(tvec_d) - pos_true_cam);
         printf("[ceres default start       ] ok=%d rms %.3f px, |pos-pos_true|=%.4f m\n",
@@ -245,6 +248,38 @@ int main() {
                    ok ? 1 : 0, err, dist);
             if (!ok || err > 2e-3) fails++;
         }
+    }
+
+    // ── 场景 4：solvePnP_Cam 的 constraints 透传（flags 含 SOLVEPNP_CERES 时生效）──
+    // 用 axis=(0,1,0)（本体前向轴）dir=(0,0,1)（cam 竖直上）target=cos85°：已知该
+    // 约束会把输出姿态的 pitch（pnpRvecToEuler）钉在 5°（=90°−85°，见实现语义），
+    // 用于证明约束经由 solvePnP_Cam 真正传到了 Ceres 求解。
+    {
+        const double cos85 = std::cos(85.0 * 3.14159265358979323846 / 180.0);
+        AxisCosConstraintParam c;
+        c.axis_body_cam = cv::Vec3f(0, 1, 0);
+        c.dir_cam       = cv::Vec3f(0, 0, 1);
+        c.target_cos    = cos85;
+
+        // 对照：纯 OpenCV（无约束）解的 pitch
+        Vec3f pos_ref, euler_ref;
+        bool ok_ref = cp.solvePnP_Cam(armor_local, p2d,
+                                      {cv::SOLVEPNP_IPPE, cv::SOLVEPNP_ITERATIVE},
+                                      pos_ref, euler_ref);
+
+        // 带约束的 Ceres 精化
+        Vec3f pos_cam, euler_cam;
+        bool ok = cp.solvePnP_Cam(
+            armor_local, p2d,
+            {cv::SOLVEPNP_IPPE, cv::SOLVEPNP_ITERATIVE, CameraProjection::SOLVEPNP_CERES},
+            pos_cam, euler_cam, std::vector<AxisCosConstraintParam>{c});
+
+        const double rad2deg = 180.0 / 3.14159265358979323846;
+        const double pitch_deg = euler_cam[1] * rad2deg;
+        const double pitch_ref_deg = euler_ref[1] * rad2deg;
+        printf("[solvePnP_Cam +constraint] ok=%d ok_ref=%d pitch=%.3f deg (期望≈5.0) 无约束pitch=%.3f deg\n",
+               ok ? 1 : 0, ok_ref ? 1 : 0, pitch_deg, pitch_ref_deg);
+        if (!ok || !ok_ref || std::fabs(pitch_deg - 5.0) > 0.5) fails++;
     }
 
     printf(fails ? "\nRESULT: %d FAILED\n" : "\nRESULT: ALL PASSED\n", fails);
