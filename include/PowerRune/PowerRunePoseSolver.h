@@ -5,7 +5,7 @@
 #include <vector>
 #include <memory>
 #include "PowerRune/PowerRuneInfer.h"
-#include "common/CameraProjection.h"
+#include "common/pose/CameraProjection.h"
 
 // 联合位姿解算结果
 struct CombinedPoseResult {

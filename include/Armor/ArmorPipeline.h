@@ -27,7 +27,7 @@
 #include "Armor/OutpostESEKF.h"
 #include "Armor/EKF/SuperPowerClassEKF.h"   // 移植 EKF 封装：label 0~5 每类一个 ClassEKF（sp_ekf）
 #include "Armor/NewestObjectTracker.h"      // 最新物体位姿保持：label 7~8 各一个 NewestObjectTracker（sp_ekf）
-#include "common/CameraProjection.h"
+#include "common/pose/CameraProjection.h"
 #include "common/TransformTree/RobotTfTree.h"
 #include "Armor/ArmorModel.h"
 #include "common/Input/IInputMode.h"

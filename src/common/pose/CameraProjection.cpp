@@ -1,4 +1,5 @@
-#include "common/CameraProjection.h"
+#include "common/pose/CameraProjection.h"
+#include "common/pose/CeresPoseEstimator.h"
 
 #include <cmath>
 
@@ -143,11 +144,26 @@ bool CameraProjection::solvePnP_Cam(const std::vector<cv::Point3f>& object_point
     }
 
     cv::Mat rvec, tvec;
+    bool has_pose = false;   // 是否已有上一阶段解算结果（作为 guess / Ceres 初值）
     for (size_t i = 0; i < flags.size(); ++i) {
-        bool use_guess = (i > 0);
-        if (!solvePnP(pnp_points, image_points, rvec, tvec, use_guess, flags[i])) {
-            return false;
+        if (flags[i] == SOLVEPNP_CERES) {
+            // ── 自定义 flag：Ceres 位姿优化/精化 ──
+            // 已有上一阶段结果 → 以其为初始位姿进一步优化；
+            // 否则（为首个 flag）→ 从默认位姿开始优化（从头求解）。
+            CeresPoseEstimator estimator(*this);
+            const bool ok = has_pose
+                ? estimator.solve(pnp_points, image_points, rvec, tvec, rvec, tvec)
+                : estimator.solve(pnp_points, image_points, rvec, tvec);
+            if (!ok) {
+                return false;
+            }
+        } else {
+            // OpenCV 标准 flag：除首个外均以上一阶段结果作为 extrinsic guess
+            if (!solvePnP(pnp_points, image_points, rvec, tvec, has_pose, flags[i])) {
+                return false;
+            }
         }
+        has_pose = true;
     }
 
     position_cam = pnpTvecToCamPosi(tvec);

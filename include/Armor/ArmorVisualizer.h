@@ -11,7 +11,7 @@
 #include "Armor/ArmorInfer.h"
 #include "RobotController.h"
 #include "common/TransformTree/RobotTfTree.h"
-#include "common/CameraProjection.h"
+#include "common/pose/CameraProjection.h"
 
 /**
  * @brief 可视化所需的数据打包结构体（由 ArmorPipeline 各阶段填充）

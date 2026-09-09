@@ -14,7 +14,7 @@
 #include <Eigen/Geometry>
 
 #include "common/TransformTree/RobotTfTree.h"
-#include "common/CameraProjection.h"
+#include "common/pose/CameraProjection.h"
 
 class OutpostESEKF {
 public:

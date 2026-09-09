@@ -3,7 +3,7 @@
 
 #include "PowerRune/PowerRunePoseSolver.h"
 #include "common/TransformTree/RobotTfTree.h"
-#include "common/CameraProjection.h"
+#include "common/pose/CameraProjection.h"
 #include "PowerRune/PowerRuneInfer.h"
 #include "PowerRune/RollPredictor.h"
 
