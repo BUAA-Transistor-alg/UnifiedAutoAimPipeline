@@ -4,6 +4,16 @@
 #include <string>
 #include <iostream>
 
+namespace {
+
+// 第一级滤波（y_axis_filter）位置坐标限位参数（相对本帧底盘在 world 系下的位置）：
+//   xy：限在以底盘 world xy 为圆心的半径 kFilterPosXyRadiusM 圆内；
+//   z ：限在底盘 world z ± kFilterPosZHalfRangeM 内。
+constexpr float kFilterPosXyRadiusM   = 16.0f;  // xy 限位圆半径（米）
+constexpr float kFilterPosZHalfRangeM = 5.0f;   // z 相对底盘高度的半范围（米）
+
+}  // namespace
+
 // ==================== 构造 ====================
 
 // 构造本流水线所用的推理器（模型编译 + 预热；由 power_rune_infer_process 的 main 调用）
@@ -271,6 +281,11 @@ void PowerRunePipeline::processStage5(DataDeque& data)
     float inter_frame_dt = std::chrono::duration<float>(
         d->initial.frame_timestamp - s5_.last_frame_timestamp).count();
 
+    // 第一级滤波更新结果：NORMAL 正常；否则（输入异常被跳过 / 输出异常已自动重置）
+    // 一律视同本帧未识别到物体，异常值不会进入下一级滤波（RollPredictor）
+    bool filter_frame_valid = d->stage4.pose_valid;
+    YAxisFilter::UpdateResult filter_result = YAxisFilter::UpdateResult::NORMAL;
+
     if (d->stage4.pose_valid) {
         float time_diff = std::chrono::duration<float>(
             d->initial.frame_timestamp - s5_.last_valid_timestamp).count();
@@ -285,12 +300,25 @@ void PowerRunePipeline::processStage5(DataDeque& data)
             }
         }
 
-        s5_.y_axis_filter.update(
+        // 以本帧底盘在 world 系下的位置为圆心，配置第一级滤波（y_axis_filter）的
+        // 位置坐标限位：xy 限在底盘 world xy 为圆心的半径 16m 圆内，z 限在底盘
+        // world z ± 5m（异常值识别与输入跳过/输出自动重置由滤波器内部完成）
+        const ExtraInputInfo& extra = d->initial.extra_info;
+        s5_.y_axis_filter.setPositionLimits(
+            cv::Vec3f(static_cast<float>(extra.chassis_x),
+                      static_cast<float>(extra.chassis_y),
+                      static_cast<float>(extra.chassis_z)),
+            kFilterPosXyRadiusM, kFilterPosZHalfRangeM);
+
+        filter_result = s5_.y_axis_filter.update(
             d->stage4.pr_world_posi,
             d->stage4.pr_world_rot_mat,
             d->initial.frame_timestamp,
             is_continuous,
             roll_predictor_R);
+    }
+
+    if (filter_frame_valid && filter_result == YAxisFilter::UpdateResult::NORMAL) {
         s5_.last_valid_timestamp = d->initial.frame_timestamp;
 
         d->stage5.filtered_omega = s5_.y_axis_filter.getAngularVelocity();
@@ -316,6 +344,9 @@ void PowerRunePipeline::processStage5(DataDeque& data)
         s5_.roll_predictor.update(filtered_euler[2], d->initial.frame_timestamp,
                                   filtered_posi, filtered_y_axis_R);
     } else {
+        // 本帧无有效观测（pose 无效，或第一级滤波输入含异常值 / 输出异常已自动
+        // 重置）：不把本帧任何滤波值送入下一级滤波（RollPredictor），按未识别到
+        // 物体处理（仅随时间推移平移拟合参数；超时则整体重置）
         float time_since_valid = std::chrono::duration<float>(
             d->initial.frame_timestamp - s5_.last_valid_timestamp).count();
         if (time_since_valid > 3.0f) {

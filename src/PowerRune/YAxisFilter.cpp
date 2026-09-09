@@ -3,6 +3,48 @@
 #include <limits>
 #include <algorithm>
 
+namespace {
+
+// 异常值判定：NaN、±inf、或绝对值超过上限（1e6）
+bool isAnomalous(float v)
+{
+    return std::isnan(v) || std::isinf(v) || std::fabs(v) > YAxisFilter::kAnomalyAbsLimit;
+}
+
+// 位置是否含异常分量
+bool positionAnomalous(const cv::Vec3f& p)
+{
+    for (int i = 0; i < 3; ++i) {
+        if (isAnomalous(p[i])) return true;
+    }
+    return false;
+}
+
+// 旋转矩阵是否异常（空矩阵 / 尺寸或类型不符 / 含异常元素都视为异常）
+bool rotationAnomalous(const cv::Mat& R)
+{
+    if (R.empty() || R.rows != 3 || R.cols != 3 || R.type() != CV_32F) return true;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            if (isAnomalous(R.at<float>(i, j))) return true;
+        }
+    }
+    return false;
+}
+
+// 滤波输出状态是否异常（滤波位置 / 角速度 / 姿态四元数）
+bool stateAnomalous(const cv::Vec3f& p_est, const Eigen::Quaternionf& q_est, float omega_est)
+{
+    if (positionAnomalous(p_est)) return true;
+    if (isAnomalous(omega_est)) return true;
+    for (int i = 0; i < 4; ++i) {
+        if (isAnomalous(q_est.coeffs()[i])) return true;
+    }
+    return false;
+}
+
+}  // namespace
+
 // 辅助：将 OpenCV 3x3 浮点矩阵转为 Eigen 四元数
 Eigen::Quaternionf YAxisFilter::matToQuaternion(const cv::Mat& R)
 {
@@ -31,6 +73,53 @@ YAxisFilter::YAxisFilter(float alpha_slow, float alpha_fast, float alpha_pos, fl
     : alpha_slow_(alpha_slow), alpha_fast_(alpha_fast), alpha_pos_(alpha_pos), alpha_omega_(alpha_omega), alpha_reg_(alpha_reg)
 {
     resetState();
+}
+
+// 配置位置坐标限位（相对 chassis 系原点在 world 系下的坐标）
+void YAxisFilter::setPositionLimits(const cv::Vec3f& chassis_world_origin,
+                                    float xy_radius, float z_half_range)
+{
+    pos_center_    = chassis_world_origin;
+    xy_radius_     = xy_radius;
+    z_half_range_  = z_half_range;
+    range_enabled_ = (xy_radius > 0.0f && z_half_range > 0.0f);
+    // 立即把当前状态钳制到新范围内，保证“滤波坐标始终受限”的不变量
+    if (inited_) {
+        p_est_ = clampPositionToLimits(p_est_);
+    }
+}
+
+// 关闭位置坐标限位（构造后的默认状态）
+void YAxisFilter::disablePositionLimits()
+{
+    range_enabled_ = false;
+    xy_radius_     = 0.0f;
+    z_half_range_  = 0.0f;
+}
+
+// 将位置钳制到配置的坐标范围内（未启用限位时原样返回）
+cv::Vec3f YAxisFilter::clampPositionToLimits(const cv::Vec3f& p) const
+{
+    if (!range_enabled_) return p;
+
+    cv::Vec3f out = p;
+
+    // xy：限在以 pos_center_ 的 xy 为圆心、半径 xy_radius_ 的圆内
+    float dx = p[0] - pos_center_[0];
+    float dy = p[1] - pos_center_[1];
+    float dist = std::sqrt(dx * dx + dy * dy);
+    if (dist > xy_radius_) {
+        float scale = xy_radius_ / dist;
+        out[0] = pos_center_[0] + dx * scale;
+        out[1] = pos_center_[1] + dy * scale;
+    }
+
+    // z：限在 pos_center_.z ± z_half_range_ 内
+    float dz = p[2] - pos_center_[2];
+    if (dz >  z_half_range_) out[2] = pos_center_[2] + z_half_range_;
+    if (dz < -z_half_range_) out[2] = pos_center_[2] - z_half_range_;
+
+    return out;
 }
 
 // 计算旋转矩阵到轴角的辅助函数
@@ -157,19 +246,36 @@ std::pair<Eigen::Quaternionf, int> YAxisFilter::specialPrediction(
 }
 
 // 核心更新（带角速度预测-校正与五边形对称跳变检测，自动初始化）
-void YAxisFilter::update(const cv::Vec3f& obs_pos, const cv::Mat& obs_rot,
-                         const std::chrono::steady_clock::time_point& frame_timestamp,
-                         bool is_continuous,
-                         const cv::Mat& roll_predictor_R)
+// 返回 UpdateResult：
+//  - INPUT_INVALID_SKIPPED：输入含异常值（NaN/inf/绝对值>kAnomalyAbsLimit），
+//    本帧被跳过（等同该帧未识别到物体），内部状态保持不变；
+//  - OUTPUT_INVALID_RESET ：更新后输出状态出现异常值，已立即自动重置，
+//    调用方不应把本帧输出送入下一级滤波。
+YAxisFilter::UpdateResult YAxisFilter::update(
+    const cv::Vec3f& obs_pos, const cv::Mat& obs_rot,
+    const std::chrono::steady_clock::time_point& frame_timestamp,
+    bool is_continuous,
+    const cv::Mat& roll_predictor_R)
 {
-    // 自动初始化
+    // ====== 输入异常检测：观测位置 / 旋转含 NaN、±inf 或绝对值超过
+    //       kAnomalyAbsLimit 的分量时，跳过本输入（等同该帧未识别到物体）======
+    if (positionAnomalous(obs_pos) || rotationAnomalous(obs_rot)) {
+        return UpdateResult::INPUT_INVALID_SKIPPED;
+    }
+
+    // 自动初始化（首次调用：直接以观测初始化状态，位置同样受坐标限位约束）
     if (!inited_) {
-        p_est_ = obs_pos;
+        p_est_ = clampPositionToLimits(obs_pos);
         q_est_ = matToQuaternion(obs_rot);
         omega_est_ = 0.0f;
         inited_ = true;
         last_timestamp_ = frame_timestamp;
-        return;
+        // 初始化后同样做一次输出异常检测（防御退化输入，如全零旋转矩阵）
+        if (stateAnomalous(p_est_, q_est_, omega_est_)) {
+            resetState();
+            return UpdateResult::OUTPUT_INVALID_RESET;
+        }
+        return UpdateResult::NORMAL;
     }
 
     // 内部计算 dt
@@ -244,8 +350,10 @@ void YAxisFilter::update(const cv::Vec3f& obs_pos, const cv::Mat& obs_rot,
             // 特殊预测：确定基准旋转和 a 搜索范围，尝试 ±2π/5 偏移选最接近 R3 的候选
             Eigen::Quaternionf q_base;
             int a_range = 1;
-            if ((!is_continuous) && (!roll_predictor_R.empty())) {
-                // 优先使用 RollPredictor 的预测旋转矩阵，否则退化为正常预测 R2
+            // 优先使用 RollPredictor 的预测旋转矩阵（使用前同样做异常检测，
+            // 异常时退化为正常预测 R2），否则退化为正常预测 R2
+            if ((!is_continuous) && (!roll_predictor_R.empty()) &&
+                (!rotationAnomalous(roll_predictor_R))) {
                 a_range = 2;
                 q_base = disapplyJumpCorrection(matToQuaternion(roll_predictor_R));
             } else {
@@ -329,8 +437,19 @@ void YAxisFilter::update(const cv::Vec3f& obs_pos, const cv::Mat& obs_rot,
     q_est_ = q_corr * q_est_;
     q_est_.normalize();  // 防止数值漂移
 
-    // 10. 更新位置（慢增益）
+    // 10. 更新位置（慢增益），并钳制到配置的坐标限位范围内
     p_est_ += alpha_pos_ * (obs_pos - p_est_);
+    p_est_ = clampPositionToLimits(p_est_);
+
+    // ====== 输出异常检测：更新后状态（滤波位置 / 姿态 / 角速度）出现 NaN、±inf
+    //       或绝对值超过 kAnomalyAbsLimit 的分量时，立即自动重置，保证异常值
+    //       不会继续污染状态，也不会经本帧输出流入下一级滤波 ======
+    if (stateAnomalous(p_est_, q_est_, omega_est_)) {
+        resetState();
+        return UpdateResult::OUTPUT_INVALID_RESET;
+    }
+
+    return UpdateResult::NORMAL;
 }
 
 // 将内部状态重置为初始值（由构造函数和 reset() 共用）

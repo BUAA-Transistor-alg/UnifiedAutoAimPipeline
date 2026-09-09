@@ -20,10 +20,31 @@
  * 
  * 当观测跳变超过阈值时（例如由五边形对称性导致的 2π/5 整数倍跳变），
  * 自动执行特殊预测：在正常预测基础上尝试 ±2π/5 偏移，选择最接近观测的候选姿态。
+ *
+ * 异常值防护（见 update() 返回值 UpdateResult）：
+ *  - 输入含 NaN / ±inf / 绝对值超过 kAnomalyAbsLimit 的异常值时，跳过该输入
+ *    （等同该帧未识别到物体），内部状态保持不变；
+ *  - 更新后输出状态出现异常值时立即自动重置，异常值不会流出到下一级滤波。
+ * 可选位置坐标限位（setPositionLimits）：把滤波位置 xy 限制在以 chassis 系原点在
+ * world 系下 xy 为圆心的圆内、z 限制在相对 chassis z 的 ± 半范围内。
  */
 class YAxisFilter
 {
 public:
+    /// 异常值判定阈值：任何输入/状态分量的绝对值超过该值即视为异常（NaN/±inf 同理）
+    static constexpr float kAnomalyAbsLimit = 1e6f;
+
+    /**
+     * @brief update() 的更新结果状态
+     */
+    enum class UpdateResult {
+        NORMAL,                 ///< 本帧正常处理：状态已推进
+        INPUT_INVALID_SKIPPED,  ///< 输入含异常值（NaN/inf/绝对值>kAnomalyAbsLimit），
+                                ///< 本帧被跳过（等同该帧未识别到物体），内部状态保持不变
+        OUTPUT_INVALID_RESET    ///< 更新后输出状态出现异常值，已立即自动重置
+                                ///< （状态回到未初始化；调用方不应把本帧输出送入下一级滤波）
+    };
+
     /**
      * @brief 构造函数
      * @param alpha_slow   轴倾斜（垂直方向）的增益，推荐 0.01~0.05，越小越平滑
@@ -39,19 +60,46 @@ public:
                 float alpha_reg   = 1.0f);
 
     /**
+     * @brief 配置位置坐标限位（相对 chassis 系原点在 world 系下的坐标）：
+     *        - xy：限在以 chassis_world_origin 的 xy 为圆心、半径 xy_radius 的圆内；
+     *        - z ：限在 chassis_world_origin.z ± z_half_range 内。
+     *        配置后，滤波位置 p_est_（含初始化与每次更新后的状态）都会被钳制在该范围内，
+     *        保证滤波输出的坐标不会越过该物理范围。
+     * @param chassis_world_origin  chassis 系原点在 world 系下的坐标（米）
+     * @param xy_radius             xy 限位圆半径（米，>0 时启用限位）
+     * @param z_half_range          z 相对 chassis_world_origin.z 的半范围（米，>0 时启用）
+     */
+    void setPositionLimits(const cv::Vec3f& chassis_world_origin,
+                           float xy_radius, float z_half_range);
+
+    /**
+     * @brief 关闭位置坐标限位（构造后的默认状态）
+     */
+    void disablePositionLimits();
+
+    /**
      * @brief 核心更新函数，自动检测首次调用并初始化。
      *        输入观测值和时间戳，内部自动计算时间步长 dt。
+     *
+     * 异常值处理：
+     *  - 输入异常（观测位置/旋转含 NaN、±inf 或绝对值超过 kAnomalyAbsLimit 的分量）时，
+     *    本帧被跳过（返回 INPUT_INVALID_SKIPPED，等同该帧未识别到物体），内部状态保持不变；
+     *  - 更新完成后若发现输出状态（滤波位置/姿态/角速度）出现异常值，立即自动重置
+     *    滤波器并返回 OUTPUT_INVALID_RESET，调用方不应把本帧输出送入下一级滤波。
+     *
      * @param obs_pos           观测到的位置
      * @param obs_rot           观测到的姿态旋转矩阵（3x3 float）
      * @param frame_timestamp   当前帧的时间戳，内部用于计算 dt
      * @param is_continuous     是否为连续帧（dt < 阈值）
      * @param roll_predictor_R  当 is_continuous==false 时，可选的 RollPredictor 预测旋转矩阵，
      *                          用于替代 R2 作为 specialPrediction 的基准
+     * @return UpdateResult::NORMAL 正常；INPUT_INVALID_SKIPPED 输入异常被跳过；
+     *         OUTPUT_INVALID_RESET 输出异常、已自动重置
      */
-    void update(const cv::Vec3f& obs_pos, const cv::Mat& obs_rot,
-                const std::chrono::steady_clock::time_point& frame_timestamp,
-                bool is_continuous = true,
-                const cv::Mat& roll_predictor_R = cv::Mat());
+    UpdateResult update(const cv::Vec3f& obs_pos, const cv::Mat& obs_rot,
+                        const std::chrono::steady_clock::time_point& frame_timestamp,
+                        bool is_continuous = true,
+                        const cv::Mat& roll_predictor_R = cv::Mat());
 
     /**
      * @brief 获取当前滤波后的位置
@@ -168,6 +216,15 @@ private:
 
     // 将状态重置为初始值（由构造函数和 reset() 共用）
     void resetState();
+
+    // 将位置钳制到配置的坐标范围内（未启用限位时原样返回）
+    cv::Vec3f clampPositionToLimits(const cv::Vec3f& p) const;
+
+    // 位置坐标限位配置（默认关闭，见 setPositionLimits / disablePositionLimits）
+    bool      range_enabled_  = false;
+    cv::Vec3f pos_center_     = cv::Vec3f(0.0f, 0.0f, 0.0f);  // chassis 系原点在 world 系坐标（米）
+    float     xy_radius_      = 0.0f;  // xy 限位圆半径（米）
+    float     z_half_range_   = 0.0f;  // z 相对 pos_center_.z 的半范围（米）
 
     // 增益参数
     float alpha_slow_;
