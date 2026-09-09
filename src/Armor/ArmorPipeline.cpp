@@ -108,6 +108,9 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
                                  const RobotConfig::CameraParams& camera)
     : queue_max_sizes_(queue_max_sizes)
     , min_delay_seconds_(min_delay_seconds)
+    , stage5_stick_priority_m_(RobotConfig::instance().armor.targetSelection.stage5StickPriorityM)
+    , slow_w_lower_(RobotConfig::instance().armor.targetSelection.slowAngularVelocityLower)
+    , slow_w_upper_(RobotConfig::instance().armor.targetSelection.slowAngularVelocityUpper)
     , s1_(RobotConfig::instance().armor.inputWidth,
           RobotConfig::instance().armor.inputHeight)
     , s4_(camera)
@@ -436,35 +439,69 @@ void ArmorPipeline::processStage5(DataDeque& data)
 
     // ── 选择本帧使用的目标滤波结果 ──
     // 有效候选：OutpostESEKF（esekf_initialized）、label 0~5 移植 EKF
-    // （state_available_）、label 7~8 最新物体（valid()）；取车体中心距底盘系原点
-    // （world 系，chassis_x/y/z）最近的那一类，stage5 输出全部使用其结果。
+    // （state_available_）、label 7~8 最新物体（valid()）。基础指标仍为车体中心
+    // 距底盘系原点（world 系，chassis_x/y/z）的距离；在此基础上做 L1 目标级滞回：
+    // 上一帧选中的目标（last_chosen_label_）若本帧仍为候选，则其“被比较距离”减去
+    // stage5_stick_priority_m_（米，config armor.target_selection）作为优先度——
+    // 其它目标须比它明显更近（超过该优先度）才会切换，避免多候选来回抖动。
+    // stage5 目标级滞回无条件启用（与目标角速度无关）。
     const cv::Vec3d chassis_origin(info.chassis_x, info.chassis_y, info.chassis_z);
-    int best_label = -1;
+    const int stick_label = last_chosen_label_;
     double best_dist = std::numeric_limits<double>::infinity();
-    if (esekf_initialized) {
-        const double dist = cv::norm(s5_.esekf->getPosition() - chassis_origin);
-        if (dist < best_dist) {
-            best_dist = dist;
-            best_label = ArmorDetect::OUTPOST_CLASS;   // 6：OutpostESEKF
+    int best_label = -1;
+    // 计算“参与比较的距离”：当前（滞回）目标减去优先度。
+    auto consider = [&](int label, double dist) {
+        double eff = dist;
+        if (label == stick_label) eff -= stage5_stick_priority_m_;
+        if (eff < best_dist) {
+            best_dist = eff;
+            best_label = label;
         }
+    };
+    if (esekf_initialized) {
+        consider(ArmorDetect::OUTPOST_CLASS,   // 6：OutpostESEKF
+                 cv::norm(s5_.esekf->getPosition() - chassis_origin));
     }
     for (int label = 0; label < NUM_CLASS_EKF; ++label) {
         if (!s5_.class_ekfs[label].stateAvailable()) continue;
-        const double dist = cv::norm(s5_.class_ekfs[label].getPosition() - chassis_origin);
-        if (dist < best_dist) {
-            best_dist = dist;
-            best_label = label;
-        }
+        consider(label, cv::norm(s5_.class_ekfs[label].getPosition() - chassis_origin));
     }
     for (int label = ArmorDetect::BASE_CLASS; label <= ArmorDetect::BASE_LARGE_CLASS; ++label) {
         const sp_ekf::NewestObjectTracker& tracker =
             s5_.newest_object_trackers[label - ArmorDetect::BASE_CLASS];
         if (!tracker.valid()) continue;
-        const double dist = cv::norm(tracker.getPosition() - chassis_origin);
-        if (dist < best_dist) {
-            best_dist = dist;
-            best_label = label;
+        consider(label, cv::norm(tracker.getPosition() - chassis_origin));
+    }
+    last_chosen_label_ = best_label;   // 记录本帧选中目标（供下一帧滞回）
+
+    // ── L2 慢目标施密特触发器（决定下游瞄准点滞回是否允许）──
+    // 仅 esekf（前哨站，label 6）与 ClassEKF（label 0~5）有目标自身角速度属性：
+    //   esekf → getYawRate()（绕世界系 z，rad/s）；ClassEKF → state_.w（rad/s）。
+    // 基地（label 7/8）无角速度 → 默认不滞回（slow_target = false）。
+    // 施密特触发（无连续帧计数）：|ω| < lower → 慢；|ω| > upper → 不慢；
+    // lower<=|ω|<=upper → 保持上一帧判定。目标切换时按新目标当前 |ω| 重新初始化。
+    double omega_abs = -1.0;   // -1 = 无角速度属性
+    if (best_label == ArmorDetect::OUTPOST_CLASS && esekf_initialized) {
+        omega_abs = std::fabs(s5_.esekf->getYawRate());
+    } else if (best_label >= 0 && best_label < NUM_CLASS_EKF &&
+               s5_.class_ekfs[best_label].stateAvailable()) {
+        omega_abs = std::fabs(s5_.class_ekfs[best_label].getAngularVelocity());
+    }
+    if (omega_abs < 0.0) {
+        // 无目标或无角速度属性：锁存复位，慢目标 = false
+        slow_latch_label_ = -1;
+        slow_latch_ = false;
+        d->stage5.slow_target = false;
+    } else {
+        if (slow_latch_label_ != best_label) {
+            // 目标切换：以当前 |ω| 重新初始化锁存（视新目标是否确实低于下阈值）
+            slow_latch_label_ = best_label;
+            slow_latch_ = (omega_abs < slow_w_lower_);
         }
+        if (omega_abs < slow_w_lower_) slow_latch_ = true;
+        else if (omega_abs > slow_w_upper_) slow_latch_ = false;
+        // lower <= |ω| <= upper：保持 slow_latch_ 不变
+        d->stage5.slow_target = slow_latch_;
     }
 
     d->stage5.target_valid = (best_label >= 0);
@@ -652,6 +689,7 @@ PipelineResult ArmorPipeline::tryPopFrame(const std::chrono::steady_clock::time_
             result.predictor.timestamp = front->stage5.target_predictor_timestamp;
             result.predictor.masked_indices =
                 std::move(front->stage5.masked_indices);
+            result.predictor.slow_target = front->stage5.slow_target;
         }
         result.valid = true;
         output_queue_.pop_front();
@@ -704,6 +742,10 @@ void ArmorPipeline::clear()
         for (auto& tracker : s5_.newest_object_trackers) {
             tracker.reset();
         }
+        // 重置 stage5 目标选取滞回跨帧状态（L1 目标粘滞 + L2 慢目标施密特锁存）
+        last_chosen_label_ = -1;
+        slow_latch_label_ = -1;
+        slow_latch_ = false;
 
         // 队列计数归零
         for (auto& qs : queue_sizes_) qs.store(0);

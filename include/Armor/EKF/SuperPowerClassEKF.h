@@ -117,6 +117,10 @@ public:
     /// 车体中心世界坐标（米）。仅 state 有效时有效（先查 stateAvailable()）。
     const cv::Vec3d& getPosition() const { return position_; }
 
+    /// 车体当前角速度（rad/s，绕世界系 z 轴的 yaw 旋转，取自最近滤波后验 state_.w）。
+    /// 仅 state 有效时有效（先查 stateAvailable()）。供目标选取判断“慢目标”用。
+    double getAngularVelocity() const { return state_available_ ? state_.w : 0.0; }
+
     /// 车体当前角度（yaw）对应的旋转矩阵（CV_64F，world 系）。
     /// 仅 state 有效时有效（先查 stateAvailable()）；与 OutpostESEKF::getRotationMatrix
     /// 形式一致，只是仅含绕世界系 z 轴的旋转（车体 yaw）。

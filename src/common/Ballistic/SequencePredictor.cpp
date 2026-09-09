@@ -29,25 +29,56 @@ TargetStrategy targetStrategyForSource(const SequencePredictor::PredictorSource&
 //   - NEAREST：预测点距离当前 muzzle 原点最近（默认）；
 //   - LOWEST_Z：预测点 world z 最低（PowerRune 能量机关模式）。
 // predictor.masked_indices 中索引对应的瞄准点（目标）不参与选择。
+// 慢目标瞄准点滞回（Armor 目标，predictor.slow_target == true）：
+//   sticky_index >= 0 表示本实际计算点“粘”的瞄准点索引（上一帧序列第一个值
+//   选中的点 / 本帧前一个实际计算点选中的点）。粘滞目标若未被屏蔽且存在于候选
+//   列表中，则保持它，仅当存在其它未被屏蔽目标比它“明显更好”（criterion 优于
+//   sticky 超过 stick_delta，delta = aim_stick_ratio × t=0 全瞄准点到质心平均距离）
+//   时才切换；sticky 不存在 / 被屏蔽 / 为 -1 → 退回纯策略选最优。
 // 结果为空（无可用目标）时返回默认无效 Result（success=false）。
 PredictedBallisticSolver::Result selectTargetResult(
     const std::vector<PredictedBallisticSolver::Result>& candidates,
     TargetStrategy strategy, const cv::Vec3f& muzzle_origin,
-    const SequencePredictor::Predictor& predictor) {
+    const SequencePredictor::Predictor& predictor,
+    int sticky_index, double stick_delta) {
     PredictedBallisticSolver::Result best;
     if (candidates.empty()) return best;
 
-    double best_criterion = std::numeric_limits<double>::infinity();
     const bool lowest_z = (strategy == TargetStrategy::LOWEST_Z);
+    auto criterionOf = [&](const PredictedBallisticSolver::Result& c) {
+        return lowest_z
+            ? (double)c.predicted_point[2]                        // world z
+            : (double)cv::norm(muzzle_origin - c.predicted_point); // muzzle 距离
+    };
+
+    // 全局最优（未被屏蔽）；同时寻找粘滞目标（未被屏蔽）
+    double best_criterion = std::numeric_limits<double>::infinity();
+    const PredictedBallisticSolver::Result* sticky = nullptr;
+    double sticky_criterion = 0.0;
+    bool sticky_found = false;
     for (const auto& c : candidates) {
         if (predictor.isIndexMasked(c.target_index)) continue;   // 屏蔽目标不参与选择
-        const double criterion = lowest_z
-            ? (double)c.predicted_point[2]                       // world z，取最小
-            : (double)cv::norm(muzzle_origin - c.predicted_point); // muzzle 距离，取最小
+        const double criterion = criterionOf(c);
+        if (sticky_index >= 0 && c.target_index == sticky_index) {
+            sticky = &c;
+            sticky_criterion = criterion;
+            sticky_found = true;
+        }
         if (criterion < best_criterion) {
             best_criterion = criterion;
             best = c;
         }
+    }
+    // 粘滞目标存在（未被屏蔽）时：仅当有其它目标比它“明显更好”（好过 stick_delta）
+    // 才切换，否则保持粘滞目标（含打平情形）。
+    if (sticky_found) {
+        const double best_other_criterion =
+            (best.target_index == sticky_index) ? std::numeric_limits<double>::infinity()
+                                                : best_criterion;
+        if (best_other_criterion < sticky_criterion - stick_delta) {
+            return best;   // 其它目标确实更优：切换
+        }
+        return *sticky;    // 保持当前（粘滞）目标
     }
     return best;
 }
@@ -60,7 +91,8 @@ SequencePredictor::SequencePredictor()
       yaw_bias_(RobotConfig::instance().common.predictSequence.yawBias),
       prediction_points_(RobotConfig::instance().common.predictSequence.predictionPoints),
       interpolation_refine_(RobotConfig::instance().common.predictSequence.interpolationRefine),
-      exact_lead_points_(RobotConfig::instance().common.predictSequence.exactLeadPoints) {
+      exact_lead_points_(RobotConfig::instance().common.predictSequence.exactLeadPoints),
+      aim_stick_ratio_(RobotConfig::instance().common.predictSequence.aimStickRatio) {
     // 默认线程数 min(硬件核数/2, 4)；为每个工作线程准备一个独立的
     // GimbalSolver + 各自绑定的 PredictedBallisticSolver
     const size_t T = pool_.size();
@@ -128,8 +160,9 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
     }
 
     // ── 自身跨帧状态：target_predictor 来源切换（含首次从无来源进入）时重置 ──
-    // State 当前暂为空；重置逻辑保留：后续在 State 中存放来源相关状态时，
-    // 来源切换（如 Armor 目标种类变化 / Armor → PowerRune）会自动清零。
+    // State 存放慢目标瞄准点滞回所需的“上一帧序列第一个值瞄准点索引”；来源切换
+    // （如 Armor 目标种类变化 / Armor → PowerRune）时自动清零（粘滞点随总目标切换
+    // 失效）。
     if (!(active_source_ == predictor.source)) {
         state_ = State{};
         active_source_ = predictor.source;
@@ -137,7 +170,7 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
 
     // 目标选择策略由来源自动选择（Armor → NEAREST，PowerRune → LOWEST_Z）。
     // 目标选择已移入本类：PredictedBallisticSolver::solve 返回全部目标点的解算
-    // 结果，实际目标（瞄准点）选择在下方并行任务内对每个实际计算点单独完成
+    // 结果，实际目标（瞄准点）选择在下方“并行解算 + 顺序粘滞选择”两步中完成
     // （不再设置 solver 的目标选择状态）。
     const TargetStrategy sel = targetStrategyForSource(predictor.source);
 
@@ -181,19 +214,58 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
     for (int j = 0; j < M; ++j) solve_idx.push_back(n + j * K);    // 原划分实际计算点
 
     const int U = (int)solve_idx.size();
-    std::vector<PredictedBallisticSolver::Result> solved((size_t)U);
     const size_t T = gimbals_.size();
+
+    // ── 慢目标瞄准点滞回参数（仅 predictor.slow_target 且 ratio > 0 时启用）──
+    // 滞回量 = aim_stick_ratio_ × (t=0 全部瞄准点到其质心的平均距离；忽略 mask、
+    // 用全部点，仅作该目标瞄准点分布的几何尺度估计)。
+    const bool aim_stick_enabled = predictor.slow_target && aim_stick_ratio_ > 0.0;
+    double aim_stick_delta = 0.0;
+    if (aim_stick_enabled) {
+        const std::vector<cv::Point3f> aims_now = predictor.function(0.0);
+        if (!aims_now.empty()) {
+            cv::Vec3f centroid(0.0f, 0.0f, 0.0f);
+            for (const auto& p : aims_now) centroid += cv::Vec3f(p.x, p.y, p.z);
+            centroid *= (1.0f / (float)aims_now.size());
+            double dist_sum = 0.0;
+            for (const auto& p : aims_now) {
+                const cv::Vec3f v(p.x, p.y, p.z);
+                dist_sum += cv::norm(v - centroid);
+            }
+            aim_stick_delta = aim_stick_ratio_ * (dist_sum / (double)aims_now.size());
+        }
+    }
+
+    // ── 1. 并行解算：每个实际计算点独立求出全部目标点的解算结果（不做目标选择）──
+    std::vector<std::vector<PredictedBallisticSolver::Result>> candidates_all((size_t)U);
     pool_.run_parallel(U, [&](int idx) {
         const int wid = workerGimbalIndex(next_gimbal_);
         const int ret_idx = solve_idx[(size_t)idx];   // 该实际计算点在返回点序列中的索引
         // solve() 返回预测函数列表中全部目标点的解算结果（不再内部选目标）；
-        // 本类在此按策略（sel）从中选出该实际计算点实际使用的目标
-        // （predictor.masked_indices 中索引对应的目标点不参与选择）
-        const std::vector<PredictedBallisticSolver::Result> candidates =
-            solvers_[(size_t)(wid % T)].solve(
-                predictor.function, extra_predict_time + (ret_idx + 1) * dt_control_);
-        solved[(size_t)idx] = selectTargetResult(candidates, sel, muzzle_origin, predictor);
+        // 实际目标选择在下方顺序循环完成。
+        candidates_all[(size_t)idx] = solvers_[(size_t)(wid % T)].solve(
+            predictor.function, extra_predict_time + (ret_idx + 1) * dt_control_);
     });
+
+    // ── 2. 顺序目标（瞄准点）选择（按时间顺序逐点传递粘滞）──
+    // 粘滞链（仅 aim_stick_enabled 时生效）：本帧第一个实际计算点（= 序列第一个
+    // 值）粘上一帧序列第一个值选中的瞄准点索引（state_.last_first_target_index；
+    // 无上一帧/来源切换后为 -1 → 直接选最优）；本帧后续实际计算点粘本帧前一个
+    // 实际计算点选中的索引（插值点继承左端实际点目标，无需另行处理）。
+    // selectTargetResult 内部处理粘滞被屏蔽/不存在时退回纯策略选最优。
+    std::vector<PredictedBallisticSolver::Result> solved((size_t)U);
+    int sticky_index = aim_stick_enabled ? state_.last_first_target_index : -1;
+    for (int u = 0; u < U; ++u) {
+        solved[(size_t)u] = selectTargetResult(
+            candidates_all[(size_t)u], sel, muzzle_origin, predictor,
+            aim_stick_enabled ? sticky_index : -1,
+            aim_stick_enabled ? aim_stick_delta : 0.0);
+        if (aim_stick_enabled) {
+            sticky_index = (solved[(size_t)u].target_index >= 0)
+                               ? solved[(size_t)u].target_index
+                               : -1;
+        }
+    }
 
     // ── 2. 组装返回点序列（实际计算点 + 插值/外推/复制点）──
     std::vector<Item> items((size_t)TOTAL);
@@ -268,6 +340,14 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
     res.yaw_world_origin = yaw_world_origin;
     // 积分补偿开关：仅在预测有效且 MCU 自瞄开关打开时启用
     res.integral_enable = res.valid && (st.mcu.auto_aim_switch == 1);
+
+    // ── 慢目标瞄准点滞回：记录本帧序列“第一个值”选中的瞄准点索引，作为下一帧
+    // 第一个值的粘滞点（state_ 已在来源切换时整体清零；首点无效 → -1 = 不粘）。
+    // 无论本帧是否启用滞回都记录（下一帧可能切换为慢目标需要基准）。
+    state_.last_first_target_index =
+        (res.valid && !res.items.empty() && res.items.front().target_index >= 0)
+            ? res.items.front().target_index
+            : -1;
 
     return res;
 }

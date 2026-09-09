@@ -292,6 +292,7 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.common.predictSequence.yawBias             = requireScalar<double>(ic, "yaw_bias", "common.predict_sequence");
     cfg.common.predictSequence.fireAngleLowerLimit = requireScalar<double>(ic, "fire_angle_lower_limit", "common.predict_sequence");
     cfg.common.predictSequence.fireAngleLength     = requireScalar<double>(ic, "fire_angle_length", "common.predict_sequence");
+    cfg.common.predictSequence.aimStickRatio       = requireScalar<double>(ic, "aim_stick_ratio", "common.predict_sequence");
 
     // 交叉校验：预测点数/插值倍数 >= 1；前导精确点数 >= 0；
     // pitch 序列提前数 m 必须小于总返回点数 (M-1)*K+1+n
@@ -315,6 +316,9 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     }
     if (cfg.common.predictSequence.fireSeqLead < 0) {
         throw std::runtime_error("RobotConfig: common.predict_sequence.fire_seq_lead 必须 >= 0");
+    }
+    if (cfg.common.predictSequence.aimStickRatio < 0.0) {
+        throw std::runtime_error("RobotConfig: common.predict_sequence.aim_stick_ratio 必须 >= 0");
     }
 
     // ══════════════ armor（独占参数） ══════════════
@@ -423,6 +427,25 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
                                  "armor_num 必须 >= 1，angular_velocity_fit.window_s 必须 >= 0.02，"
                                  "angular_velocity_fit.min_samples 必须 >= 2，"
                                  "joint_update 各门控阈值必须 > 0");
+    }
+
+    // ── armor.target_selection（目标选取滞回参数）──
+    const YAML::Node& sel = op["target_selection"];
+    if (!sel || !sel.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'armor.target_selection' 配置段");
+    cfg.armor.targetSelection.stage5StickPriorityM =
+        requireScalar<double>(sel, "stage5_stick_priority_m", "armor.target_selection");
+    cfg.armor.targetSelection.slowAngularVelocityLower =
+        requireScalar<double>(sel, "slow_angular_velocity_lower", "armor.target_selection");
+    cfg.armor.targetSelection.slowAngularVelocityUpper =
+        requireScalar<double>(sel, "slow_angular_velocity_upper", "armor.target_selection");
+    if (cfg.armor.targetSelection.stage5StickPriorityM < 0.0 ||
+        cfg.armor.targetSelection.slowAngularVelocityLower < 0.0 ||
+        cfg.armor.targetSelection.slowAngularVelocityUpper <=
+            cfg.armor.targetSelection.slowAngularVelocityLower) {
+        throw std::runtime_error("RobotConfig: armor.target_selection 取值非法："
+                                 "stage5_stick_priority_m / slow_angular_velocity_lower 必须 >= 0，"
+                                 "slow_angular_velocity_upper 必须 > slow_angular_velocity_lower");
     }
 
     // ══════════════ power_rune（独占参数） ══════════════

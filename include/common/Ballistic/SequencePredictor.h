@@ -91,6 +91,12 @@ public:
         // 输出模式进入保持模式）。
         std::vector<int> masked_indices;
 
+        // 本帧目标是否为“慢目标”（Armor 侧按目标角速度的施密特触发器判定后随
+        // 预测器一起传下，见 ArmorPipelineData::Stage5Data.slow_target）。仅当其为
+        // true 时 predict() 才启用瞄准点（板）滞回；PowerRune 等无角速度属性的
+        // 来源恒为 false（默认不滞回，维持每点独立选最优的原有行为）。
+        bool slow_target = false;
+
         /// 目标索引 index 是否被屏蔽（即位于 masked_indices 中）
         bool isIndexMasked(int index) const {
             for (int m : masked_indices) {
@@ -171,11 +177,16 @@ private:
     int    prediction_points_;       // M：实际精确解算点数
     int    interpolation_refine_;    // K：插值细化倍数
     int    exact_lead_points_;       // n：序列最前面拼接的精确解算前导点数（0 = 关闭）
+    double aim_stick_ratio_;         // 瞄准点滞回幅度系数（无单位，>=0；0 = 关闭）
 
-    // 自身跨帧状态（predict() 内部维护；当前暂为空，预留后续使用）：
-    // 当 target_predictor 来源（PredictorSource）切换或 invalidate() 时重置
+    // 自身跨帧状态（predict() 内部维护）：当 target_predictor 来源（PredictorSource）
+    // 切换或 invalidate() 时整体重置（随“总目标”切换失效）。
     struct State {
-        // 预留：后续可存放来源相关、需在来源切换时清零的跨帧状态
+        // 慢目标瞄准点滞回：上一帧预测序列“第一个值”选中的瞄准点索引
+        // （= 上一帧 items.front().target_index；无有效上一帧时为 -1）。
+        // 仅当本帧 Predictor.slow_target == true 时被用于滞回；来源切换/失效时
+        // 随 state_ 一并清零（无粘滞点 → 直接选最优）。
+        int last_first_target_index = -1;
     };
     State state_;
     PredictorSource active_source_;   // 当前 state_ 对应的来源（无有效预测时为 NONE）
