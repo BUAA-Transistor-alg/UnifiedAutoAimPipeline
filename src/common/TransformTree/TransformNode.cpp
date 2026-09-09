@@ -104,3 +104,17 @@ cv::Vec3f TransformNode::toSelfEuler(const cv::Vec3f& eulerInParent) const {
     cv::Mat parentRotation = CoordinateTransform::eulerToRotationMatrix(eulerInParent);
     return CoordinateTransform::rotationMatrixToEuler(nodeRotation.t() * parentRotation);
 }
+
+cv::Vec3f TransformNode::toParentVector(const cv::Vec3f& vectorInSelf) const {
+    cv::Mat R = CoordinateTransform::eulerToRotationMatrix(euler_);
+    cv::Mat v = (cv::Mat_<float>(3, 1) << vectorInSelf[0], vectorInSelf[1], vectorInSelf[2]);
+    cv::Mat rotated = R * v;
+    return cv::Vec3f(rotated.at<float>(0, 0), rotated.at<float>(1, 0), rotated.at<float>(2, 0));
+}
+
+cv::Vec3f TransformNode::toSelfVector(const cv::Vec3f& vectorInParent) const {
+    cv::Mat R = CoordinateTransform::eulerToRotationMatrix(euler_);
+    cv::Mat v = (cv::Mat_<float>(3, 1) << vectorInParent[0], vectorInParent[1], vectorInParent[2]);
+    cv::Mat rotated = R.t() * v;
+    return cv::Vec3f(rotated.at<float>(0, 0), rotated.at<float>(1, 0), rotated.at<float>(2, 0));
+}

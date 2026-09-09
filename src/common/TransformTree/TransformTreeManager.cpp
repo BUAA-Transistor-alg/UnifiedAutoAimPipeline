@@ -219,3 +219,25 @@ cv::Vec3f TransformTreeManager::transformEuler(const std::string& from, const st
     return CoordinateTransform::rotationMatrixToEuler(rotationInTo);
 }
 
+cv::Vec3f TransformTreeManager::transformVector(const std::string& from, const std::string& to, const cv::Vec3f& vector) const {
+    ensureLocked();
+    auto fromIt = cache_.find(from);
+    auto toIt = cache_.find(to);
+    if (fromIt == cache_.end()) {
+        throw std::runtime_error("TransformTreeManager: 节点 '" + from + "' 不在缓存中");
+    }
+    if (toIt == cache_.end()) {
+        throw std::runtime_error("TransformTreeManager: 节点 '" + to + "' 不在缓存中");
+    }
+
+    const CachedTransform& fromCache = fromIt->second;
+    const CachedTransform& toCache = toIt->second;
+
+    // 向量只携带方向与大小，随坐标系旋转，不随坐标系原点平移。
+    cv::Mat v = (cv::Mat_<float>(3, 1) << vector[0], vector[1], vector[2]);
+    cv::Mat vRoot = fromCache.R * v;      // 先转到根节点坐标系
+    cv::Mat vTo = toCache.R.t() * vRoot;  // 再转到目标坐标系
+
+    return cv::Vec3f(vTo.at<float>(0, 0), vTo.at<float>(1, 0), vTo.at<float>(2, 0));
+}
+

@@ -30,6 +30,7 @@ public:
 
     cv::Vec3f transformPoint(const std::string& from, const std::string& to, const cv::Vec3f& point) const;
     cv::Vec3f transformEuler(const std::string& from, const std::string& to, const cv::Vec3f& euler) const;
+    cv::Vec3f transformVector(const std::string& from, const std::string& to, const cv::Vec3f& vector) const;
 
     // 全部可调状态（chassis 位姿、yaw/pitch 关节角、锁定状态）
     struct State {

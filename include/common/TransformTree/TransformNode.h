@@ -43,10 +43,13 @@ public:
     // 自身坐标系 -> 父节点坐标系
     cv::Vec3f toParentPoint(const cv::Vec3f& pointInSelf) const;
     cv::Vec3f toParentEuler(const cv::Vec3f& eulerInSelf) const;
+    // 向量（自由向量 / 方向向量）：只旋转，不参与平移。
+    cv::Vec3f toParentVector(const cv::Vec3f& vectorInSelf) const;
 
     // 父节点坐标系 -> 自身坐标系
     cv::Vec3f toSelfPoint(const cv::Vec3f& pointInParent) const;
     cv::Vec3f toSelfEuler(const cv::Vec3f& eulerInParent) const;
+    cv::Vec3f toSelfVector(const cv::Vec3f& vectorInParent) const;
 
 private:
     std::string name_;

@@ -98,6 +98,10 @@ cv::Vec3f RobotTfTree::transformEuler(const std::string& from, const std::string
     return manager_.transformEuler(from, to, euler);
 }
 
+cv::Vec3f RobotTfTree::transformVector(const std::string& from, const std::string& to, const cv::Vec3f& vector) const {
+    return manager_.transformVector(from, to, vector);
+}
+
 RobotTfTree::State RobotTfTree::saveState() const {
     State s;
     if (auto chassis = manager_.getNode(CHASSIS)) {

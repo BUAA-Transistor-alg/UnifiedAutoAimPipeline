@@ -39,9 +39,11 @@ public:
     void lockAndComputeCache();
     bool isLocked() const;
 
-    // ── 基于缓存的快速坐标 / 欧拉角变换（仅上锁后可用）──
+    // ── 基于缓存的快速坐标 / 欧拉角 / 向量变换（仅上锁后可用）──
     cv::Vec3f transformPoint(const std::string& from, const std::string& to, const cv::Vec3f& point) const;
     cv::Vec3f transformEuler(const std::string& from, const std::string& to, const cv::Vec3f& euler) const;
+    // 向量（自由向量 / 方向向量，如速度、角速度）：只随坐标轴旋转，不参与平移。
+    cv::Vec3f transformVector(const std::string& from, const std::string& to, const cv::Vec3f& vector) const;
 
     const std::string& getRootName() const;
     std::shared_ptr<TransformNode> getNode(const std::string& name) const;
