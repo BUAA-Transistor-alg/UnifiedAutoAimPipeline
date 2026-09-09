@@ -2,6 +2,7 @@
 #include "common/Ballistic/SequencePredictor.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "common/RobotConfig.h"
 
@@ -13,12 +14,39 @@ int workerGimbalIndex(std::atomic<int>& next) {
     return idx;
 }
 
+// 目标选择策略（移入本类：PredictedBallisticSolver::solve 返回全部目标点结果，
+// 由 SequencePredictor 在结果之间做实际目标选择）
+enum class TargetStrategy { NEAREST, LOWEST_Z };
+
 // 依据目标预测器来源标注自动选择目标策略：PowerRune → LOWEST_Z，其余（Armor）→ NEAREST
-PredictedBallisticSolver::TargetSelection targetSelectionForSource(
-    const SequencePredictor::PredictorSource& source) {
+TargetStrategy targetStrategyForSource(const SequencePredictor::PredictorSource& source) {
     return (source.kind == SequencePredictor::PredictorSource::Kind::POWER_RUNE)
-               ? PredictedBallisticSolver::TargetSelection::LOWEST_Z
-               : PredictedBallisticSolver::TargetSelection::NEAREST;
+               ? TargetStrategy::LOWEST_Z
+               : TargetStrategy::NEAREST;
+}
+
+// 在单个实际计算点解出的全部目标点结果中，按策略选出实际使用的目标：
+//   - NEAREST：预测点距离当前 muzzle 原点最近（默认）；
+//   - LOWEST_Z：预测点 world z 最低（PowerRune 能量机关模式）。
+// 结果为空（无可用目标）时返回默认无效 Result（success=false）。
+PredictedBallisticSolver::Result selectTargetResult(
+    const std::vector<PredictedBallisticSolver::Result>& candidates,
+    TargetStrategy strategy, const cv::Vec3f& muzzle_origin) {
+    PredictedBallisticSolver::Result best;
+    if (candidates.empty()) return best;
+
+    double best_criterion = std::numeric_limits<double>::infinity();
+    const bool lowest_z = (strategy == TargetStrategy::LOWEST_Z);
+    for (const auto& c : candidates) {
+        const double criterion = lowest_z
+            ? (double)c.predicted_point[2]                       // world z，取最小
+            : (double)cv::norm(muzzle_origin - c.predicted_point); // muzzle 距离，取最小
+        if (criterion < best_criterion) {
+            best_criterion = criterion;
+            best = c;
+        }
+    }
+    return best;
 }
 } // namespace
 
@@ -84,11 +112,11 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
         active_source_ = predictor.source;
     }
 
-    // 目标选择策略由来源自动选择（Armor → NEAREST，PowerRune → LOWEST_Z），
-    // 不再由外部经 setTargetSelection 透传。predict() 同步前统一设置全部线程
-    // 实例（此时各 solver 均空闲，无竞争）。
-    const PredictedBallisticSolver::TargetSelection sel = targetSelectionForSource(predictor.source);
-    for (auto& s : solvers_) s.setTargetSelection(sel);
+    // 目标选择策略由来源自动选择（Armor → NEAREST，PowerRune → LOWEST_Z）。
+    // 目标选择已移入本类：PredictedBallisticSolver::solve 返回全部目标点的解算
+    // 结果，实际目标（瞄准点）选择在下方并行任务内对每个实际计算点单独完成
+    // （不再设置 solver 的目标选择状态）。
+    const TargetStrategy sel = targetStrategyForSource(predictor.source);
 
     // 快照生成到本次消费之间的延迟：额外预测时间叠加该延迟，补偿 dt 零点（快照帧）
     // 与当前时刻的差值
@@ -109,6 +137,9 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
     // ── yaw 系原点（world 系）：树已同步，同一线程内计算并写入 Result，
     //    随结果沿级联传递给输出模式（弹道线程化后不能直接读 GimbalSolver）──
     const cv::Vec3f yaw_world_origin = gimbals_.front()->yawWorldOrigin();
+    // NEAREST 判据所需的当前 muzzle 原点（world 系）：全部线程树已同步且一致，
+    // 目标选择在各 worker 内用该值计算（与原来 solve() 内部判据一致）
+    const cv::Vec3f muzzle_origin = gimbals_.front()->muzzleWorldOrigin();
 
     // ── 1. 精确解算点集合（solve 之间并行）──
     // 返回序列 = [前 n 个前导精确点（索引 0..n-1）] 后接 [原划分序列
@@ -132,8 +163,12 @@ SequencePredictor::Result SequencePredictor::predict(const RobotController::Stat
     pool_.run_parallel(U, [&](int idx) {
         const int wid = workerGimbalIndex(next_gimbal_);
         const int ret_idx = solve_idx[(size_t)idx];   // 该实际计算点在返回点序列中的索引
-        solved[(size_t)idx] = solvers_[(size_t)(wid % T)].solve(
-            predictor.function, extra_predict_time + (ret_idx + 1) * dt_control_);
+        // solve() 返回预测函数列表中全部目标点的解算结果（不再内部选目标）；
+        // 本类在此按策略（sel）从中选出该实际计算点实际使用的目标
+        const std::vector<PredictedBallisticSolver::Result> candidates =
+            solvers_[(size_t)(wid % T)].solve(
+                predictor.function, extra_predict_time + (ret_idx + 1) * dt_control_);
+        solved[(size_t)idx] = selectTargetResult(candidates, sel, muzzle_origin);
     });
 
     // ── 2. 组装返回点序列（实际计算点 + 插值/外推/复制点）──

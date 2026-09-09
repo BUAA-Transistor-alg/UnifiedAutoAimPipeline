@@ -11,9 +11,12 @@
 //
 // 目标预测器以 Predictor 结构体传入（而非仅 std::function）：内含预测函数、
 // 目标预测器来源标注（PredictorSource，见下）与快照时间戳（predictor_timestamp）。
-// predict() 依据来源标注自动选择目标选择策略（Armor → NEAREST、
-// PowerRune → LOWEST_Z，替代原 setTargetSelection 透传），并维护自身跨帧状态
-// State（当前暂为空，预留）：target_predictor 来源切换或 invalidate() 时重置。
+// PredictedBallisticSolver::solve 已不再参与目标（瞄准点）选择：它对预测函数
+// 返回列表中的每个目标点独立求解并返回全部结果；实际目标选择由本类 predict()
+// 完成——依据来源标注自动选择目标选择策略（Armor → NEAREST、PowerRune →
+// LOWEST_Z），并在每个实际计算点的求解结果之间按该策略选出该点使用的目标。
+// 同时 predict() 维护自身跨帧状态 State（当前暂为空，预留）：target_predictor
+// 来源切换或 invalidate() 时重置。
 //
 // 序列生成（config common.predict_sequence）：
 //   - 原划分：只精确解算 prediction_points（M）个实际计算点，时间间隔
@@ -111,9 +114,10 @@ public:
     /// 实际计算点（solve）经内部线程池并行执行；每个工作线程通过 thread_local
     /// 绑定一个独立的 GimbalSolver（内部 pitch 粗搜索保持并行且互不竞争）。
     ///
-    /// 目标选择策略不在此透传：predict() 依据 predictor.source 自动选择
-    /// （Armor → NEAREST，PowerRune → LOWEST_Z），并在来源切换时重置自身
-    /// 跨帧状态 State。
+    /// 目标（瞄准点）选择已从 PredictedBallisticSolver 移入本类：solve() 返回
+    /// 预测函数列表中全部目标点的结果，predict() 在每个实际计算点的结果之间
+    /// 按 predictor.source 自动选择的策略（Armor → NEAREST，PowerRune →
+    /// LOWEST_Z）选出该点实际使用的目标，并在来源切换时重置自身跨帧状态 State。
     ///
     /// @param predictor  目标预测器（预测函数 + 来源标注 + 快照时间戳）
     /// @param timestamp  调用时刻（当前帧时间戳）；额外预测时间自动加上

@@ -12,23 +12,24 @@ PredictedBallisticSolver::PredictedBallisticSolver(std::shared_ptr<GimbalSolver>
       max_iterations_(std::max(1, RobotConfig::instance().common.predictedBallistic.maxIterations)),
       time_error_tolerance_(RobotConfig::instance().common.predictedBallistic.timeErrorTolerance) {}
 
-PredictedBallisticSolver::Result PredictedBallisticSolver::solve(const Predictor& predictor,
-                                                                 double extra_predict_time) const {
-    Result final_result;
-    if (!gimbal_) return final_result;
+std::vector<PredictedBallisticSolver::Result> PredictedBallisticSolver::solve(
+    const Predictor& predictor, double extra_predict_time) const {
+    std::vector<Result> results;
+    if (!gimbal_) return results;
 
     // 当前时刻的目标点列表：提供目标点数量与首轮距离预估所需的当前坐标
     const std::vector<cv::Point3f> centers_now = predictor(0.0);
-    if (centers_now.empty()) return final_result;
+    if (centers_now.empty()) return results;
 
     const cv::Vec3f muzzle = gimbal_->muzzleWorldOrigin();
     const double v0 = gimbal_->bulletVelocity();
-    if (v0 <= 0.0) return final_result;
+    if (v0 <= 0.0) return results;
 
-    // 目标选择判据：NEAREST 取最小 muzzle 距离（初始 +inf）；LOWEST_Z 取最小 world z
-    double best_criterion = std::numeric_limits<double>::infinity();
-    const bool lowest_z = (target_selection_ == TargetSelection::LOWEST_Z);
+    results.reserve(centers_now.size());
 
+    // 目标选择已移出本类：对预测函数返回列表中的每个目标点独立迭代求解，
+    // 返回全部目标点的结果（不再按策略选一个），由调用方（SequencePredictor）
+    // 在结果之间做实际目标选择。
     for (size_t i = 0; i < centers_now.size(); ++i) {
         double flight_time = 0.0;
         double best_time_err = std::numeric_limits<double>::infinity();
@@ -59,25 +60,15 @@ PredictedBallisticSolver::Result PredictedBallisticSolver::solve(const Predictor
                 candidate.predicted_point = pred_point;
                 candidate.predict_time    = pred_t;
                 candidate.gimbal          = aim;
-                candidate.target_index    = (int)i;   // 该候选对应预测列表中的目标 i
+                candidate.target_index    = (int)i;   // 该结果对应的目标索引
             }
 
             flight_time = aim.flight_time;   // 下次迭代使用本次解算的飞行时间
             if (time_err <= time_error_tolerance_) break;  // 提前停止
         }
 
-        // 跨目标点：按目标选择策略选取实际使用目标
-        double criterion;
-        if (lowest_z) {
-            criterion = candidate.predicted_point[2];   // world z，取最小
-        } else {
-            criterion = cv::norm(muzzle - candidate.predicted_point);   // muzzle 距离，取最小
-        }
-        if (criterion < best_criterion) {
-            best_criterion = criterion;
-            final_result = candidate;
-        }
+        results.push_back(candidate);
     }
 
-    return final_result;
+    return results;
 }
