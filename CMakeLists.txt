@@ -57,9 +57,21 @@ include_directories(
     ${FFMPEG_INCLUDE_DIRS}
 )
 
-# ── TorqueController 子模组：通信 + 融合 + MPC 一体化封装（RobotController）──
-# 仅链接其 RobotController 动态库（robot_comm_c），不构建子模组内的演示程序
+# ── TorqueController 子模组（单 yaw）：通信 + 融合 + MPC 一体化封装 ──
+# 命名隔离约定：本子模组用 tcs_ / tcs:: 前缀（头文件 tcs/...，C++ 命名空间 tcs）。
+# 仅链接其 RobotController 动态库（tcs::robot_comm_c），不构建子模组内的演示程序
 add_subdirectory(sub_module/TorqueController ${CMAKE_BINARY_DIR}/torque_controller EXCLUDE_FROM_ALL)
+
+# ── TorqueControllerForBigSmallYaw 子模组（双级 yaw）：与上面的单 yaw 子模组共存 ──
+# 同样遵循命名隔离约定，用 tcbs_ / tcbs:: 前缀（头文件 tcbs/...，命名空间 tcbs），
+# 因此两个子模组的 target / 产物 / 头文件路径互不冲突。
+# 当前主程序暂不使用（不链接其库），但随工程一起完整编译，便于后续切换接入。
+# 注：父工程把 CMAKE_RUNTIME_OUTPUT_DIRECTORY 指向根目录 bin/（部署目录），子目录会
+#     继承；这里临时改到子模组自己的构建目录，避免 tcbs_* 可执行文件混进 bin/。
+set(_uap_runtime_out_backup "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/torque_controller_bigsmallyaw/bin")
+add_subdirectory(sub_module/TorqueControllerForBigSmallYaw ${CMAKE_BINARY_DIR}/torque_controller_bigsmallyaw)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${_uap_runtime_out_backup}")
 
 # ── 公共源文件（通用类：基础设施 / 输入模式 / tf 树 / 弹道 / 输出模式）──
 set(COMMON_SOURCES
@@ -131,7 +143,7 @@ add_executable(unified_auto_aim
 target_link_libraries(unified_auto_aim PRIVATE
     ${OpenCV_LIBS}
     openvino::runtime
-    robot_comm_c          # TorqueController 子模组（RobotController 一体化封装）
+    tcs::robot_comm_c     # TorqueController 子模组（tcs::RobotController 一体化封装）
     ${UDEV_LIBRARY}
     Threads::Threads
     ${MVCAMERA_LIB}

@@ -135,7 +135,7 @@ SequencePredictor::Item SequencePredictor::extrapItem(const Item& A, const Item&
     return r;
 }
 
-SequencePredictor::Result SequencePredictor::predict(const RobotController::State& st,
+SequencePredictor::Result SequencePredictor::predict(const tcs::RobotController::State& st,
                                            const Predictor& predictor,
                                            const std::chrono::steady_clock::time_point& timestamp)
 {

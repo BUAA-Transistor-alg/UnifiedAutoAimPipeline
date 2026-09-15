@@ -9,7 +9,7 @@
 #include <opencv2/opencv.hpp>
 
 #include "Armor/ArmorInfer.h"
-#include "RobotController.h"
+#include "tcs/RobotController.h"
 #include "common/TransformTree/RobotTfTree.h"
 #include "common/pose/CameraProjection.h"
 
@@ -57,8 +57,8 @@ struct ArmorVisualizationData {
         cv::Vec3f aim_point = cv::Vec3f(0, 0, 0);          // 瞄准目标位置（world，米）
     } xy;
 
-    // ---- 通信数据（取帧时刻 RobotController 状态快照） ----
-    RobotController::State robot_state;
+    // ---- 通信数据（取帧时刻 tcs::RobotController 状态快照） ----
+    tcs::RobotController::State robot_state;
 
     // ---- 帧信息 ----
     double fps = 0.0;

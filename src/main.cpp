@@ -21,7 +21,7 @@
 //    或热键 '1'/'2' 切换；切换只交换指针（推理进程按上述策略常驻或按需切换）；
 //  - 输入模式（相机/视频/交互）与输出模式（无/可视化/云台控制）在启动时
 //    指定，运行时也可通过 API（switchPipeline / toggleOutput）或热键 '1'/'2'、'v'/'g' 切换；
-//  - RobotController（串口 + MPC）仅在需要时构造（相机输入或云台输出）。
+//  - tcs::RobotController（串口 + MPC）仅在需要时构造（相机输入或云台输出）。
 #include "common/Input/IInputMode.h"
 #include "common/Input/CameraInputMode.h"
 #include "common/Input/VideoInputMode.h"
@@ -187,7 +187,7 @@ static Options parseArgs(int argc, char** argv) {
 //      Pipeline=流水线输出提取帧率；Ballistic=弹道解算循环线程帧率；
 //      Gimbal=云台输出循环线程帧率（未开启时 N/A）；
 //      Visual=可视化绘制循环线程帧率（未开启时 N/A）；
-//      MPC=McuMpcController 后台循环帧率（无 RobotController 时 N/A）
+//      MPC=McuMpcController 后台循环帧率（无 tcs::RobotController 时 N/A）
 //   4. 串口输入信息 — 原 drawCommInfo 样式：(8,80) 起 0.45 粗 1 绿，按来源分块显示
 //      （--- MCU --- / --- IMU --- / --- FUSED --- / --- STRICT --- / --- MPC ---），
 //      MCU 块含温度行（按温度区间变色）
@@ -211,14 +211,14 @@ static void drawOverlay(cv::Mat& img,
                         double ballistic_fps,
                         double gimbal_fps,
                         double visualize_fps,
-                        RobotController* rc,
+                        tcs::RobotController* rc,
                         const std::chrono::steady_clock::time_point& frame_ts,
                         const PipelineResult::QueueSizes& queue_sizes,
                         double extra_delay_s) {
-    // 提前获取 RobotController 状态：帧率行需显示 MPC 后台循环帧率（无统计时为 N/A），
+    // 提前获取 tcs::RobotController 状态：帧率行需显示 MPC 后台循环帧率（无统计时为 N/A），
     // 第 4 块串口信息区同样使用该状态（此处统一获取一次，避免重复加锁）
-    const RobotController::State st =
-        (rc != nullptr) ? rc->getState() : RobotController::State{};
+    const tcs::RobotController::State st =
+        (rc != nullptr) ? rc->getState() : tcs::RobotController::State{};
 
     // 1. 热键提醒（顶部）
     cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
@@ -430,31 +430,31 @@ int main(int argc, char** argv) {
     const RobotConfig::CameraParams& camera_params =
         (opt.input == InputKind::CAMERA) ? cfg.common.inputMode.cameraMode : cfg.common.inputMode.videoMode;
 
-    // ── RobotController（仅在需要时构造：相机输入需要 strict 数据，云台输出需要控制）──
+    // ── tcs::RobotController（仅在需要时构造：相机输入需要 strict 数据，云台输出需要控制）──
     // 相机输入模式下 CameraInputMode 后台线程持续采样 rc_.getState()（延迟队列），
-    // 因此相机输入需要 RobotController（无硬件时串口线程静默失败）。
+    // 因此相机输入需要 tcs::RobotController（无硬件时串口线程静默失败）。
     // 线程化后构造可能发生在窗口线程（运行时开启云台），读取发生在处理/弹道/
     // 窗口线程，用 rc_mtx 保护指针的按需构造与读取。
     std::mutex rc_mtx;
-    std::unique_ptr<RobotController> robot_controller;
+    std::unique_ptr<tcs::RobotController> robot_controller;
     auto ensureRobotController = [&]() {
         std::lock_guard<std::mutex> lock(rc_mtx);
         if (robot_controller) return;
         const auto& rp = cfg.common.robotController;
-        robot_controller = std::make_unique<RobotController>(
+        robot_controller = std::make_unique<tcs::RobotController>(
             rp.dtControl, rp.mpcPredN, rp.J, rp.tauC, rp.b, rp.tauD,
             rp.maxTorque, rp.maxTorqueRate, rp.Q, rp.R, rp.Rd, rp.maxIter,
             rp.integralGain,
             /*mpc_loop_period=*/rp.dtControl,   // MPC 后台循环周期与 dt_control 相同
-            McuDataPreprocessor::LinearParams{
+            tcs::McuDataPreprocessor::LinearParams{
                 rp.sendPitchScale, rp.sendPitchOffset,
                 rp.recvPitchScale, rp.recvPitchOffset},
             rp.sequenceMode,
             /*smooth_eps=*/rp.smoothEps);
         std::cout << "[main] RobotController constructed (serial threads may fail silently without hardware)." << std::endl;
     };
-    // 线程安全读取当前 RobotController 指针（未构造时为 nullptr）
-    auto robotControllerPtr = [&]() -> RobotController* {
+    // 线程安全读取当前 tcs::RobotController 指针（未构造时为 nullptr）
+    auto robotControllerPtr = [&]() -> tcs::RobotController* {
         std::lock_guard<std::mutex> lock(rc_mtx);
         return robot_controller.get();
     };
@@ -589,21 +589,21 @@ int main(int argc, char** argv) {
     //   → visualize_thread（可视化输出循环线程，模式首次开启时创建，随后不销毁）
     // 各处理阶段所需时间戳直接取最新 shared_frame_timestamp（见各线程体）。
     struct BallisticRequest {
-        RobotController::State st;      // 弹道解算所需云台/串口状态快照
-        RobotController* rc = nullptr;  // 转发给可视化线程
+        tcs::RobotController::State st;      // 弹道解算所需云台/串口状态快照
+        tcs::RobotController* rc = nullptr;  // 转发给可视化线程
         std::unique_ptr<PipelineResult> result;  // 流水线结果（移动转发，含 predictor 快照）
         std::unique_ptr<OutputContext> ctx;      // 输出上下文（process_thread 产生，逐级转发）
     };
     struct GimbalRequest {
         std::shared_ptr<GimbalOutput> gimbal;   // 当前云台输出（模式关闭时为空 → 短路直通，不处理）
         std::unique_ptr<PipelineResult> result; // 完整流水线结果（云台处理完/短路后转发给可视化）
-        RobotController* rc = nullptr;          // 转发给可视化线程
+        tcs::RobotController* rc = nullptr;          // 转发给可视化线程
         std::unique_ptr<OutputContext> ctx;     // 输出上下文（逐级转发给可视化）
     };
     struct VisualizeRequest {
         std::shared_ptr<VisualizeOutput> vis;  // 当前可视化输出（模式关闭时为空 → 仅更新原始帧）
         std::unique_ptr<PipelineResult> result;
-        RobotController* rc = nullptr;
+        tcs::RobotController* rc = nullptr;
         std::unique_ptr<OutputContext> ctx;    // 输出上下文（最终传给 IOutputMode::update）
     };
     // 输出模式阶段：输入缓冲 + 循环线程 + 循环帧率
@@ -856,8 +856,8 @@ int main(int argc, char** argv) {
             // ── 有效帧：填充弹道解算缓冲位（本线程工作至此截止）──
             // 缓冲位未被取走时直接覆盖（latest-wins），流水线提取不因下游耗时阻塞。
             if (result.valid) {
-                RobotController::State st;
-                RobotController* rc = nullptr;
+                tcs::RobotController::State st;
+                tcs::RobotController* rc = nullptr;
                 {
                     std::lock_guard<std::mutex> lock(rc_mtx);
                     rc = robot_controller.get();

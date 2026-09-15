@@ -4,7 +4,7 @@
 // 目标预测器 Predictor 在流水线内部组装完成，随结果输出，见 PipelineResult::
 // predictor）；弹道解算、控制序列生成与可视化均为输出模式（common/Output/）。
 // 输出模式通过 tryPopFrame() 拿到本结构体，串口/云台状态则由输出模式直接读取
-// RobotController，不经过流水线。
+// tcs::RobotController，不经过流水线。
 #ifndef PIPELINE_RESULT_H
 #define PIPELINE_RESULT_H
 

@@ -37,7 +37,7 @@ public:
 
     /// @param ctx 输出上下文（读取 predict_result / fire_out / gimbal_enabled
     ///            控制瞄准点与井形叉丝绘制）
-    void update(const PipelineResult& result, RobotController* rc,
+    void update(const PipelineResult& result, tcs::RobotController* rc,
                 OutputContext& ctx) override;
 
     OutputMode type() const override { return OutputMode::VISUALIZE; }
@@ -52,9 +52,9 @@ private:
     // 渲染当前流水线模式的画面到 render_buf_（仅可视化线程访问；create+copyTo
     // 复用缓冲，避免每帧 clone 的分配/释放。像素拷贝仍需保留：result.frame 另被
     // 主线程保存为原始画面，不可原地绘制）。seq 为当帧预测结果（源自 OutputContext）。
-    void renderArmor(const PipelineResult& result, RobotController* rc,
+    void renderArmor(const PipelineResult& result, tcs::RobotController* rc,
                      const SequencePredictor::Result& seq);
-    void renderPowerRune(const PipelineResult& result, RobotController* rc);
+    void renderPowerRune(const PipelineResult& result, tcs::RobotController* rc);
 
     // 当前渲染模式（主线程 setMode 写 / 可视化线程 update 读，需原子）
     std::atomic<PipelineMode> mode_{PipelineMode::ARMOR};

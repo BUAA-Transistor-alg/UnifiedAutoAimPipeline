@@ -8,12 +8,12 @@
 /**
  * @brief 与一帧图像绑定的额外信息（统一为 StrictPose 数据包 + 底盘世界坐标）。
  *
- * 字段语义与 RobotController::StrictPose 一致（角度 wrap 到 (-π, π]，
+ * 字段语义与 tcs::RobotController::StrictPose 一致（角度 wrap 到 (-π, π]，
  * 缺失数据以 0 参与），保证 R_imu = R_chassis·Rz(yaw_pos)·Rx(pitch_angle)
  * 恒成立；chassis_x/y/z 为底盘在世界坐标系下的位置。
  *
  * 各输入模式的填充规则：
- *  - 相机模式（CameraInputMode）：取帧同时刻 RobotController::getState().strict
+ *  - 相机模式（CameraInputMode）：取帧同时刻 tcs::RobotController::getState().strict
  *    填充，底盘 xyz 填 0；
  *  - 视频模式（VideoInputMode）：txt 解析的相机欧拉角 → chassis 欧拉角 且
  *    imu_euler 同值，相机坐标 → 底盘 xyz，其余字段为 0；

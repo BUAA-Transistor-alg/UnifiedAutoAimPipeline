@@ -123,7 +123,7 @@ void VisualizeOutput::syncTree(const ExtraInputInfo& info)
     tree.lockAndComputeCache();
 }
 
-void VisualizeOutput::update(const PipelineResult& result, RobotController* rc,
+void VisualizeOutput::update(const PipelineResult& result, tcs::RobotController* rc,
                              OutputContext& ctx)
 {
     if (!result.valid) return;   // 无新帧时不重绘
@@ -161,7 +161,7 @@ cv::Mat VisualizeOutput::display() const
     return display_;   // 浅拷贝：共享像素数据（引用计数原子安全）
 }
 
-void VisualizeOutput::renderArmor(const PipelineResult& result, RobotController* rc,
+void VisualizeOutput::renderArmor(const PipelineResult& result, tcs::RobotController* rc,
                                   const SequencePredictor::Result& seq)
 {
     const ArmorPerception& p = result.armor;
@@ -191,7 +191,7 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, RobotController*
     vis.xy.aim_valid = seq.valid;
     vis.xy.aim_point = seq.first_point;
 
-    vis.robot_state = rc ? rc->getState() : RobotController::State{};
+    vis.robot_state = rc ? rc->getState() : tcs::RobotController::State{};
 
     vis.fps = fps_.fps();
     vis.frame_timestamp = result.frame_timestamp;
@@ -205,7 +205,7 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, RobotController*
     armor_vis_.renderXY(vis);
 }
 
-void VisualizeOutput::renderPowerRune(const PipelineResult& result, RobotController* rc)
+void VisualizeOutput::renderPowerRune(const PipelineResult& result, tcs::RobotController* rc)
 {
     const PowerRunePerception& p = result.power_rune;
 

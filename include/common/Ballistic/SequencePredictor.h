@@ -48,7 +48,7 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "RobotController.h"
+#include "tcs/RobotController.h"
 #include "common/TaskPool.h"
 #include "common/Ballistic/GimbalSolver.h"
 #include "common/Ballistic/PredictedBallisticSolver.h"
@@ -152,7 +152,7 @@ public:
     /// @param timestamp  调用时刻（当前帧时间戳）；额外预测时间自动加上
     ///                   (timestamp - predictor.timestamp)，补偿快照生成到
     ///                   消费之间的延迟
-    Result predict(const RobotController::State& st, const Predictor& predictor,
+    Result predict(const tcs::RobotController::State& st, const Predictor& predictor,
                    const std::chrono::steady_clock::time_point& timestamp);
 
     /// 预测器不可用：重置自身跨帧状态（State）与当前来源记录；

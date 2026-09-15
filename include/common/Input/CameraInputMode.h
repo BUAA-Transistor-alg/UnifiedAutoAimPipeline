@@ -4,7 +4,7 @@
 
 #include "common/Input/IInputMode.h"
 #include "common/camera/Camera.h"
-#include "RobotController.h"
+#include "tcs/RobotController.h"
 
 #include <chrono>
 #include <deque>
@@ -15,7 +15,7 @@
 
 /**
  * @brief 实时相机输入模式：包装海康 Camera，取帧同时返回
- *        RobotController 严格反解数据包（StrictPose）打包成的 ExtraInputInfo。
+ *        tcs::RobotController 严格反解数据包（StrictPose）打包成的 ExtraInputInfo。
  *
  * - 时间戳由 Camera::getLatestFrame 在成功取帧时刻打上（steady_clock）；
  * - extra_info 来自「延迟状态队列」：后台线程持续调用 rc.getState()（~1kHz），
@@ -32,7 +32,7 @@
  */
 class CameraInputMode : public IInputMode {
 public:
-    CameraInputMode(Camera& camera, RobotController& rc);
+    CameraInputMode(Camera& camera, tcs::RobotController& rc);
     ~CameraInputMode() override;
 
     bool getNextFrame(cv::Mat& frame,
@@ -47,11 +47,11 @@ private:
     // ── extra_info 延迟状态队列 ──
     struct DelayedState {
         std::chrono::steady_clock::time_point ts;   // 采样时刻
-        ExtraInputInfo info;                        // 采样时刻的 RobotController 状态
+        ExtraInputInfo info;                        // 采样时刻的 tcs::RobotController 状态
     };
 
     Camera& camera_;
-    RobotController& rc_;
+    tcs::RobotController& rc_;
 
     double extra_info_delay_ = 0.0;          // 秒，来自机器配置文件 common.input_mode.camera_mode.extra_info_delay
     std::thread state_thread_;               // 后台采样线程
@@ -62,7 +62,7 @@ private:
 
     void stateSamplerLoop();                                  // 后台线程主体
     void trimStateQueueLocked(const std::chrono::steady_clock::time_point& now);  // 需持 state_mtx_
-    static ExtraInputInfo stateToExtraInfo(const RobotController::State& st);     // strict → ExtraInputInfo
+    static ExtraInputInfo stateToExtraInfo(const tcs::RobotController::State& st);     // strict → ExtraInputInfo
 };
 
 #endif // CAMERA_INPUT_MODE_H

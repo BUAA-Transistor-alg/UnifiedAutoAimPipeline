@@ -26,7 +26,7 @@ std::vector<T> truncateKeepLast(const std::vector<T>& seq, int skip, const T& fa
 
 } // namespace
 
-GimbalOutput::GimbalOutput(RobotController& rc)
+GimbalOutput::GimbalOutput(tcs::RobotController& rc)
     : rc_(rc),
       yaw_torque_only_mode_(RobotConfig::instance().common.robotController.yawTorqueOnlyMode),
       pitch_seq_lead_(RobotConfig::instance().common.predictSequence.pitchSeqLead),
@@ -40,14 +40,14 @@ bool GimbalOutput::computeFire(double ref, double pred, double threshold) {
     return std::fabs(diff) < threshold;
 }
 
-void GimbalOutput::update(const PipelineResult& result, RobotController*,
+void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
                           OutputContext& ctx)
 {
     // 无新帧时不重发序列，让 McuMpcController 后台 100Hz 线程正常消费已发送序列
     if (!result.valid) return;
 
     // ── 直接读取串口/MPC 状态（不经流水线）──
-    const RobotController::State st = rc_.getState();
+    const tcs::RobotController::State st = rc_.getState();
 
     // ── 取当帧预测（main 弹道线程经 SequencePredictor::predict 写入 ctx：
     //    含预测云台控制序列 + 瞄准点 + yaw 系原点）──

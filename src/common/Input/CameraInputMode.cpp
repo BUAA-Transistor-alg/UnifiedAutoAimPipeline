@@ -4,7 +4,7 @@
 
 #include <iostream>
 
-CameraInputMode::CameraInputMode(Camera& camera, RobotController& rc)
+CameraInputMode::CameraInputMode(Camera& camera, tcs::RobotController& rc)
     : camera_(camera), rc_(rc) {
     // ── extra_info 延迟状态队列：启动后台采样线程 ──
     // 延迟时间必须由配置文件提供（无默认值）
@@ -54,7 +54,7 @@ bool CameraInputMode::getNextFrame(cv::Mat& frame,
 
 // ==================== extra_info 延迟状态队列 ====================
 
-ExtraInputInfo CameraInputMode::stateToExtraInfo(const RobotController::State& st) {
+ExtraInputInfo CameraInputMode::stateToExtraInfo(const tcs::RobotController::State& st) {
     // strict 数据包 → ExtraInputInfo；底盘 xyz 保持 0
     ExtraInputInfo info;
     info.imu_euler_yaw   = st.strict.imu_euler_yaw;
@@ -84,7 +84,7 @@ void CameraInputMode::trimStateQueueLocked(
 
 void CameraInputMode::stateSamplerLoop() {
     while (!state_thread_exit_.load(std::memory_order_acquire)) {
-        const RobotController::State st = rc_.getState();
+        const tcs::RobotController::State st = rc_.getState();
         ExtraInputInfo info = stateToExtraInfo(st);
         const auto now = std::chrono::steady_clock::now();
         {

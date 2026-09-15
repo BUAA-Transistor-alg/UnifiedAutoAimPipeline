@@ -60,7 +60,7 @@ public:
         cv::Mat cameraMatrix;       // 3x3 CV_64F 内参矩阵
         cv::Mat distCoeffs;         // Nx1 CV_64F 畸变系数
         // 相机输入模式（CameraInputMode）extra_info 延迟（秒）：
-        // 后台线程持续采样 RobotController::getState()，返回给流水线的 extra_info
+        // 后台线程持续采样 tcs::RobotController::getState()，返回给流水线的 extra_info
         // 为相对当前时刻 extra_info_delay 前的队头数据（0.0 = 最新状态）。
         // 相机模式必填（config: extra_info_delay）。
         double extraInfoDelay;
@@ -91,7 +91,7 @@ public:
         double timeErrorTolerance;    // 迭代提前停止的时间误差容差（秒）
     };
 
-    // RobotController（TorqueController 子模组）构造参数
+    // tcs::RobotController（TorqueController 子模组）构造参数
     struct RobotControllerParams {
         bool   sequenceMode;     // 序列输入模式
         bool   yawTorqueOnlyMode; // 仅力矩控制模式（yaw_torque_only_mode 开关）：
@@ -113,7 +113,7 @@ public:
         double smoothEps;        // 位置跟踪误差平滑绝对值常数 a（代价 = Q*sqrt(err²+a)，
                                  // 很小的正数，子模组默认 1e-6；|err| ≫ √a 时 ≈ |err|，
                                  // err = 0 附近连续可导）
-        // ── MCU 数据线性映射标定参数（McuDataPreprocessor::LinearParams，当前标定默认值）──
+        // ── MCU 数据线性映射标定参数（tcs::McuDataPreprocessor::LinearParams，当前标定默认值）──
         double sendPitchScale;   // imu_euler_pitch → pitch_target_angle（发送）
         double sendPitchOffset;  // 发送偏移
         double recvPitchScale;   // mcu_pitch_angle → imu_euler_pitch（接收）
@@ -274,7 +274,7 @@ public:
 
         GimbalParams gimbal;                    // 云台解算参数
         PredictedBallisticParams predictedBallistic;  // 预测弹道解算参数
-        RobotControllerParams robotController;         // RobotController 构造参数
+        RobotControllerParams robotController;         // tcs::RobotController 构造参数
         PredictSequenceParams predictSequence;         // 预测序列参数
         double       minDelaySeconds;           // 两个流水线共用的提取帧最小延迟（秒）
 
