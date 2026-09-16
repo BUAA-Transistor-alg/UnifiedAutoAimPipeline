@@ -36,18 +36,27 @@
 //     LOWEST_Z + 慢目标粘滞）选，一个都不剩时才退回全部瞄准点；
 //   - fast_target（第二对施密特阈值 armor.target_selection.fast_angular_velocity_
 //     lower/upper，均高于慢目标上阈值；|ω| > upper 置位、< lower 复位、之间保持）：
-//     在所有 (返回点, 未被屏蔽的板) 中取「夹角与 ω 异号且 |夹角| 最小」者（没有
-//     异号者则取同号且 |夹角| 最大者），用该点的**总预测时间**（items[i].predict_time）
-//     + |夹角|/|ω| 作为预测时刻、该板序号为索引做一次**单点解算**
-//     （PredictedBallisticSolver::solveSingle，不再迭代弹道飞行时间），整条返回
-//     序列（全部 item）都用这次解算的结果（云台角/瞄准点相同）＝“瞄准这块即将与
-//     枪线对齐的板”。每块板的旋转容差角（需求4）= max(common.predict_sequence.
-//     min_rotation_tolerance_angle, fire_angle_length / 该板 xy 旋转半径)，其中
-//     旋转半径 = 需求1 方向向量的 xy 投影长度（各板半径可能不同），随 Result 下发；
-//     云台输出模式据此在火控数组上追加“有目标在枪线上”判定（需求5，匀速旋转模型，
-//     见 fastGunLineOk），与 MPC 轨迹误差条件**同时满足**才开火。新解算失败
-//     （solveSingle 返回 success = false）时保留原逐点解算序列且不下发 fast 元数据
-//     （fast_target = false，退回原开火条件）。
+//     高速自旋目标的装甲板相位预测误差大，因此不再瞄准“板本身”，而是瞄准**对齐位置**：
+//       · 每个精确点先把预测器**再包装一次**（wrapFastAimPredictor）：每块板不再返回
+//         原预测位置，而是返回与其**同 z、同 xy 半径**、但 xy 落在
+//         『目标中心 → 自身 yaw 轴旋转中心』连线线段上的位置（半径取 t=0 时该板到
+//         中心的 xy 距离——同一索引的板半径不随时间改变，算一次即可）；
+//       · 用包装后的预测器调用**原来的迭代求解器**（PredictedBallisticSolver::solve）
+//         求解——每个精确点只解算这一次，内部照常迭代弹道飞行时间，中心平动由包装
+//         预测器在每次预测时刻重新给出，从而一并算进提前量；
+//       · 再用**各板各自的总预测时间**调用**原预测器**，算出该时刻各板实际的中心
+//         瞄准夹角，据此选板：优先取「夹角与 ω 异号（正在靠近枪线）」或「|夹角| 已在
+//         该板角度容差内（刚过枪线仍打得到）」的板中 |夹角| 最小者，都没有时取同号
+//         且 |夹角| 最大者；该精确点取选中板的那份解算结果（瞄准点 = 对齐位置）。
+//     中间点全部由原插值机制补完（插值之后不再有任何弹道解算）；整段序列
+//     item.target_index 恒为合成值 kFastAimTargetIndex ⇒ 中间点恒为线性插值。
+//     每块板的旋转容差角（需求4）= max(common.predict_sequence.
+//     min_rotation_tolerance_angle, fire_angle_length / 该板 xy 半径)（半径取 t=0 值，
+//     各板可能不同），随 Result 下发；云台输出模式据此在火控数组上追加“有目标在
+//     枪线上”判定（需求5，匀速旋转模型，参考 = 序列第一个精确点选中的板及其在该
+//     时刻的实际夹角，见 fastGunLineOk），与 MPC 轨迹误差条件**同时满足**才开火。
+//     fast_target 帧不写慢目标粘滞索引（state_.last_first_target_index = -1）；
+//     预测器在 t=0 无可选板（极端情况）时不进入 fast 分支，行为与改造前一致。
 //
 // 序列生成（config common.predict_sequence）：
 //   - 原划分：只精确解算 prediction_points（M）个实际计算点，时间间隔
@@ -85,6 +94,15 @@
 
 class SequencePredictor {
 public:
+    // fast_target 帧整段预测序列使用的**合成瞄准点索引**：fast_target 帧的精确点解算
+    // 不再瞄准原生装甲板（板序号 0..板数-1），而是瞄准“即将与枪线对齐的那块板”的对齐
+    // 位置（见 predict()），因此 item.target_index 一律写本值：
+    //   - 不属于原生瞄准点范围（0..板数-1），也不等于 -1（-1 = 无目标/无效），
+    //     避免被后续逻辑（慢目标粘滞 state_.last_first_target_index 等）当成板序号；
+    //   - 整段序列同一值 ⇒ 相邻实际计算点“目标相同”，中间点一律走线性插值
+    //     （不会触发外推/复制分支——各精确点选中的真板可能不同）。
+    static constexpr int kFastAimTargetIndex = -2;
+
     // 目标预测器来源标注：标识 predict() 所用 target_predictor 的目标来源。
     // 用作 predict() 内部目标选择策略（NEAREST/LOWEST_Z）与自身跨帧状态
     // （State）重置的判断依据：
@@ -158,7 +176,8 @@ public:
                                      // 供可视化复现"需要的云台位姿"使用）
         float  gimbal_pitch = 0.0f;  // 解算器原始云台 pitch（未叠加偏置）
         double flight_time = 0.0;    // 弹道飞行时间（秒）
-        int    target_index = -1;    // 该点对应的目标索引（实际计算点为选中目标，插值/外推继承左侧）
+        int    target_index = -1;    // 该点对应的目标索引（实际计算点为选中目标，插值/外推继承左侧）。
+                                     // fast_target 帧恒为 kFastAimTargetIndex（合成索引，见下）
     };
 
     // 预测结果：预测云台控制序列 + 瞄准点序列
@@ -184,18 +203,27 @@ public:
         bool   fast_target = false;
         double fast_omega = 0.0;        // 目标角速度（rad/s，带正负；= Predictor::target_omega）。
                                         // 中心瞄准夹角对时间的导数 = 本值（与 ω 异号 ⇒ 正在向
-                                        // 枪线靠近，对齐时间为 |夹角|/|ω|）
-        double fast_ref_time = 0.0;     // 参考时刻 t_ref（秒，相对本次 predict() 调用时刻）：
-                                        // = 新解算的预测时刻 − 预测器快照延迟（predictor_age）。
-                                        // 该时刻参考板位于新解算瞄准的位置上
-        int    fast_ref_plate = -1;     // 参考板索引（预测函数返回列表中新解算瞄准的那块板）
-        double fast_ref_center_aim_angle = 0.0;  // 参考板在 t_ref 时刻的中心瞄准夹角（rad）
-        double fast_flight_time = 0.0;  // 新解算得到的弹道飞行时间（秒）＝火控点“对应时刻的延迟”
+                                        // 枪线靠近；同号但 |夹角| 已在旋转容差角内 ⇒ 刚过枪线，
+                                        // 仍打得到）
+        double fast_ref_time = 0.0;     // 参考时刻 t_ref（秒，相对本次 predict() 调用时刻）
+                                        // = 序列第一个精确点的总预测时间 − 预测器快照延迟
+                                        // （predictor_age；该点是本次瞄准方向，其预测时刻即
+                                        //  弹丸到达所瞄对齐位置的时刻）
+        int    fast_ref_plate = -1;     // 参考板索引（第一个精确点选中的真板，预测函数返回
+                                        // 列表下标；item.target_index 一律为合成值）
+        double fast_ref_center_aim_angle = 0.0;  // 参考板在 t_ref 时刻的**实际**中心瞄准夹角
+                                        // （rad；用原预测器算该板实际位置得到——瞄准点在对齐
+                                        // 位置（中心连线上），板此刻未必正好对齐，故本值一般
+                                        // 非 0，作为需求5 匀速旋转模型的起始相位）
+        double fast_flight_time = 0.0;  // 参考解的弹道飞行时间（秒）＝火控点“对应时刻的延迟”
+                                        // （= 第一个精确点解算得到的飞行时间）
         std::vector<float> fast_plate_tolerance;  // 每块板的旋转容差角（rad；下标 = 预测函数返回
-                                                  // 列表顺序，各板旋转半径不同故容差角可能不同）
+                                                  // 列表顺序，各板半径不同故容差角可能不同）
                                                   // = max(common.predict_sequence.
                                                   //        min_rotation_tolerance_angle,
-                                                  //       fire_angle_length / 该板 xy 旋转半径)
+                                                  //       fire_angle_length / 该板 xy 半径)
+                                                  // 半径取 t=0 值（同索引板半径不随时间改变），
+                                                  // 与选板所用容差是同一份
     };
 
     /// 构造时创建内部 GimbalSolver，序列/弹道/偏置参数从 RobotConfig common 段读取
@@ -362,6 +390,29 @@ private:
     // 向枪线靠近，对齐时间 = |夹角|/|ω|。
     static double centerAimAngle(const cv::Vec3f& center, const cv::Vec3f& aim_point,
                                  const cv::Vec3f& yaw_origin);
+
+    // fast_target 帧的**包装预测器**：每块板不再返回原预测瞄准点位置，而是返回与其
+    // **同 z、同 xy 半径**、但 xy 旋转到『目标中心 → 自身 yaw 轴旋转中心』连线线段上
+    // 的位置（即目标中心沿该方向偏移 plate_radius[j] 处的“对齐位置”）；预测车体中心
+    // 原样透传。
+    //   - plate_radius[j]：第 j 块板的 xy 半径（= t=0 时 |预测车体中心 − 该板位置| 的
+    //     xy 投影长度；同一索引的板半径不随时间改变，算一次即可）；索引越界时按 0 处理；
+    //   - 目标中心与 yaw 轴旋转中心重合（退化）时原样返回原瞄准点。
+    // 用本预测器调用原迭代解算器（solve）即可得到“瞄准对齐位置”的提前量解（含中心平动）。
+    static PredictedBallisticSolver::Predictor wrapFastAimPredictor(
+        const PredictedBallisticSolver::Predictor& base,
+        const std::vector<double>& plate_radius, const cv::Vec3f& yaw_origin);
+
+    // fast_target 帧的选板（需求3 + 角度容差修正）：逐个候选（= 包装预测器解出的某块板
+    // 的结果）用**原预测器**在该候选自己的总预测时间上算该板的实际中心瞄准夹角 a_j，然后
+    //   - 可打候选 = 「a_j 与 ω 异号（含恰为 0，正在靠近枪线）」∪「|a_j| 已在第 j 块板的
+    //     旋转容差角内（刚过枪线，仍打得到）」；其中取 |a_j| 最小者；
+    //   - 没有可打候选时退路 = 同号且 |a_j| 最大者（最快绕回枪线）；
+    //   - 结果全部不可用（被屏蔽 / 索引越界）时返回 -1。
+    // 返回选中候选在 candidates 中的下标（-1 = 无可选）。可被工作线程并发调用。
+    int selectFastAimPlate(const std::vector<PredictedBallisticSolver::Result>& candidates,
+                           const Predictor& predictor, const cv::Vec3f& yaw_origin,
+                           const std::vector<float>& plate_tolerance, double omega) const;
 
     // 线性插值：lo + t*(hi - lo)（t ∈ [0,1]）
     static Item lerpItem(const Item& lo, const Item& hi, double t);
