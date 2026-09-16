@@ -53,6 +53,10 @@ private:
     int    fire_seq_lead_;
     double fire_angle_lower_limit_;
     double fire_angle_length_;
+    // fast_target 枪线判定（需求5）用的时间轴参数：火控点 index 的开火时刻 =
+    // extra_predict_time + (index+1)·dt_control（与返回点索引时间同一时间轴）
+    double extra_predict_time_;
+    double dt_control_;
 
     LastOutput last_;
 };

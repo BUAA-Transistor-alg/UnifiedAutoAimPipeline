@@ -171,6 +171,12 @@ public:
                                     // 在“慢目标”帧启用瞄准点滞回时，滞回量 =
                                     // aim_stick_ratio × (t=0 全部瞄准点到预测车体中心的
                                     // 平均距离)。0 = 关闭瞄准点滞回。
+        double minRotationToleranceAngle;  // 旋转容差角下限（弧度，>=0）：fast_target 帧下
+                                    // 每个预测瞄准点的旋转容差角 =
+                                    // max(本值, fire_angle_length / 该点的旋转半径)
+                                    // （旋转半径 = 中心位置−瞄准点 的 xy 投影长度）。
+                                    // 半径很小时容差角趋于无穷，用本值兜底（同时给出
+                                    // “最小可打角度窗口”）。
     };
 
     // ══════════════════════════════════════════════════════════════════════
@@ -404,6 +410,15 @@ public:
             double stage5StickPriorityM;      // stage5 目标级滞回固定优先度（米，>=0）
             double slowAngularVelocityLower;  // 慢目标施密特触发下阈值（rad/s，>=0）
             double slowAngularVelocityUpper;  // 慢目标施密特触发上阈值（rad/s，> lower）
+            // ── 快目标（fast_target）施密特触发阈值（rad/s，两者均 > slow_angular_velocity_upper）──
+            // 目标自身角速度 |ω| 高于 upper 判定为 fast_target（整条预测序列改为对
+            // “即将与枪线对齐的那块板”做单点解算，火控数组额外做枪线判定），低于
+            // lower 取消 fast_target，介于两者之间保持上一帧判定（与慢目标同一套
+            // 施密特防抖逻辑，判定同样在 SequencePredictor::predict 内完成）；
+            // 角速度不可用的目标（PowerRune / 基地 label 7/8 / EKF 未就绪）不判定、
+            // 不进入 fast_target 分支。
+            double fastAngularVelocityLower;  // 快目标施密特触发下阈值（rad/s，> slow upper）
+            double fastAngularVelocityUpper;  // 快目标施密特触发上阈值（rad/s，> lower）
         };
         TargetSelectionParams targetSelection;
     };

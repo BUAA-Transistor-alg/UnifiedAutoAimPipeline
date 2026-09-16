@@ -21,8 +21,33 @@
 // （masked_indices 中索引对应的瞄准点不参与选择）。慢目标判定（施密特触发器）
 // 同样在 predict() 内完成（依据 Predictor::target_omega 及其可用标志
 // omega_valid），不再由 Armor 流水线下发。predict() 维护自身跨帧状态 State
-// （慢目标锁存 + 上一帧瞄准点粘滞索引）：target_predictor 来源切换或
-// invalidate() 时重置。
+// （慢目标锁存 + 上一帧瞄准点粘滞索引 + 快目标锁存）：target_predictor 来源切换
+// 或 invalidate() 时重置。
+//
+// ── 中心瞄准夹角 / 慢目标 / 快目标（Armor 类目标，角速度可用时）──
+// 中心瞄准夹角（需求1，见 centerAimAngle）：对每个预测瞄准点，方向向量 =
+// 「该点预测时刻的预测车体中心 − 该点位置」，中心瞄准向量 =「同刻预测车体中心 −
+// 当帧自身 yaw 轴旋转中心（单 yaw = yaw 系原点，大小 yaw = 小 yaw 系原点，即
+// Result::yaw_world_origin）」，两向量投影到 xy 平面后的有向夹角（方向向量相对
+// 中心瞄准向量逆时针为正，(-π, π]）。夹角 = 0 表示该板位于 yaw 轴旋转中心与目标
+// 中心连线上（近侧、正对射手），夹角对时间的导数 = 目标角速度 ω。
+//   - 非 fast_target：目标选择优先排除 |中心瞄准夹角| > π/2 的瞄准点（该指标
+//     优先于其它指标，含慢目标粘滞）：先只在剩余瞄准点中按原策略（NEAREST /
+//     LOWEST_Z + 慢目标粘滞）选，一个都不剩时才退回全部瞄准点；
+//   - fast_target（第二对施密特阈值 armor.target_selection.fast_angular_velocity_
+//     lower/upper，均高于慢目标上阈值；|ω| > upper 置位、< lower 复位、之间保持）：
+//     在所有 (返回点, 未被屏蔽的板) 中取「夹角与 ω 异号且 |夹角| 最小」者（没有
+//     异号者则取同号且 |夹角| 最大者），用该点的**总预测时间**（items[i].predict_time）
+//     + |夹角|/|ω| 作为预测时刻、该板序号为索引做一次**单点解算**
+//     （PredictedBallisticSolver::solveSingle，不再迭代弹道飞行时间），整条返回
+//     序列（全部 item）都用这次解算的结果（云台角/瞄准点相同）＝“瞄准这块即将与
+//     枪线对齐的板”。每块板的旋转容差角（需求4）= max(common.predict_sequence.
+//     min_rotation_tolerance_angle, fire_angle_length / 该板 xy 旋转半径)，其中
+//     旋转半径 = 需求1 方向向量的 xy 投影长度（各板半径可能不同），随 Result 下发；
+//     云台输出模式据此在火控数组上追加“有目标在枪线上”判定（需求5，匀速旋转模型，
+//     见 fastGunLineOk），与 MPC 轨迹误差条件**同时满足**才开火。新解算失败
+//     （solveSingle 返回 success = false）时保留原逐点解算序列且不下发 fast 元数据
+//     （fast_target = false，退回原开火条件）。
 //
 // 序列生成（config common.predict_sequence）：
 //   - 原划分：只精确解算 prediction_points（M）个实际计算点，时间间隔
@@ -146,6 +171,31 @@ public:
         double first_predict_time = 0.0;
         cv::Vec3f yaw_world_origin = cv::Vec3f(0, 0, 0);   // 本帧预测所用云台 yaw 系原点（world 系，
                                                            // 弹道解算线程化后随 Result 传递给输出模式）
+
+        // ══════════════════ fast_target（快目标）元数据 ══════════════════
+        // 判定：Armor 类目标 + 角速度可用（omega_valid）时按 |ω| 做第二对施密特触发
+        // （armor.target_selection.fast_angular_velocity_lower/upper，均高于慢目标阈值）。
+        // fast_target == true 时本帧的返回序列**整体**被替换为一次新的单点解算
+        // （对“角速度与中心瞄准夹角异号、|中心瞄准夹角| 最小”的那块板，用该点的
+        //  总预测时间 + |中心瞄准夹角|/|ω| 做单次解算，见 predictImpl），因此全部
+        // item 的瞄准点/云台角相同；下列字段供云台输出模式在火控数组上追加
+        // “有目标在枪线上”判定（匀速旋转模型，见 fastGunLineOk）。
+        // fast_target == false（含非 Armor、角速度不可用、新解算失败）时以下字段无效。
+        bool   fast_target = false;
+        double fast_omega = 0.0;        // 目标角速度（rad/s，带正负；= Predictor::target_omega）。
+                                        // 中心瞄准夹角对时间的导数 = 本值（与 ω 异号 ⇒ 正在向
+                                        // 枪线靠近，对齐时间为 |夹角|/|ω|）
+        double fast_ref_time = 0.0;     // 参考时刻 t_ref（秒，相对本次 predict() 调用时刻）：
+                                        // = 新解算的预测时刻 − 预测器快照延迟（predictor_age）。
+                                        // 该时刻参考板位于新解算瞄准的位置上
+        int    fast_ref_plate = -1;     // 参考板索引（预测函数返回列表中新解算瞄准的那块板）
+        double fast_ref_center_aim_angle = 0.0;  // 参考板在 t_ref 时刻的中心瞄准夹角（rad）
+        double fast_flight_time = 0.0;  // 新解算得到的弹道飞行时间（秒）＝火控点“对应时刻的延迟”
+        std::vector<float> fast_plate_tolerance;  // 每块板的旋转容差角（rad；下标 = 预测函数返回
+                                                  // 列表顺序，各板旋转半径不同故容差角可能不同）
+                                                  // = max(common.predict_sequence.
+                                                  //        min_rotation_tolerance_angle,
+                                                  //       fire_angle_length / 该板 xy 旋转半径)
     };
 
     /// 构造时创建内部 GimbalSolver，序列/弹道/偏置参数从 RobotConfig common 段读取
@@ -193,6 +243,21 @@ public:
     /// 下次 predict() 从新来源重新开始维护状态
     void invalidate();
 
+    /// fast_target 帧的火控点“有目标在枪线上”判定（匀速旋转模型，供两个云台输出
+    /// 模式共用；需求5）。仅读 Result 的 fast_* 字段：
+    ///   - seq.fast_target == false：恒返回 true（不做门控，云台输出只按原 MPC
+    ///     轨迹误差条件开火）；
+    ///   - 火控点 index（= 发给控制器的 fire 序列下标）的开火时刻 →
+    ///     命中时刻 t_impact = extra_predict_time + (index+1)·dt_control + fast_flight_time
+    ///     （延迟取该点对应的弹道飞行时间；extra_predict_time 取
+    ///      common.predicted_ballistic.extra_predict_time，与返回点索引时间同一时间轴）；
+    ///   - 以匀速旋转模型把参考板（fast_ref_plate）在 fast_ref_time 时刻的中心瞄准
+    ///     夹角外推到 t_impact，并按装甲板圆周均布（返回列表顺序，前哨站 3 块 120°、
+    ///     其它 4 块 90°）枚举全部板：任一板偏移 |中心瞄准夹角| < 该板旋转容差角
+    ///     即认为有目标在枪线上（返回 true）。
+    static bool fastGunLineOk(const Result& seq, int index,
+                              double extra_predict_time, double dt_control);
+
     /// 任一内部云台解算器（仅弹道线程内使用；外部请勿直接访问）
     std::shared_ptr<GimbalSolver> gimbal() const { return gimbals_.front(); }
 
@@ -217,6 +282,16 @@ private:
     // 上一帧判定。判定在 predict() 内完成，仅用于本帧是否启用瞄准点滞回。
     double slow_w_lower_;
     double slow_w_upper_;
+    // 快目标（fast_target）施密特触发阈值（rad/s，同段读取；均高于慢目标上阈值）：
+    // |ω| > upper → fast_target；|ω| < lower → 非 fast_target；介于两者保持上一帧判定。
+    double fast_w_lower_;
+    double fast_w_upper_;
+    // fast_target 火控用的几何参数（common.predict_sequence）：
+    //   fire_angle_length_             ：fire 判定弧长（米）
+    //   min_rotation_tolerance_angle_  ：旋转容差角下限（弧度）
+    // 每块板的旋转容差角 = max(下限, fire_angle_length_ / 该板 xy 旋转半径)。
+    double fire_angle_length_;
+    double min_rotation_tolerance_angle_;
 
     // 自身跨帧状态（predict() 内部维护）：当 target_predictor 来源（PredictorSource）
     // 切换或 invalidate() 时整体重置（随“总目标”切换失效）。
@@ -236,6 +311,12 @@ private:
         // false 起步，与原先“切目标时按新目标 |ω| 重新初始化锁存”的结果一致
         // （初始化值随后立即被同一帧的阈值判定覆盖）。
         bool slow_latch = false;
+
+        // 快目标施密特锁存（判定同样在 predict() 内完成，见 slow_latch 的说明）：
+        // Predictor::omega_valid == true 且来源为 Armor 时，|target_omega| > fast_upper
+        // 置 true、< fast_lower 置 false、介于两阈值之间保持不变，本帧 fast_target
+        // 判定 = 本锁存值；角速度不可用 / 非 Armor 来源时复位为 false。
+        bool fast_latch = false;
     };
     State state_;
     PredictorSource active_source_;   // 当前 state_ 对应的来源（无有效预测时为 NONE）
@@ -266,6 +347,21 @@ private:
     // 优先用 MPC 预测大 yaw 世界方位角序列（线性插值 + 末值保持）− 当帧底盘 yaw；
     // 不可用时用 last_yaw_big_seq_（上一轮解算所用值，按索引夹取）；再没有用当帧 θ_big。
     std::vector<float> buildYawBigSequence(const InputSnapshot& in, int total_points) const;
+
+    // 任意时刻的大 yaw 关节角（仅 BIG_SMALL 有意义）：时间轴与返回点索引一致
+    // （第 i 个返回点的索引时刻 = (i+1)·dt_control），即 buildYawBigSequence 的
+    // 逐点取值的连续版本（线性插值 + 末值保持 + 同样的两级退路）。fast_target 的
+    // 新解算时刻不在索引网格上，用本函数取该时刻的大 yaw 关节角。
+    float yawBigAtTime(const InputSnapshot& in, double t) const;
+
+    // 中心瞄准夹角（需求1，rad，(-π, π]）：方向向量 = 中心位置 − 瞄准点位置，
+    // 中心瞄准向量 = 中心位置 − 自身 yaw 轴旋转中心（world 系）；两者投影到 xy 平面
+    // 后求有向夹角（方向向量相对中心瞄准向量逆时针为正）。夹角 = 0 表示该瞄准点
+    // 位于 yaw 轴旋转中心与目标中心连线上（近侧、正对射手）；该夹角对时间的导数
+    // 等于目标角速度 ω（Armor EKF 的角速度符号约定），故夹角与 ω 异号 ⇒ 板正在
+    // 向枪线靠近，对齐时间 = |夹角|/|ω|。
+    static double centerAimAngle(const cv::Vec3f& center, const cv::Vec3f& aim_point,
+                                 const cv::Vec3f& yaw_origin);
 
     // 线性插值：lo + t*(hi - lo)（t ∈ [0,1]）
     static Item lerpItem(const Item& lo, const Item& hi, double t);

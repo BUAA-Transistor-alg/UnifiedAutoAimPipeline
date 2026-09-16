@@ -80,3 +80,30 @@ std::vector<PredictedBallisticSolver::Result> PredictedBallisticSolver::solve(
 
     return results;
 }
+
+PredictedBallisticSolver::Result PredictedBallisticSolver::solveSingle(
+    const Predictor& predictor, int target_index, double predict_time, float yawBig) const {
+    Result r;
+    r.target_index = target_index;
+    r.predict_time = predict_time;
+    if (!gimbal_ || target_index < 0) return r;
+
+    // 预测函数在该时刻的目标点列表（与 solve() 同一约定：second 为瞄准点列表）
+    const PredictorResult pred = predictor(predict_time);
+    const std::vector<cv::Point3f>& pred_list = pred.second;
+    if (target_index >= (int)pred_list.size()) return r;
+
+    const cv::Point3f& pp = pred_list[(size_t)target_index];
+    const cv::Vec3f pred_point(pp.x, pp.y, pp.z);
+
+    // 单次解算：不再迭代弹道飞行时间（调用方给出的预测时刻已含所需提前量）
+    const GimbalSolver::AimResult aim =
+        (gimbal_->isBigSmallYaw() && std::isfinite(yawBig))
+            ? gimbal_->solveAim(pred_point, gimbal_->bulletVelocity(), yawBig)
+            : gimbal_->solveAim(pred_point);
+
+    r.success         = aim.success;
+    r.predicted_point = pred_point;
+    r.gimbal          = aim;
+    return r;
+}

@@ -551,6 +551,7 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.common.predictSequence.fireAngleLowerLimit = requireScalar<double>(ic, "fire_angle_lower_limit", "common.predict_sequence");
     cfg.common.predictSequence.fireAngleLength     = requireScalar<double>(ic, "fire_angle_length", "common.predict_sequence");
     cfg.common.predictSequence.aimStickRatio       = requireScalar<double>(ic, "aim_stick_ratio", "common.predict_sequence");
+    cfg.common.predictSequence.minRotationToleranceAngle = requireScalar<double>(ic, "min_rotation_tolerance_angle", "common.predict_sequence");
 
     // 交叉校验：预测点数/插值倍数 >= 1；前导精确点数 >= 0；
     // pitch 序列提前数 m 必须小于总返回点数 (M-1)*K+1+n
@@ -577,6 +578,9 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     }
     if (cfg.common.predictSequence.aimStickRatio < 0.0) {
         throw std::runtime_error("RobotConfig: common.predict_sequence.aim_stick_ratio 必须 >= 0");
+    }
+    if (cfg.common.predictSequence.minRotationToleranceAngle < 0.0) {
+        throw std::runtime_error("RobotConfig: common.predict_sequence.min_rotation_tolerance_angle 必须 >= 0");
     }
 
     // ══════════════ armor（独占参数） ══════════════
@@ -697,13 +701,23 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
         requireScalar<double>(sel, "slow_angular_velocity_lower", "armor.target_selection");
     cfg.armor.targetSelection.slowAngularVelocityUpper =
         requireScalar<double>(sel, "slow_angular_velocity_upper", "armor.target_selection");
+    cfg.armor.targetSelection.fastAngularVelocityLower =
+        requireScalar<double>(sel, "fast_angular_velocity_lower", "armor.target_selection");
+    cfg.armor.targetSelection.fastAngularVelocityUpper =
+        requireScalar<double>(sel, "fast_angular_velocity_upper", "armor.target_selection");
     if (cfg.armor.targetSelection.stage5StickPriorityM < 0.0 ||
         cfg.armor.targetSelection.slowAngularVelocityLower < 0.0 ||
         cfg.armor.targetSelection.slowAngularVelocityUpper <=
-            cfg.armor.targetSelection.slowAngularVelocityLower) {
+            cfg.armor.targetSelection.slowAngularVelocityLower ||
+        cfg.armor.targetSelection.fastAngularVelocityLower <=
+            cfg.armor.targetSelection.slowAngularVelocityUpper ||
+        cfg.armor.targetSelection.fastAngularVelocityUpper <=
+            cfg.armor.targetSelection.fastAngularVelocityLower) {
         throw std::runtime_error("RobotConfig: armor.target_selection 取值非法："
                                  "stage5_stick_priority_m / slow_angular_velocity_lower 必须 >= 0，"
-                                 "slow_angular_velocity_upper 必须 > slow_angular_velocity_lower");
+                                 "slow_angular_velocity_upper 必须 > slow_angular_velocity_lower，"
+                                 "fast_angular_velocity_lower 必须 > slow_angular_velocity_upper，"
+                                 "fast_angular_velocity_upper 必须 > fast_angular_velocity_lower");
     }
 
     // ══════════════ power_rune（独占参数） ══════════════

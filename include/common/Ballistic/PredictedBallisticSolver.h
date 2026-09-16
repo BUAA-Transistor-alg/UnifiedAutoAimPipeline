@@ -70,6 +70,16 @@ public:
     std::vector<Result> solve(const Predictor& predictor, double extra_predict_time,
                               float yawBig = std::numeric_limits<float>::quiet_NaN()) const;
 
+    // 单点单次解算（SequencePredictor 的 fast_target 分支用）：**不做飞行时间迭代**——
+    // 直接用调用方给定的预测时刻 predict_time 取预测函数返回列表中第 target_index 个
+    // 瞄准点，调用一次 GimbalSolver::solveAim 解算云台角度，返回该点的 Result
+    // （predict_time = 传入值，predicted_point = 该时刻的该瞄准点，target_index = 传入值，
+    //  gimbal.flight_time = 本次解算得到的弹道飞行时间，供调用方做“该时刻对应的延迟”）。
+    // 索引越界 / 预测函数返回空 / 解算失败时返回 success = false 的 Result。
+    // yawBig 语义与 solve() 相同（大小 yaw 构型的有效 yaw 旋转中心；单 yaw 传 NaN）。
+    Result solveSingle(const Predictor& predictor, int target_index, double predict_time,
+                       float yawBig = std::numeric_limits<float>::quiet_NaN()) const;
+
 private:
     std::shared_ptr<GimbalSolver> gimbal_;
     int    max_iterations_;

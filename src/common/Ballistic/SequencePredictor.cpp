@@ -32,6 +32,9 @@ TargetStrategy targetStrategyForSource(const SequencePredictor::PredictorSource&
 //   - NEAREST：预测点距离当前 muzzle 原点最近（默认）；
 //   - LOWEST_Z：预测点 world z 最低（PowerRune 能量机关模式）。
 // predictor.masked_indices 中索引对应的瞄准点（目标）不参与选择。
+// 需求3（角速度可用的 Armor 目标且本帧非 fast_target）：center_aim_angles 非空时
+// 优先不考虑 |中心瞄准夹角| > π/2 的瞄准点——该指标优先于其它指标（含下面的慢
+// 目标粘滞）：先在剩余瞄准点中选，一个都不剩时才退回全部瞄准点。
 // 慢目标瞄准点滞回（Armor 目标，本帧判定为慢目标时）：
 //   sticky_index >= 0 表示本实际计算点“粘”的瞄准点索引（上一帧序列第一个值
 //   选中的点 / 本帧前一个实际计算点选中的点）。粘滞目标若未被屏蔽且存在于候选
@@ -43,7 +46,8 @@ PredictedBallisticSolver::Result selectTargetResult(
     const std::vector<PredictedBallisticSolver::Result>& candidates,
     TargetStrategy strategy, const cv::Vec3f& muzzle_origin,
     const SequencePredictor::Predictor& predictor,
-    int sticky_index, double stick_delta) {
+    int sticky_index, double stick_delta,
+    const std::vector<double>* center_aim_angles) {
     PredictedBallisticSolver::Result best;
     if (candidates.empty()) return best;
 
@@ -54,13 +58,31 @@ PredictedBallisticSolver::Result selectTargetResult(
             : (double)cv::norm(muzzle_origin - c.predicted_point); // muzzle 距离
     };
 
+    // 候选（未被屏蔽）下标集合
+    std::vector<int> pool;
+    pool.reserve(candidates.size());
+    for (int i = 0; i < (int)candidates.size(); ++i) {
+        if (predictor.isIndexMasked(candidates[(size_t)i].target_index)) continue;
+        pool.push_back(i);
+    }
+    // 需求3：优先排除 |中心瞄准夹角| > π/2 的瞄准点（仅当调用方给出夹角时）
+    if (center_aim_angles != nullptr) {
+        std::vector<int> preferred;
+        preferred.reserve(pool.size());
+        for (int i : pool) {
+            const double a = (*center_aim_angles)[(size_t)i];
+            if (std::isfinite(a) && std::fabs(a) <= M_PI / 2.0) preferred.push_back(i);
+        }
+        if (!preferred.empty()) pool.swap(preferred);   // 全部超出时退回全部候选
+    }
+
     // 全局最优（未被屏蔽）；同时寻找粘滞目标（未被屏蔽）
     double best_criterion = std::numeric_limits<double>::infinity();
     const PredictedBallisticSolver::Result* sticky = nullptr;
     double sticky_criterion = 0.0;
     bool sticky_found = false;
-    for (const auto& c : candidates) {
-        if (predictor.isIndexMasked(c.target_index)) continue;   // 屏蔽目标不参与选择
+    for (int i : pool) {
+        const PredictedBallisticSolver::Result& c = candidates[(size_t)i];
         const double criterion = criterionOf(c);
         if (sticky_index >= 0 && c.target_index == sticky_index) {
             sticky = &c;
@@ -98,7 +120,14 @@ SequencePredictor::SequencePredictor()
       aim_stick_ratio_(RobotConfig::instance().common.predictSequence.aimStickRatio),
       // 慢目标施密特触发阈值：判定已移入本类 predict()，阈值仍取自 Armor 目标选取配置
       slow_w_lower_(RobotConfig::instance().armor.targetSelection.slowAngularVelocityLower),
-      slow_w_upper_(RobotConfig::instance().armor.targetSelection.slowAngularVelocityUpper) {
+      slow_w_upper_(RobotConfig::instance().armor.targetSelection.slowAngularVelocityUpper),
+      // 快目标（fast_target）施密特触发阈值：同段读取的第二对阈值（均高于慢目标上阈值）
+      fast_w_lower_(RobotConfig::instance().armor.targetSelection.fastAngularVelocityLower),
+      fast_w_upper_(RobotConfig::instance().armor.targetSelection.fastAngularVelocityUpper),
+      // fast_target 火控几何参数：每块板旋转容差角 = max(下限, fire_angle_length / 该板半径)
+      fire_angle_length_(RobotConfig::instance().common.predictSequence.fireAngleLength),
+      min_rotation_tolerance_angle_(
+          RobotConfig::instance().common.predictSequence.minRotationToleranceAngle) {
     // 默认线程数 min(硬件核数/2, 4)；为每个工作线程准备一个独立的
     // GimbalSolver + 各自绑定的 PredictedBallisticSolver
     const size_t T = pool_.size();
@@ -191,6 +220,50 @@ SequencePredictor::snapshotFromBigSmall(const bsy::RobotState& st) const {
     return in;
 }
 
+// 中心瞄准夹角（需求1，rad，(-π, π]）：方向向量 = 中心位置 − 瞄准点位置，
+// 中心瞄准向量 = 中心位置 − 自身 yaw 轴旋转中心；两者投影到 xy 平面后，
+// 求方向向量相对中心瞄准向量的有向夹角（方向向量逆时针为正，即
+// atan2(dir × ref, dir · ref)）。夹角 = 0 表示瞄准点位于 yaw 轴旋转中心与目标
+// 中心连线上（近侧、正对射手）；夹角对时间的导数 = 目标角速度 ω（Armor EKF 的
+// 角速度符号约定），故夹角与 ω 异号 ⇒ 正在向枪线靠近（对齐时间 |夹角|/|ω|）。
+// 两向量 xy 投影退化（长度 ~0）时返回 0（视为已对齐，不产生虚假判据）。
+double SequencePredictor::centerAimAngle(const cv::Vec3f& center, const cv::Vec3f& aim_point,
+                                         const cv::Vec3f& yaw_origin) {
+    const double dir_x = (double)center[0] - (double)aim_point[0];     // 方向向量 xy 投影
+    const double dir_y = (double)center[1] - (double)aim_point[1];
+    const double ref_x = (double)center[0] - (double)yaw_origin[0];    // 中心瞄准向量 xy 投影
+    const double ref_y = (double)center[1] - (double)yaw_origin[1];
+    if (std::hypot(dir_x, dir_y) < 1e-9 || std::hypot(ref_x, ref_y) < 1e-9) return 0.0;
+    // 有向夹角 = atan2(叉积, 点积)：方向向量相对中心瞄准向量逆时针旋转时为正
+    const double cross = ref_x * dir_y - ref_y * dir_x;
+    const double dot   = ref_x * dir_x + ref_y * dir_y;
+    return std::atan2(cross, dot);
+}
+
+// 任意时刻的大 yaw 关节角（仅 BIG_SMALL）：与 buildYawBigSequence 同一时间轴
+// （返回点索引 i 对应 (i+1)·dt_control），线性插值 + 超出覆盖区间末值保持；
+// MPC 预测序列不可用时退回上一轮解算序列（按索引夹取），再没有用当帧实测 θ_big。
+float SequencePredictor::yawBigAtTime(const InputSnapshot& in, double t) const {
+    const std::vector<double>& seq = in.pred_big_azimuth_seq;
+    if (!seq.empty()) {
+        const int nLast = (int)seq.size() - 1;
+        double idx_f = t / dt_control_;            // dt_control 为单位
+        if (idx_f < 0.0) idx_f = 0.0;
+        if (idx_f > (double)nLast) idx_f = (double)nLast;   // 超出覆盖区间：末值保持
+        const int i0 = (int)std::floor(idx_f);
+        const int i1 = std::min(i0 + 1, nLast);
+        const double f = idx_f - (double)i0;
+        const double psi = (double)seq[(size_t)i0] * (1.0 - f) + (double)seq[(size_t)i1] * f;
+        return (float)(psi - in.info.chassis_yaw);   // 世界方位角 → 关节角
+    }
+    if (!last_yaw_big_seq_.empty()) {
+        const double idx_f = std::max(0.0, t / dt_control_);
+        const size_t k = std::min((size_t)idx_f, last_yaw_big_seq_.size() - 1);
+        return last_yaw_big_seq_[k];
+    }
+    return (float)in.info.big_small.yaw_big_pos;
+}
+
 // 逐返回点的大 yaw 关节角序列（仅 BIG_SMALL 使用）：
 //   θ_big(t) = ψ_big_pred(t) − ψ_chassis（当帧）
 //   ψ_big_pred 取 MPC 预测序列（线性插值，超出覆盖区间保持最后一个值）；
@@ -199,32 +272,10 @@ std::vector<float> SequencePredictor::buildYawBigSequence(const InputSnapshot& i
                                                           int total_points) const {
     std::vector<float> out((size_t)std::max(0, total_points), 0.0f);
     if (!in.big_small || total_points <= 0) return out;
-
-    const double yaw_big_now = in.info.big_small.yaw_big_pos;
-    const std::vector<double>& seq = in.pred_big_azimuth_seq;
-    if (!seq.empty()) {
-        const double chassis_yaw = in.info.chassis_yaw;
-        const int nLast = (int)seq.size() - 1;
-        for (int i = 0; i < total_points; ++i) {
-            // 第 i 个返回点对应的预测时间 = (i+1)·dt_control（与弹道解算时间基准一致）
-            double idx_f = (double)(i + 1);          // dt_control 为单位
-            if (idx_f > (double)nLast) idx_f = (double)nLast;   // 超出覆盖区间：末值保持
-            const int i0 = (int)std::floor(idx_f);
-            const int i1 = std::min(i0 + 1, nLast);
-            const double f = idx_f - (double)i0;
-            const double psi = (double)seq[(size_t)i0] * (1.0 - f) + (double)seq[(size_t)i1] * f;
-            out[(size_t)i] = (float)(psi - chassis_yaw);   // 世界方位角 → 关节角
-        }
-        return out;
+    // 第 i 个返回点对应的预测时间 = (i+1)·dt_control（与弹道解算时间基准一致）
+    for (int i = 0; i < total_points; ++i) {
+        out[(size_t)i] = yawBigAtTime(in, (double)(i + 1) * dt_control_);
     }
-    if (!last_yaw_big_seq_.empty()) {
-        for (int i = 0; i < total_points; ++i) {
-            const size_t k = std::min((size_t)i, last_yaw_big_seq_.size() - 1);
-            out[(size_t)i] = last_yaw_big_seq_[k];
-        }
-        return out;
-    }
-    std::fill(out.begin(), out.end(), (float)yaw_big_now);
     return out;
 }
 
@@ -278,6 +329,24 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         slow_target = state_.slow_latch;
     } else {
         state_.slow_latch = false;
+    }
+
+    // ── 快目标判定（需求2：第二对施密特触发器阈值，同一套判定方式）──
+    // 仅对“角速度可用的 Armor 类目标”判定：|ω| > fast_upper → fast_target；
+    // |ω| < fast_lower → 非 fast_target；介于两者之间保持锁存（防抖）。
+    // 角速度不可用（PowerRune、基地 label 7/8、EKF 未就绪）或非 Armor 来源：
+    // 锁存复位，本帧不进入 fast_target 分支（行为与改造前一致）。
+    const bool armor_omega =
+        (predictor.source.kind == PredictorSource::Kind::ARMOR) && predictor.omega_valid;
+    bool fast_target = false;
+    if (armor_omega) {
+        const double omega_abs = std::fabs(predictor.target_omega);
+        if (omega_abs > fast_w_upper_) state_.fast_latch = true;       // 越过上阈值：进入快目标
+        else if (omega_abs < fast_w_lower_) state_.fast_latch = false; // 跌破下阈值：退出快目标
+        // fast_lower <= |ω| <= fast_upper：保持 state_.fast_latch 不变
+        fast_target = state_.fast_latch;
+    } else {
+        state_.fast_latch = false;
     }
 
     // 目标选择策略由来源自动选择（Armor → NEAREST，PowerRune → LOWEST_Z）。
@@ -378,13 +447,32 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     // 无上一帧/来源切换后为 -1 → 直接选最优）；本帧后续实际计算点粘本帧前一个
     // 实际计算点选中的索引（插值点继承左端实际点目标，无需另行处理）。
     // selectTargetResult 内部处理粘滞被屏蔽/不存在时退回纯策略选最优。
+    // 需求3（角速度可用的 Armor 目标且本帧非 fast_target）：先为每个候选瞄准点算
+    // 中心瞄准夹角（在其预测时刻测量），交给 selectTargetResult“优先排除 |夹角| > π/2”
+    // ——该指标优先于其它指标（含慢目标粘滞）。fast_target 帧整条序列会被单点解算
+    // 替换、不使用逐点选择结果，故不算夹角（省去预测函数调用）。
+    const bool angle_filter_enabled = armor_omega && !fast_target;
     std::vector<PredictedBallisticSolver::Result> solved((size_t)U);
     int sticky_index = aim_stick_enabled ? state_.last_first_target_index : -1;
     for (int u = 0; u < U; ++u) {
+        std::vector<double> angles;
+        const std::vector<double>* angles_ptr = nullptr;
+        if (angle_filter_enabled && !candidates_all[(size_t)u].empty()) {
+            angles.resize(candidates_all[(size_t)u].size());
+            for (size_t ci = 0; ci < candidates_all[(size_t)u].size(); ++ci) {
+                const PredictedBallisticSolver::Result& c = candidates_all[(size_t)u][ci];
+                // 与瞄准点同时预测出来的车体中心（同刻预测中心）
+                const PredictedBallisticSolver::PredictorResult pr = predictor.function(c.predict_time);
+                const cv::Vec3f center(pr.first.x, pr.first.y, pr.first.z);
+                angles[ci] = centerAimAngle(center, c.predicted_point, yaw_world_origin);
+            }
+            angles_ptr = &angles;
+        }
         solved[(size_t)u] = selectTargetResult(
             candidates_all[(size_t)u], sel, muzzle_origin, predictor,
             aim_stick_enabled ? sticky_index : -1,
-            aim_stick_enabled ? aim_stick_delta : 0.0);
+            aim_stick_enabled ? aim_stick_delta : 0.0,
+            angles_ptr);
         if (aim_stick_enabled) {
             sticky_index = (solved[(size_t)u].target_index >= 0)
                                ? solved[(size_t)u].target_index
@@ -456,7 +544,105 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         }
     }
 
-    // ── 4. 结果 ──
+    // ── 4. fast_target（需求3/4）：整条返回序列替换为一次新的单点解算 ──
+    // 取「中心瞄准夹角与 ω 异号（正在靠近枪线）且 |夹角| 最小」的 (返回点, 板)；
+    // 若没有任何异号者，退回「同号且 |夹角| 最大」的那一个。用该返回点的**总预测
+    // 时间**（items[i].predict_time）+ |夹角|/|ω| 作为预测时刻、该板序号为索引做
+    // 一次单点解算（solveSingle，不再迭代弹道飞行时间），并把全部 item 都换成这次
+    // 解算的结果（云台角/瞄准点相同）——即瞄准那块即将与枪线对齐的板。
+    // 同时算出 fast 元数据（参考时刻/参考板/参考夹角/每块板旋转容差角）随 Result
+    // 下发，供云台输出模式做火控数组的“有目标在枪线上”判定。
+    // 新解算失败时保留原逐点解算序列（不下发 fast 元数据，退回原开火条件）。
+    bool   fast_applied = false;
+    int    fast_ref_plate = -1;
+    double fast_ref_time = 0.0;
+    double fast_ref_angle = 0.0;
+    double fast_flight_time = 0.0;
+    std::vector<float> fast_tolerance;
+    if (fast_target && TOTAL > 0) {
+        const double omega = predictor.target_omega;
+        // 候选：每个返回点 × 每块未被屏蔽的板；中心瞄准夹角在该返回点的预测时刻测量
+        int    best_i = -1, best_j = -1;
+        double best_angle = 0.0;
+        int    fallback_i = -1, fallback_j = -1;
+        double fallback_angle = 0.0;
+        double fallback_abs = -1.0;
+        for (int i = 0; i < TOTAL; ++i) {
+            const double t = items[(size_t)i].predict_time;   // 该返回点的总预测时间
+            const PredictedBallisticSolver::PredictorResult pr = predictor.function(t);
+            const cv::Vec3f center(pr.first.x, pr.first.y, pr.first.z);
+            for (int j = 0; j < (int)pr.second.size(); ++j) {
+                if (predictor.isIndexMasked(j)) continue;     // 屏蔽板不作为瞄准对象
+                const cv::Point3f& p = pr.second[(size_t)j];
+                const double a = centerAimAngle(center, cv::Vec3f(p.x, p.y, p.z), yaw_world_origin);
+                if (a * omega <= 0.0) {
+                    // 夹角与 ω 异号（含恰为 0）：板正在向枪线靠近，取 |夹角| 最小者
+                    if (best_i < 0 || std::fabs(a) < std::fabs(best_angle)) {
+                        best_i = i;
+                        best_j = j;
+                        best_angle = a;
+                    }
+                } else if (std::fabs(a) > fallback_abs) {
+                    // 全部同号（板都在远离枪线）：退回取 |夹角| 最大者（最快绕回）
+                    fallback_i = i;
+                    fallback_j = j;
+                    fallback_angle = a;
+                    fallback_abs = std::fabs(a);
+                }
+            }
+        }
+        if (best_i < 0) {
+            best_i = fallback_i;
+            best_j = fallback_j;
+            best_angle = fallback_angle;
+        }
+
+        if (best_i >= 0 && std::fabs(omega) > 1e-9) {
+            // 对齐时刻 = 该点总预测时间 + |夹角|/|ω|
+            const double t_new = items[(size_t)best_i].predict_time
+                                 + std::fabs(best_angle) / std::fabs(omega);
+            // 大小 yaw 构型：该时刻的大 yaw 关节角 → 有效 yaw 旋转中心；单 yaw 传 NaN
+            const float yaw_big = in.big_small
+                ? yawBigAtTime(in, t_new)
+                : std::numeric_limits<float>::quiet_NaN();
+            // 并行解算已结束，此处于调用线程用第一个解算器做单次解算
+            // （solveSingle 不再迭代弹道飞行时间；GimbalSolver 解算只读内部树）
+            const PredictedBallisticSolver::Result r =
+                solvers_.front().solveSingle(predictor.function, best_j, t_new, yaw_big);
+            if (r.success) {
+                const Item it = makeActual(r);
+                std::fill(items.begin(), items.end(), it);   // 整条序列 = 这次新解算
+
+                // fast 元数据：参考夹角按 t_ref 时刻几何重算（与需求1 同一定义），
+                // 每块板旋转容差角 = max(下限, fire_angle_length / 该板 xy 旋转半径)；
+                // 旋转半径 = 方向向量（同刻预测中心 − 该板位置）的 xy 投影长度。
+                const PredictedBallisticSolver::PredictorResult pr = predictor.function(t_new);
+                const cv::Vec3f center(pr.first.x, pr.first.y, pr.first.z);
+                if (best_j < (int)pr.second.size()) {
+                    const cv::Point3f& p = pr.second[(size_t)best_j];
+                    fast_ref_angle = centerAimAngle(center, cv::Vec3f(p.x, p.y, p.z),
+                                                    yaw_world_origin);
+                }
+                fast_tolerance.assign(pr.second.size(), (float)min_rotation_tolerance_angle_);
+                for (size_t j = 0; j < pr.second.size(); ++j) {
+                    const cv::Point3f& p = pr.second[j];
+                    const double radius = std::hypot((double)center[0] - (double)p.x,
+                                                     (double)center[1] - (double)p.y);
+                    if (radius > 1e-6) {
+                        fast_tolerance[j] = (float)std::max(min_rotation_tolerance_angle_,
+                                                            fire_angle_length_ / radius);
+                    }
+                    // 半径过小（退化）时保持下限值，避免容差角发散
+                }
+                fast_applied     = true;
+                fast_ref_plate   = best_j;
+                fast_ref_time    = t_new - predictor_age;   // 换算为“相对本次调用时刻”的秒数
+                fast_flight_time = r.gimbal.flight_time;
+            }
+        }
+    }
+
+    // ── 5. 结果 ──
     Result res;
     res.items = std::move(items);
     res.valid = res.items.front().success;             // 第一个返回点 = 前导精确点（实际计算点）
@@ -465,6 +651,15 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     res.yaw_world_origin = yaw_world_origin;
     // 积分补偿开关：仅在预测有效且 MCU 自瞄开关打开时启用
     res.integral_enable = res.valid && in.auto_aim_switch;
+    if (fast_applied) {
+        res.fast_target            = true;
+        res.fast_omega             = predictor.target_omega;
+        res.fast_ref_time          = fast_ref_time;
+        res.fast_ref_plate         = fast_ref_plate;
+        res.fast_ref_center_aim_angle = fast_ref_angle;
+        res.fast_flight_time       = fast_flight_time;
+        res.fast_plate_tolerance   = std::move(fast_tolerance);
+    }
 
     // ── 慢目标瞄准点滞回：记录本帧序列“第一个值”选中的瞄准点索引，作为下一帧
     // 第一个值的粘滞点（state_ 已在来源切换时整体清零；首点无效 → -1 = 不粘）。
@@ -483,4 +678,40 @@ void SequencePredictor::invalidate()
     // 下次 predict() 将视为新来源并重新初始化状态
     state_ = State{};
     active_source_ = PredictorSource{};
+}
+
+// fast_target 帧的火控点“有目标在枪线上”判定（需求5，匀速旋转模型）。
+// 云台输出模式对火控数组的每个点调用：与 MPC 轨迹误差条件**同时满足**才开火。
+//   - 非 fast_target 帧恒 true（不做门控，保持原行为）；
+//   - 火控点 index 的开火时刻 → 命中时刻：
+//       t_impact = extra_predict_time + (index+1)·dt_control + fast_flight_time
+//     （索引时间与返回点索引同一时间轴：第 i 个返回点索引时刻 = extra+(i+1)·dt；
+//      延迟取该点对应的弹道飞行时间 fast_flight_time）；
+//   - 参考板在 fast_ref_time 时刻的中心瞄准夹角为 fast_ref_center_aim_angle，之后按
+//     匀速旋转以 ω 演化；装甲板按返回列表顺序圆周均布（前哨站 3 块 120°、其它
+//     4 块 90°），故第 m 块相对参考板的夹角偏置为 +m·2π/N；
+//   - 任一板在命中时刻落在自身旋转容差角内即认为“有目标在枪线上”；
+//   - fast 元数据缺失（参考板无效 / 板数为 0 / ω≈0）时返回 false（不开火，安全侧）。
+bool SequencePredictor::fastGunLineOk(const Result& seq, int index,
+                                      double extra_predict_time, double dt_control) {
+    if (!seq.fast_target) return true;   // 非 fast_target：不追加枪线门控
+    const int plates = (int)seq.fast_plate_tolerance.size();
+    if (plates <= 0 || seq.fast_ref_plate < 0 || seq.fast_ref_plate >= plates) return false;
+    const double omega = seq.fast_omega;
+    if (std::fabs(omega) < 1e-9) return false;   // 无角速度信息：不满足匀速旋转模型
+
+    // 命中时刻（秒，与 fast_ref_time 同一时间轴：相对 predict() 调用时刻）
+    const double t_impact = extra_predict_time
+                            + (double)(index + 1) * dt_control + seq.fast_flight_time;
+    const double dt = t_impact - seq.fast_ref_time;   // 相对参考时刻的时间差
+
+    const double plate_step = 2.0 * M_PI / (double)plates;
+    for (int m = 0; m < plates; ++m) {
+        const int plate = (seq.fast_ref_plate + m) % plates;   // 板圆周顺序 = 返回列表顺序
+        // 该板在命中时刻的中心瞄准夹角（匀速旋转外推）+ 圆周偏置，解缠绕到 (-π, π]
+        const double angle = std::remainder(
+            seq.fast_ref_center_aim_angle + omega * dt + (double)m * plate_step, 2.0 * M_PI);
+        if (std::fabs(angle) < (double)seq.fast_plate_tolerance[(size_t)plate]) return true;
+    }
+    return false;
 }
