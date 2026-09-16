@@ -28,7 +28,8 @@ std::vector<T> truncateKeepLast(const std::vector<T>& seq, int skip, const T& fa
 
 GimbalOutput::GimbalOutput(tcs::RobotController& rc)
     : rc_(rc),
-      yaw_torque_only_mode_(RobotConfig::instance().common.robotController.yawTorqueOnlyMode),
+      yaw_torque_only_mode_(
+          RobotConfig::instance().common.singleYawRobotController().yawTorqueOnlyMode),
       pitch_seq_lead_(RobotConfig::instance().common.predictSequence.pitchSeqLead),
       fire_seq_lead_(RobotConfig::instance().common.predictSequence.fireSeqLead),
       fire_angle_lower_limit_(RobotConfig::instance().common.predictSequence.fireAngleLowerLimit),

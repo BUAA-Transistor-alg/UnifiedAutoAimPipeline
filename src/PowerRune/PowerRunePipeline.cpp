@@ -1,3 +1,4 @@
+#include "common/TransformTree/TfTreeSync.h"
 #include "PowerRune/PowerRunePipeline.h"
 #include "common/PathResolver.h"
 #include "common/RobotConfig.h"
@@ -249,12 +250,9 @@ void PowerRunePipeline::processStage4(DataDeque& data)
     // 同步本阶段独立变换树（PowerRune 无真实云台：chassis 欧拉 = imu_euler = 相机欧拉，
     // chassis 坐标 = 相机坐标，yaw_pos/pitch_angle = 0）
     RobotTfTree& tree = *s4_.tree;
-    tree.unlock();
-    tree.setChassisPosition((float)info.chassis_x, (float)info.chassis_y, (float)info.chassis_z);
-    tree.setChassisEuler((float)info.chassis_yaw, (float)info.chassis_pitch, (float)info.chassis_roll);
-    tree.setYaw((float)info.yaw_pos);
-    tree.setPitch((float)info.pitch_angle);
-    tree.lockAndComputeCache();
+    // 同步本阶段独立变换树（ExtraInputInfo = 底盘位姿 + **当前构型**的关节角包；
+    // 构型取包与越界检查统一在 TfTreeSync 中完成）
+    syncTreeFromExtraInfo(tree, info);
 
     d->stage4.combined_pose = s4_.pose_solver.estimateCombinedPose(d->stage3.detections);
     d->stage4.rotation_counts = d->stage4.combined_pose.rotation_counts;

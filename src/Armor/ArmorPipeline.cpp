@@ -1,4 +1,5 @@
 // ArmorPipeline.cpp — 装甲板感知流水线实现（5 阶段，输出 PipelineResult）
+#include "common/TransformTree/TfTreeSync.h"
 #include "Armor/ArmorPipeline.h"
 #include "common/PathResolver.h"
 #include "common/RobotConfig.h"
@@ -312,12 +313,9 @@ void ArmorPipeline::processStage4(DataDeque& data)
 
     // 同步本阶段独立变换树（ExtraInputInfo = StrictPose + 底盘 xyz）
     RobotTfTree& tree = s4_.tree;
-    tree.unlock();
-    tree.setChassisPosition((float)info.chassis_x, (float)info.chassis_y, (float)info.chassis_z);
-    tree.setChassisEuler((float)info.chassis_yaw, (float)info.chassis_pitch, (float)info.chassis_roll);
-    tree.setYaw((float)info.yaw_pos);
-    tree.setPitch((float)info.pitch_angle);
-    tree.lockAndComputeCache();
+    // 同步本阶段独立变换树（ExtraInputInfo = 底盘位姿 + **当前构型**的关节角包；
+    // 构型取包与越界检查统一在 TfTreeSync 中完成）
+    syncTreeFromExtraInfo(tree, info);
 
     // world 系竖直向上 (0,0,1) 经 tf 旋转到 cam 系（仅方向，不带平移；云台
     // yaw/pitch 每帧变化，故每帧重算一次；供 stage4 轴-方向夹角约束用）
@@ -405,12 +403,9 @@ void ArmorPipeline::processStage5(DataDeque& data)
 
     // 同步本阶段独立变换树（OutpostESEKF 内部投影依赖）
     RobotTfTree& tree = *s5_.tree;
-    tree.unlock();
-    tree.setChassisPosition((float)info.chassis_x, (float)info.chassis_y, (float)info.chassis_z);
-    tree.setChassisEuler((float)info.chassis_yaw, (float)info.chassis_pitch, (float)info.chassis_roll);
-    tree.setYaw((float)info.yaw_pos);
-    tree.setPitch((float)info.pitch_angle);
-    tree.lockAndComputeCache();
+    // 同步本阶段独立变换树（ExtraInputInfo = 底盘位姿 + **当前构型**的关节角包；
+    // 构型取包与越界检查统一在 TfTreeSync 中完成）
+    syncTreeFromExtraInfo(tree, info);
 
     // ── OutpostESEKF 统一帧处理（label 6 装甲板）──
     // 观测超时重置 / 初始化 / 更新（观测截断）/ 无观测仅预测均由

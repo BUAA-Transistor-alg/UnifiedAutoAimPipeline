@@ -1,0 +1,175 @@
+// GimbalOutputForBigSmallYaw.cpp — 新构型（大/小双 yaw）云台控制输出模式实现
+#include "common/BigSmallYaw/GimbalOutputForBigSmallYaw.h"
+
+#include <algorithm>
+#include <cmath>
+
+#include "common/Ballistic/SequencePredictor.h"
+#include "common/RobotConfig.h"
+
+namespace {
+
+// 截取前 skip 个元素，保证结果至少有一个元素（与 GimbalOutput 同一语义）：
+// - 原始序列非空时，截取后为空则至少保留最后一个元素；
+// - 原始序列为空时，补一个 fallback 值（pitch 用 0.0，fire 用 false）。
+template <typename T>
+std::vector<T> truncateKeepLast(const std::vector<T>& seq, int skip, const T& fallback) {
+    if (seq.empty()) {
+        return std::vector<T>{fallback};
+    }
+    const size_t s = std::min((size_t)std::max(0, skip), seq.size());
+    if (s >= seq.size()) {
+        return std::vector<T>{seq.back()};
+    }
+    return std::vector<T>(seq.begin() + (long)s, seq.end());
+}
+
+} // namespace
+
+namespace bsy {
+
+GimbalOutputForBigSmallYaw::GimbalOutputForBigSmallYaw(RobotControllerAdapter& ctrl)
+    : ctrl_(ctrl),
+      splitter_(BigSmallYawSplitterConfig{
+          RobotConfig::instance().common.bigSmallYaw.bigSmall.joints.smallMinAngle,
+          RobotConfig::instance().common.bigSmallYaw.bigSmall.joints.smallMaxAngle,
+          RobotConfig::instance().common.bigSmallYaw.bigSmall.joints.smallCenterAngle,
+          RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.mpc.smallLimitSoftRatio,
+          RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerMaxVelocity,
+          RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerMaxAcceleration,
+          RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerMaxJerk,
+          RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerSubsteps}),
+      big_torque_only_(RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.controller.bigTorqueOnly),
+      small_torque_only_(RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.controller.smallTorqueOnly),
+      pitch_seq_lead_(RobotConfig::instance().common.predictSequence.pitchSeqLead),
+      fire_seq_lead_(RobotConfig::instance().common.predictSequence.fireSeqLead),
+      fire_angle_lower_limit_(RobotConfig::instance().common.predictSequence.fireAngleLowerLimit),
+      fire_angle_length_(RobotConfig::instance().common.predictSequence.fireAngleLength),
+      dt_control_(RobotConfig::instance().common.dtControl()) {}
+
+bool GimbalOutputForBigSmallYaw::computeFire(double ref, double pred, double threshold) {
+    // 角度差先解缠绕到 (-π, π]
+    const double diff = std::remainder(ref - pred, 2.0 * M_PI);
+    return std::fabs(diff) < threshold;
+}
+
+void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::RobotController*,
+                                        OutputContext& ctx) {
+    // 无新帧时不重发序列，让 McuMpcController 后台 100Hz 线程正常消费已发送序列
+    if (!result.valid) return;
+
+    // ── 直接读取新构型控制器状态（不经流水线）──
+    const RobotState st = ctrl_.state();
+
+    // ── 当帧预测（main 弹道线程经 SequencePredictor::predict 写入 ctx）──
+    const SequencePredictor::Result& seq = ctx.predict_result;
+
+    if (seq.valid && !seq.items.empty()) {
+        holding_ = false;
+
+        // ── fire 序列：用 MPC 的**小 yaw** 参考/预测序列逐对判定（与旧版 yaw 通道一致）──
+        std::vector<bool> fire_seq;
+        bool mpc_available = false;
+        const size_t ns = std::min(st.ref_small_azimuth_seq.size(),
+                                   st.pred_small_azimuth_seq.size());
+        if (ns > 0) {
+            // 动态阈值：基于首个序列元素瞄准目标与 yaw 系原点（小 yaw 轴中心）在
+            // world xy 平面的投影距离
+            double threshold = fire_angle_lower_limit_;
+            const cv::Vec3f yaw_origin = seq.yaw_world_origin;
+            const cv::Vec3f target = seq.first_point;
+            const double dist_xy = std::hypot((double)target[0] - (double)yaw_origin[0],
+                                              (double)target[1] - (double)yaw_origin[1]);
+            if (dist_xy > 1e-6) {
+                threshold = std::max(threshold, fire_angle_length_ / dist_xy);
+            }
+            mpc_available = true;
+            last_.fire_threshold = threshold;
+            fire_seq.reserve(ns);
+            for (size_t k = 0; k < ns; ++k) {
+                fire_seq.push_back(computeFire(st.ref_small_azimuth_seq[k],
+                                               st.pred_small_azimuth_seq[k], threshold));
+            }
+        }
+
+        // ── 瞄准方位角序列（= 每个返回点的小 yaw 输出目标世界方位角）──
+        std::vector<double> aim_azimuth;
+        aim_azimuth.reserve(seq.items.size());
+        for (const auto& item : seq.items) aim_azimuth.push_back((double)item.yaw);
+
+        // ── 大小 yaw 拆分：平滑大 yaw 轨迹 + 越软限位时的无限幅跳变 ──
+        // 初值取上一轮计划（按该帧 shared_frame_timestamp 与上一轮的时间差插值）
+        const BigSmallYawSplitter::Output sp =
+            splitter_.split(aim_azimuth, dt_control_, st.yaw_small_azimuth, result.frame_timestamp);
+
+        // ── pitch / fire 序列截取（yaw 两路序列不截取：拆分器输出已与预测序列等长）──
+        std::vector<double> pitch_seq;
+        pitch_seq.reserve(seq.items.size());
+        for (const auto& item : seq.items) pitch_seq.push_back((double)item.pitch);
+        const std::vector<double> pitch_out = truncateKeepLast(pitch_seq, pitch_seq_lead_, 0.0);
+        const std::vector<bool>   fire_out  = truncateKeepLast(fire_seq, fire_seq_lead_, false);
+
+        last_.auto_aim_enable = true;
+        last_.predicted_point = seq.first_point;
+        last_.predict_time    = seq.first_predict_time;
+        last_.big_yaw_seq     = sp.big_azimuth;
+        last_.small_yaw_seq   = sp.small_azimuth;
+        last_.pitch_seq       = pitch_out;
+        last_.fire_seq        = fire_out;
+        last_.mpc_available   = mpc_available;
+        last_.jump_count      = sp.jump_count;
+        last_.unlimited_episodes = sp.unlimited_episodes;
+        last_.over_limit      = sp.over_limit;
+        last_.theta_small_max_abs = sp.theta_small_max_abs;
+        last_.soft_min = sp.soft_min;
+        last_.soft_max = sp.soft_max;
+
+        ctx.fire_out = fire_out;   // 回写 fire 序列（可视化取首元素控制井形叉丝颜色）
+        // 回写拆分器诊断（可视化叠加“大小 yaw 角 / 参考 / 越限标志”）
+        ctx.split_diag.valid            = true;
+        ctx.split_diag.jump_count       = sp.jump_count;
+        ctx.split_diag.unlimited_episodes = sp.unlimited_episodes;
+        ctx.split_diag.over_limit       = sp.over_limit;
+        ctx.split_diag.theta_small_max_abs = sp.theta_small_max_abs;
+        ctx.split_diag.soft_min         = sp.soft_min;
+        ctx.split_diag.soft_max         = sp.soft_max;
+        ctx.split_diag.big_ref_front    = sp.big_azimuth.empty() ? 0.0 : sp.big_azimuth.front();
+        ctx.split_diag.small_ref_front  = sp.small_azimuth.empty() ? 0.0 : sp.small_azimuth.front();
+
+        // 序列 set：{自动瞄准开, 大 yaw 仅力矩, 小 yaw 仅力矩, ψ_big 序列, ψ_small 序列,
+        //            pitch 序列, fire 序列, 积分补偿}
+        ctrl_.controller().set(/*auto_aim_enable=*/true, big_torque_only_, small_torque_only_,
+                               sp.big_azimuth, sp.small_azimuth, pitch_out, fire_out,
+                               /*integral_enable=*/seq.integral_enable);
+    } else {
+        // ── 预测不可用：保持模式（自瞄关闭，大/小 yaw 保持当前严格反解世界方位角）──
+        last_ = LastOutput{};
+        ctx.fire_out = std::vector<bool>{false};
+        ctx.split_diag = OutputContext::BigSmallSplitDiag{};
+        const double hold_big   = st.yaw_big_azimuth;
+        const double hold_small = st.yaw_small_azimuth;
+        const double hold_pitch = st.pitch_joint;
+        ctrl_.controller().set(/*auto_aim_enable=*/false, big_torque_only_, small_torque_only_,
+                               std::vector<double>{hold_big},
+                               std::vector<double>{hold_small},
+                               std::vector<double>{hold_pitch},
+                               std::vector<bool>{false},
+                               /*integral_enable=*/false);
+
+        // 持续保持超过一个规划时域（一个序列时长）后，拆分器的“上一轮计划”已无参考价值：
+        // 复位，重新捕获目标时从当前瞄准序列重新起步（避免用陈旧轨迹当初值）
+        if (!holding_) {
+            holding_ = true;
+            hold_start_ = result.frame_timestamp;
+        } else {
+            const double hold_s = std::chrono::duration<double>(
+                result.frame_timestamp - hold_start_).count();
+            const size_t horizon_pts = (size_t)std::max(1, RobotConfig::instance().common.predictSequence.predictionPoints);
+            if (hold_s > (double)horizon_pts * dt_control_) {
+                splitter_.reset();
+            }
+        }
+    }
+}
+
+} // namespace bsy

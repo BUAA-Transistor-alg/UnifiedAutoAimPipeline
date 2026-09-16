@@ -12,10 +12,20 @@
 
 // 云台角度解算器：将目标点（world 系 3D 坐标）解算为云台 yaw / pitch 角度。
 //
-// - 内部维护一个独立的 RobotTfTree（各节点偏移参数来自 RobotConfig），
-//   供坐标解算使用，与外部实时变换树互不影响；
+// - 内部维护一个独立的 RobotTfTree（各节点偏移参数来自 RobotConfig；yaw 构型同样
+//   由配置定型，见 RobotTfTree），供坐标解算使用，与外部实时变换树互不影响；
 // - yaw 解算（由 RobotTfTree::computeYawToAimTarget 迁移而来，语义不变）：
 //   在 pitch 关节为 0 时，使 muzzle 系 +y 射线在 world xy 平面上的投影经过目标点 xy 投影；
+//   ★ 大小 yaw 构型（YawMode::BIG_SMALL）下的推广：原 yaw 关节拆成串联的
+//     yaw_big -> yaw_small，两级绕 z 的旋转**可合并**，但小 yaw 轴相对大 yaw 轴
+//     有横向偏移 p_s（配置 common.big_small_yaw.small_yaw_offset_*），该偏移随大 yaw
+//     一起旋转。因此把「有效 yaw 旋转中心」取为
+//         K_s(θ_big) = chassis + Rc·( p_big + Rz(θ_big)·p_s )
+//     后，原来的解算公式**完全不变**，解出的 yaw = θ_total = θ_big + θ_small
+//     （即“小 yaw 输出相对底盘的等效关节角”，加底盘 yaw 修正后就是小 yaw 输出世界方位角）。
+//     大 yaw 关节角 θ_big 由调用方按预测时刻给定（见
+//     solveAim(target, bulletVelocity, yawBig) / computeYawToAimTarget(..., yawBig, ...)），
+//     单 yaw 构型下等价于原来的行为。
 // - pitch 解算：给定 yaw，把「world 系下目标点 3D 坐标相对 muzzle 系原点的相对位置」
 //   连同该 yaw 一起传入 BallisticSolver，取使弹道最近点 distance 最短的 pitch；
 //   最短 distance 超过阈值（RobotConfig::gimbal.distanceThreshold）时解算失效；
@@ -25,7 +35,8 @@ public:
     // 打包解算结果
     struct AimResult {
         bool   success = false;   // 是否解算成功
-        float  yaw     = 0.0f;    // 解算出的 yaw（弧度，归一化到 (-pi, pi]）
+        float  yaw     = 0.0f;    // 解算出的 yaw（弧度，归一化到 (-pi, pi]）；
+                                  // 大小 yaw 构型下为 θ_total = θ_big + θ_small
         float  pitch   = 0.0f;    // 解算出的 pitch（弧度）
         double distance = 0.0;    // 弹道最近点与目标的距离（米）
         double flight_time = 0.0; // 解算成功时选取的云台角度参数所用的弹道飞行时间（秒）
@@ -37,10 +48,22 @@ public:
     RobotTfTree& tree() { return *tree_; }
     const RobotTfTree& tree() const { return *tree_; }
 
+    // 当前 yaw 构型（由内部树构造时定型）
+    bool isBigSmallYaw() const { return tree_->isBigSmallYaw(); }
+
+    // 有效 yaw 旋转中心相对 chassis 的位置（米，chassis 系）：
+    //   SINGLE    ：yaw 节点位置；
+    //   BIG_SMALL ：p_big + Rz(θ_big)·p_small。
+    // 无参版用内部树当前的大 yaw 关节角；带 yawBig 版用于并行解算（BIG_SMALL 专用）。
+    cv::Vec3f effectiveYawPos() const;
+    cv::Vec3f effectiveYawPos(float yawBig) const;
+
     // 便捷同步接口（作用于内部树，调用前需确保内部树处于解锁状态）
     void setChassisPosition(float x, float y, float z);
     void setChassisEuler(float yaw, float pitch, float roll);
     void setYaw(float yaw);
+    void setYawBig(float yaw_big);
+    void setYawSmall(float yaw_small);
     void setPitch(float pitch);
 
     // 默认弹丸初速（m/s），可在运行时覆盖
@@ -59,7 +82,15 @@ public:
     // 原有"水平瞄准"语义。只读取内部树节点数据，不依赖变换缓存，不受上锁限制。
     // 成功返回 true 并写入 yawOut（归一化到 (-pi, pi]）；
     // 失败（退化 / 无解 / 射线背向目标等）返回 false，yawOut 置为内部树当前 yaw。
+    // ★ 大小 yaw 构型下解出的是 θ_total = θ_big + θ_small（用内部树**当前** θ_big 算有效
+    //   旋转中心；预测时域内应改用下面的带 yawBig 重载，逐点给出该时刻的大 yaw 关节角）。
     bool computeYawToAimTarget(const cv::Vec3f& targetWorld, float pitch, float& yawOut) const;
+
+    // 大小 yaw 构型专用重载：显式给出该预测时刻的大 yaw 关节角 θ_big（弧度，相对底盘），
+    // 有效 yaw 旋转中心随之 = p_big + Rz(θ_big)·p_small，解出的 yaw = θ_total。
+    // 单 yaw 构型下调用本重载抛 std::logic_error（构型不匹配，防止误用）。
+    bool computeYawToAimTarget(const cv::Vec3f& targetWorld, float pitch, float yawBig,
+                               float& yawOut) const;
 
     // pitch 解算：给定 yaw（需附加），求使 BallisticSolver 最近点 distance 最短的 pitch。
     // 每个候选 pitch 都会重新计算 muzzle 原点（随 pitch 移动）并求相对位置后传入 BallisticSolver。
@@ -76,6 +107,11 @@ public:
     bool computePitchToAimTarget(const cv::Vec3f& targetWorld, float yaw, double bulletVelocity,
                                  float& pitchOut, double& minDistanceOut,
                                  double& minDistancePlaneOut, double& flightTimeOut) const;
+    // 大小 yaw 构型专用重载：额外显式给出大 yaw 关节角 θ_big（用于有效 yaw 旋转中心）
+    bool computePitchToAimTarget(const cv::Vec3f& targetWorld, float yaw, double bulletVelocity,
+                                 float yawBig,
+                                 float& pitchOut, double& minDistanceOut,
+                                 double& minDistancePlaneOut, double& flightTimeOut) const;
 
     // 当前 muzzle 系原点在 world 系下的坐标（使用内部树当前的 yaw/pitch 关节角；
     // 只读节点数据，不依赖变换缓存/上锁）。muzzleWorldOrigin 调用前需先同步内部树关节角。
@@ -83,6 +119,7 @@ public:
 
     // yaw 系原点（yaw 关节旋转中心）在 world 系下的坐标（只读节点数据，不依赖缓存/上锁）。
     // 供 fire 判定的动态角度阈值计算（瞄准目标与 yaw 原点在 world xy 平面的投影距离）。
+    // 大小 yaw 构型下取**小 yaw 轴**的旋转中心（含随 θ_big 旋转的偏移）。
     cv::Vec3f yawWorldOrigin() const;
 
     // 打包解算：先以 pitch = 0 解 yaw，再以该 yaw 解 pitch；
@@ -92,18 +129,38 @@ public:
     AimResult solveAim(const cv::Vec3f& targetWorld, double bulletVelocity) const;
     // 使用默认弹丸初速（RobotConfig::gimbal.bulletVelocity，可经 setBulletVelocity 覆盖）
     AimResult solveAim(const cv::Vec3f& targetWorld) const;
+    // 大小 yaw 构型专用：显式给出该预测时刻的大 yaw 关节角 θ_big（单 yaw 构型下抛异常）
+    AimResult solveAim(const cv::Vec3f& targetWorld, double bulletVelocity, float yawBig) const;
 
 private:
     // pitch 搜索期间不变的树数据（构造一次后供并行评估读取，避免各线程竞争内部树）
     struct EvalContext {
         cv::Vec3f chassisPos;        // chassis 位置（world）
         cv::Mat   Rc;                // chassis 旋转（chassis -> world）
-        cv::Vec3f yawPos;            // yaw 旋转中心相对 chassis 的位置
-        cv::Vec3f pitchPos;          // pitch 节点相对 yaw 的位置
+        cv::Vec3f yawPos;            // **有效** yaw 旋转中心相对 chassis 的位置（见 effectiveYawPos）
+        cv::Vec3f pitchPos;          // pitch 节点相对 yaw_small（= 该旋转中心）的位置
         cv::Vec3f u;                 // headPos + muzzlePos（muzzle 原点在 pitch 系中的位置）
+        float     totalYaw;          // 当前两级 yaw 关节角之和（SINGLE = yaw 关节角）
         double    stopZ;             // 弹道计算截止高度（world 系，米，由 buildContext 从配置赋值）
     };
     EvalContext buildContext() const;
+    // 带显式大 yaw 关节角（BIG_SMALL 专用；构造时由配置定型，SINGLE 下调用抛异常）
+    EvalContext buildContext(float yawBig) const;
+
+    // 当前两级 yaw 关节角之和（SINGLE = yaw 关节角；BIG_SMALL = θ_big + θ_small）
+    float currentTotalYaw() const;
+
+    // yaw 解算主体（几何快照 ctx + 给定 pitch；ctx.yawPos = 有效 yaw 旋转中心）
+    bool computeYawToAimTargetImpl(const EvalContext& ctx, const cv::Vec3f& targetWorld,
+                                   float pitch, float& yawOut) const;
+    // solveAim 主体（useYawBig = true 时用显式大 yaw 关节角，仅 BIG_SMALL）
+    AimResult solveAimImpl(const cv::Vec3f& targetWorld, double bulletVelocity,
+                           bool useYawBig, float yawBig) const;
+    // pitch 解算主体（几何快照 ctx + 给定 yaw）
+    bool computePitchToAimTargetImpl(const EvalContext& ctx, const cv::Vec3f& targetWorld,
+                                     float yaw, double bulletVelocity,
+                                     float& pitchOut, double& minDistanceOut,
+                                     double& minDistancePlaneOut, double& flightTimeOut) const;
 
     // 单个 (yaw, pitch) 下：解析求 muzzle 原点/指向（不修改内部树，线程安全）→ 相对位置
     // → BallisticSolver 最近点结果

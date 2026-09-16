@@ -53,7 +53,7 @@ private:
     // 复用缓冲，避免每帧 clone 的分配/释放。像素拷贝仍需保留：result.frame 另被
     // 主线程保存为原始画面，不可原地绘制）。seq 为当帧预测结果（源自 OutputContext）。
     void renderArmor(const PipelineResult& result, tcs::RobotController* rc,
-                     const SequencePredictor::Result& seq);
+                     const SequencePredictor::Result& seq, const OutputContext& ctx);
     void renderPowerRune(const PipelineResult& result, tcs::RobotController* rc);
 
     // 当前渲染模式（主线程 setMode 写 / 可视化线程 update 读，需原子）

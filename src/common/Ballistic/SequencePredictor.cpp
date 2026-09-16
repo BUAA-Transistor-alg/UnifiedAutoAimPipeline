@@ -1,6 +1,8 @@
 // SequencePredictor.cpp — 预测序列通用类实现
 #include "common/Ballistic/SequencePredictor.h"
 
+#include "common/TransformTree/TfTreeSync.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -87,7 +89,7 @@ PredictedBallisticSolver::Result selectTargetResult(
 
 SequencePredictor::SequencePredictor()
     : extra_predict_time_(RobotConfig::instance().common.predictedBallistic.extraPredictTime),
-      dt_control_(RobotConfig::instance().common.robotController.dtControl),
+      dt_control_(RobotConfig::instance().common.dtControl()),
       pitch_bias_(RobotConfig::instance().common.predictSequence.pitchBias),
       yaw_bias_(RobotConfig::instance().common.predictSequence.yawBias),
       prediction_points_(RobotConfig::instance().common.predictSequence.predictionPoints),
@@ -140,6 +142,93 @@ SequencePredictor::Item SequencePredictor::extrapItem(const Item& A, const Item&
 }
 
 SequencePredictor::Result SequencePredictor::predict(const tcs::RobotController::State& st,
+                                           const Predictor& predictor,
+                                           const std::chrono::steady_clock::time_point& timestamp)
+{
+    return predictImpl(snapshotFromSingle(st), predictor, timestamp);
+}
+
+SequencePredictor::Result SequencePredictor::predict(const bsy::RobotState& st,
+                                           const Predictor& predictor,
+                                           const std::chrono::steady_clock::time_point& timestamp)
+{
+    return predictImpl(snapshotFromBigSmall(st), predictor, timestamp);
+}
+
+// 单 yaw 构型的输入快照（旧行为：只读 st.strict + st.mcu）
+SequencePredictor::InputSnapshot
+SequencePredictor::snapshotFromSingle(const tcs::RobotController::State& st) const {
+    InputSnapshot in;
+    in.big_small = false;
+    in.info.single.yaw_pos         = st.strict.yaw_pos;
+    in.info.single.pitch_angle     = st.strict.pitch_angle;
+    in.info.single.imu_euler_yaw   = st.strict.imu_euler_yaw;
+    in.info.single.imu_euler_pitch = st.strict.imu_euler_pitch;
+    in.info.single.imu_euler_roll  = st.strict.imu_euler_roll;
+    in.info.chassis_yaw   = st.strict.chassis_yaw;
+    in.info.chassis_pitch = st.strict.chassis_pitch;
+    in.info.chassis_roll  = st.strict.chassis_roll;
+    in.has_bullet_velocity = st.mcu.valid;
+    in.bullet_velocity     = st.mcu.bullet_velocity;
+    in.auto_aim_switch     = (st.mcu.auto_aim_switch == 1);
+    // 底盘 yaw 修正项（原式：imu_euler_yaw − yaw_pos）
+    in.chassis_yaw_correction = st.strict.imu_euler_yaw - st.strict.yaw_pos;
+    return in;
+}
+
+// 大小 yaw 构型的输入快照（适配器状态包 → ExtraInputInfo 的大小 yaw 包 + 弹速/开关 + MPC 预测序列）
+SequencePredictor::InputSnapshot
+SequencePredictor::snapshotFromBigSmall(const bsy::RobotState& st) const {
+    InputSnapshot in;
+    in.big_small = true;
+    in.info = bsy::toExtraInputInfo(st);
+    in.has_bullet_velocity = st.valid && std::isfinite(st.bullet_velocity) && st.bullet_velocity > 0.0;
+    in.bullet_velocity     = st.bullet_velocity;
+    in.auto_aim_switch     = (st.auto_aim_switch == 1);
+    // 底盘 yaw 修正项：严格反解的 chassis 欧拉 yaw（ZXY，与树的 chassis 欧拉角同一约定）
+    in.chassis_yaw_correction = st.info_chassis_yaw;
+    in.pred_big_azimuth_seq   = st.pred_big_azimuth_seq;
+    return in;
+}
+
+// 逐返回点的大 yaw 关节角序列（仅 BIG_SMALL 使用）：
+//   θ_big(t) = ψ_big_pred(t) − ψ_chassis（当帧）
+//   ψ_big_pred 取 MPC 预测序列（线性插值，超出覆盖区间保持最后一个值）；
+//   不可用时退回上一轮解算序列（按索引夹取），再没有则用当帧实测 θ_big。
+std::vector<float> SequencePredictor::buildYawBigSequence(const InputSnapshot& in,
+                                                          int total_points) const {
+    std::vector<float> out((size_t)std::max(0, total_points), 0.0f);
+    if (!in.big_small || total_points <= 0) return out;
+
+    const double yaw_big_now = in.info.big_small.yaw_big_pos;
+    const std::vector<double>& seq = in.pred_big_azimuth_seq;
+    if (!seq.empty()) {
+        const double chassis_yaw = in.info.chassis_yaw;
+        const int nLast = (int)seq.size() - 1;
+        for (int i = 0; i < total_points; ++i) {
+            // 第 i 个返回点对应的预测时间 = (i+1)·dt_control（与弹道解算时间基准一致）
+            double idx_f = (double)(i + 1);          // dt_control 为单位
+            if (idx_f > (double)nLast) idx_f = (double)nLast;   // 超出覆盖区间：末值保持
+            const int i0 = (int)std::floor(idx_f);
+            const int i1 = std::min(i0 + 1, nLast);
+            const double f = idx_f - (double)i0;
+            const double psi = (double)seq[(size_t)i0] * (1.0 - f) + (double)seq[(size_t)i1] * f;
+            out[(size_t)i] = (float)(psi - chassis_yaw);   // 世界方位角 → 关节角
+        }
+        return out;
+    }
+    if (!last_yaw_big_seq_.empty()) {
+        for (int i = 0; i < total_points; ++i) {
+            const size_t k = std::min((size_t)i, last_yaw_big_seq_.size() - 1);
+            out[(size_t)i] = last_yaw_big_seq_[k];
+        }
+        return out;
+    }
+    std::fill(out.begin(), out.end(), (float)yaw_big_now);
+    return out;
+}
+
+SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in,
                                            const Predictor& predictor,
                                            const std::chrono::steady_clock::time_point& timestamp)
 {
@@ -205,14 +294,15 @@ SequencePredictor::Result SequencePredictor::predict(const tcs::RobotController:
     // ── 同步所有线程的独立 GimbalSolver 树（预测弹道解算依赖当前 muzzle 原点与弹速）──
     for (auto& g : gimbals_) {
         g->setChassisPosition(0.0f, 0.0f, 0.0f);
-        g->setChassisEuler((float)st.strict.chassis_yaw, (float)st.strict.chassis_pitch, (float)st.strict.chassis_roll);
-        g->setYaw((float)st.strict.yaw_pos);
-        g->setPitch((float)st.strict.pitch_angle);
-        if (st.mcu.valid) {
-            g->setBulletVelocity(st.mcu.bullet_velocity);
+        // 底盘位姿 + **当前构型**的关节角包（大小 yaw 构型下自动写 θ_big / θ_small / pitch；
+        // 包未填充（NaN）时抛异常，不会静默用 NaN 解算）
+        applyExtraInputInfoToTree(g->tree(), in.info);
+        g->setChassisPosition(0.0f, 0.0f, 0.0f);   // 弹道解算固定以底盘为世界原点
+        if (in.has_bullet_velocity) {
+            g->setBulletVelocity(in.bullet_velocity);
         }
     }
-    const double chassis_yaw = st.strict.imu_euler_yaw - st.strict.yaw_pos;  // 底盘 yaw 修正
+    const double chassis_yaw = in.chassis_yaw_correction;  // item.yaw 的底盘 yaw 修正项
     // ── yaw 系原点（world 系）：树已同步，同一线程内计算并写入 Result，
     //    随结果沿级联传递给输出模式（弹道线程化后不能直接读 GimbalSolver）──
     const cv::Vec3f yaw_world_origin = gimbals_.front()->yawWorldOrigin();
@@ -238,6 +328,14 @@ SequencePredictor::Result SequencePredictor::predict(const tcs::RobotController:
 
     const int U = (int)solve_idx.size();
     const size_t T = gimbals_.size();
+
+    // ── 大小 yaw 构型：逐返回点的大 yaw 关节角 θ_big（世界方位角预测序列 − 当帧底盘 yaw）──
+    // 用于逐点求“有效 yaw 旋转中心”（小 yaw 轴偏移随大 yaw 旋转），并作为 MPC 不可用时的退路。
+    std::vector<float> yaw_big_seq;
+    if (in.big_small) {
+        yaw_big_seq = buildYawBigSequence(in, TOTAL);
+        last_yaw_big_seq_ = yaw_big_seq;   // 记录本轮解算所用序列，供下一轮退路使用
+    }
 
     // ── 慢目标瞄准点滞回参数（仅本帧判定为慢目标且 ratio > 0 时启用）──
     // 滞回量 = aim_stick_ratio_ × (t=0 全部瞄准点到预测车体中心的平均距离；忽略
@@ -266,8 +364,12 @@ SequencePredictor::Result SequencePredictor::predict(const tcs::RobotController:
         const int ret_idx = solve_idx[(size_t)idx];   // 该实际计算点在返回点序列中的索引
         // solve() 返回预测函数列表中全部目标点的解算结果（不再内部选目标）；
         // 实际目标选择在下方顺序循环完成。
+        // 大小 yaw 构型：该点用“该时刻大 yaw 实际会到哪”求有效 yaw 旋转中心（θ_big(t)）；
+        // 单 yaw 构型：传 NaN ⇒ 走原路径（用树当前 yaw 关节角）
+        const float yaw_big = in.big_small ? yaw_big_seq[(size_t)ret_idx]
+                                           : std::numeric_limits<float>::quiet_NaN();
         candidates_all[(size_t)idx] = solvers_[(size_t)(wid % T)].solve(
-            predictor.function, extra_predict_time + (ret_idx + 1) * dt_control_);
+            predictor.function, extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big);
     });
 
     // ── 2. 顺序目标（瞄准点）选择（按时间顺序逐点传递粘滞）──
@@ -362,7 +464,7 @@ SequencePredictor::Result SequencePredictor::predict(const tcs::RobotController:
     res.first_predict_time = res.items.front().predict_time;
     res.yaw_world_origin = yaw_world_origin;
     // 积分补偿开关：仅在预测有效且 MCU 自瞄开关打开时启用
-    res.integral_enable = res.valid && (st.mcu.auto_aim_switch == 1);
+    res.integral_enable = res.valid && in.auto_aim_switch;
 
     // ── 慢目标瞄准点滞回：记录本帧序列“第一个值”选中的瞄准点索引，作为下一帧
     // 第一个值的粘滞点（state_ 已在来源切换时整体清零；首点无效 → -1 = 不粘）。

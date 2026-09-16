@@ -17,14 +17,18 @@
  * camera position (x, y, z) and Euler angles (yaw, pitch, roll)
  * plus inter-frame dt values.
  *
- * 支持两种 extra-info 文件格式（自动探测，表头/注释行以 '#' 开头被忽略）：
+ * 支持三种 extra-info 文件格式（自动探测，表头/注释行以 '#' 开头被忽略）：
  *  - v1（原格式，8 列）：frame_index dt x y z yaw pitch roll
- *    （相机位姿 → chassis 欧拉角 + 底盘 xyz，其余字段为 0）
- *  - v2（录制器 FrameRecorder 输出，15 列）：
+ *    （相机位姿 → chassis 欧拉角 + 底盘 xyz；当前构型的关节角包显式填 0）
+ *  - v2（录制器 FrameRecorder 旧输出，15 列）：
  *    frame_index dt timestamp_s accepted
  *    imu_euler_yaw imu_euler_pitch imu_euler_roll yaw_pos pitch_angle
  *    chassis_yaw chassis_pitch chassis_roll chassis_x chassis_y chassis_z
- *    （完整 ExtraInputInfo 按原样还原；accepted 表示该帧当时是否成功加入流水线）
+ *    （还原到 **单 yaw 包**；大小 yaw 包为 NaN——v2 录制不含大小 yaw 关节角）
+ *  - v3（录制器 FrameRecorder 现输出，21 列）：在 v2 的 15 列之后追加
+ *    yaw_big_pos yaw_small_pos bs_imu_euler_yaw bs_imu_euler_pitch bs_imu_euler_roll
+ *    bs_pitch_angle（**大小 yaw 包**；单 yaw 构型下这 6 列为 NaN）
+ *    （两包按原样还原；accepted 表示该帧当时是否成功加入流水线）
  *
  * 当 skip_unaccepted_frames 为 true 时，accepted==0 的帧（录制时未成功加入
  * 流水线的帧）在读取时被跳过（不返回给调用方），时间轴仍按全部帧累计。
@@ -53,6 +57,8 @@ public:
 private:
     struct ExtraFrameEntry {
         float dt = 0.0f;
+        // v3 记录：是否含大小 yaw 包（v2/v1 记录为 false）
+        bool has_big_small_info = false;
         // ── v1 格式（8 列）：相机位姿 ──
         float x = 0.0f;
         float y = 0.0f;
@@ -87,6 +93,7 @@ private:
 
     bool skip_unaccepted_frames_ = false;    // 跳过 accepted==0 的帧（v2）
     bool format_v2_ = false;                 // extra-info 文件是否为 v2 格式（首个数据行探测）
+    bool format_v3_ = false;                 // extra-info 文件是否为 v3 格式（v2 + 大小 yaw 包）
     bool test_max_fps_ = false;              // 测试最大帧率：开启时 getFrameDelay() 返回 0
 
     void reOpenVideoFile();

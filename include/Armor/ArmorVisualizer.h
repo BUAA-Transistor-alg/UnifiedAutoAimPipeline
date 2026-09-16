@@ -57,6 +57,30 @@ struct ArmorVisualizationData {
         cv::Vec3f aim_point = cv::Vec3f(0, 0, 0);          // 瞄准目标位置（world，米）
     } xy;
 
+    // ---- 大小 yaw 构型数据（仅 config common.big_small_yaw.mode = big_small 时填充）----
+    // XY 平面窗口据此绘制两段固定长度线段：大 yaw 线段（绿，起点 = 大 yaw 轴在 XY 平面的
+    // 位置）与小 yaw 线段（青，起点 = 大 yaw 起点 + Rz(θ_big)·小 yaw 轴偏移的 xy 分量），
+    // 长度相同（固定值），小 yaw 线段画在大 yaw 线段之上；主画面文字区显示角度/参考/越限。
+    struct BigSmallYawData {
+        bool   valid = false;
+        double yaw_big_joint = 0.0;      // θ_big（rad，相对底盘）
+        double yaw_small_joint = 0.0;    // θ_small（rad，相对大 yaw）
+        double yaw_big_azimuth = 0.0;    // ψ_big（世界方位角，rad）
+        double yaw_small_azimuth = 0.0;  // ψ_small（世界方位角，rad）
+        double big_ref_front = 0.0;      // 本帧下发的大 yaw 参考序列首元素（世界方位角）
+        double small_ref_front = 0.0;    // 本帧下发的小 yaw 参考序列首元素（世界方位角）
+        bool   small_ref_over_limit = false;   // MPC 小 yaw 参考越软限位标志
+        // ── 拆分器诊断（GimbalOutputForBigSmallYaw 回写）──
+        bool   split_valid = false;
+        int    split_jump_count = 0;           // 本帧被修正的点数
+        int    split_unlimited_episodes = 0;   // 本帧无限幅运动段数（连续修正算一段）
+        bool   split_over_limit = false;
+        double split_theta_small_max_abs = 0.0;
+        double split_soft_min = 0.0, split_soft_max = 0.0;
+        // 小 yaw 轴相对大 yaw 轴的偏移（大 yaw 系，米）
+        cv::Vec3f small_axis_offset = cv::Vec3f(0.0f, 0.0f, 0.0f);
+    } big_small;
+
     // ---- 通信数据（取帧时刻 tcs::RobotController 状态快照） ----
     tcs::RobotController::State robot_state;
 

@@ -116,6 +116,293 @@ void parsePipelineParams(const YAML::Node& node, const std::string& name,
     }
 }
 
+// ── 解析 tf 偏移段（两构型共用同一套字段名；big_small 额外要求小 yaw 偏移）──
+void parseTfOffsets(const YAML::Node& tf, const std::string& S,
+                    RobotConfig::TfOffsets& out, bool needSmallYawOffset) {
+    if (!tf || !tf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + S + "' 配置段");
+    out.yawJointZOffset   = requireScalar<float>(tf, "yaw_joint_z_offset", S);
+    out.pitchJointYOffset = requireScalar<float>(tf, "pitch_joint_y_offset", S);
+    out.imuOffsetX        = requireScalar<float>(tf, "imu_offset_x", S);
+    out.imuOffsetY        = requireScalar<float>(tf, "imu_offset_y", S);
+    out.imuOffsetZ        = requireScalar<float>(tf, "imu_offset_z", S);
+    out.cameraOffsetX     = requireScalar<float>(tf, "camera_offset_x", S);
+    out.cameraOffsetY     = requireScalar<float>(tf, "camera_offset_y", S);
+    out.cameraOffsetZ     = requireScalar<float>(tf, "camera_offset_z", S);
+    out.muzzleOffsetX     = requireScalar<float>(tf, "muzzle_offset_x", S);
+    out.muzzleOffsetY     = requireScalar<float>(tf, "muzzle_offset_y", S);
+    out.muzzleOffsetZ     = requireScalar<float>(tf, "muzzle_offset_z", S);
+    if (needSmallYawOffset) {
+        // 小 yaw 轴相对大 yaw 轴的偏移（大 yaw 系，米）：变换树 yaw_small 节点位置 +
+        // 平面模型 dx/dy（只配置这一处）
+        out.smallYawOffsetX = requireScalar<float>(tf, "small_yaw_offset_x", S);
+        out.smallYawOffsetY = requireScalar<float>(tf, "small_yaw_offset_y", S);
+        out.smallYawOffsetZ = requireScalar<float>(tf, "small_yaw_offset_z", S);
+    }
+}
+
+// ── 解析 single 支：tf + tcs::RobotController 构造参数（原 common.tf / common.robot_controller）──
+void parseSingleYawBranch(const YAML::Node& node, RobotConfig::BigSmallYawParams::SingleBranch& out) {
+    const std::string S = "common.big_small_yaw.single";
+    if (!node || !node.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + S + "' 配置段");
+    parseTfOffsets(node["tf"], S + ".tf", out.tf, /*needSmallYawOffset=*/false);
+
+    const YAML::Node& rc = node["robot_controller"];
+    if (!rc || !rc.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 '" + S + ".robot_controller' 配置段");
+    const std::string R = S + ".robot_controller";
+    auto& k = out.robotController;
+    k.sequenceMode        = requireScalar<bool>(rc, "sequence_mode", R);
+    k.yawTorqueOnlyMode   = requireScalar<bool>(rc, "yaw_torque_only_mode", R);
+    k.dtControl           = requireScalar<double>(rc, "dt_control", R);
+    k.mpcPredN            = requireScalar<int>(rc, "mpc_pred_n", R);
+    k.J                   = requireScalar<double>(rc, "J", R);
+    k.tauC                = requireScalar<double>(rc, "tau_c", R);
+    k.b                   = requireScalar<double>(rc, "b", R);
+    k.tauD                = requireScalar<double>(rc, "tau_d", R);
+    k.maxTorque           = requireScalar<double>(rc, "max_torque", R);
+    k.maxTorqueRate       = requireScalar<double>(rc, "max_torque_rate", R);
+    k.Q                   = requireScalar<double>(rc, "Q", R);
+    k.R                   = requireScalar<double>(rc, "R", R);
+    k.Rd                  = requireScalar<double>(rc, "Rd", R);
+    k.maxIter             = requireScalar<int>(rc, "max_iter", R);
+    k.integralGain        = requireScalar<double>(rc, "integral_gain", R);
+    k.smoothEps           = requireScalar<double>(rc, "smooth_eps", R);
+    k.sendPitchScale      = requireScalar<double>(rc, "send_pitch_scale", R);
+    k.sendPitchOffset     = requireScalar<double>(rc, "send_pitch_offset", R);
+    k.recvPitchScale      = requireScalar<double>(rc, "recv_pitch_scale", R);
+    k.recvPitchOffset     = requireScalar<double>(rc, "recv_pitch_offset", R);
+    if (k.dtControl <= 0.0)
+        throw std::runtime_error("RobotConfig: '" + R + ".dt_control' 必须 > 0");
+    if (k.mpcPredN < 1)
+        throw std::runtime_error("RobotConfig: '" + R + ".mpc_pred_n' 必须 >= 1");
+    if (k.maxIter < 1)
+        throw std::runtime_error("RobotConfig: '" + R + ".max_iter' 必须 >= 1");
+    if (!(k.maxTorque > 0.0) || !(k.maxTorqueRate > 0.0))
+        throw std::runtime_error("RobotConfig: '" + R + "' 的 max_torque / max_torque_rate 必须 > 0");
+}
+
+// ── 解析 big_small 支：tf（含小 yaw 偏移）+ tcbs::RobotController 参数 + joints + splitter ──
+void parseBigSmallYawBranch(const YAML::Node& node,
+                            RobotConfig::BigSmallYawParams::BigSmallBranch& out) {
+    const std::string S = "common.big_small_yaw.big_small";
+    if (!node || !node.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + S + "' 配置段");
+    parseTfOffsets(node["tf"], S + ".tf", out.tf, /*needSmallYawOffset=*/true);
+
+    // ── robot_controller（tcbs::RobotController 构造参数）──
+    const YAML::Node& rc = node["robot_controller"];
+    if (!rc || !rc.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 '" + S + ".robot_controller' 配置段");
+    const std::string R = S + ".robot_controller";
+    auto& k = out.robotController;
+    k.sequenceMode = requireScalar<bool>(rc, "sequence_mode", R);
+    k.dtControl    = requireScalar<double>(rc, "dt_control", R);
+    if (!k.sequenceMode) {
+        throw std::runtime_error("RobotConfig: '" + R + ".sequence_mode' 必须为 true"
+                                 "（大/小 yaw 输出按序列下发）");
+    }
+    if (k.dtControl <= 0.0)
+        throw std::runtime_error("RobotConfig: '" + R + ".dt_control' 必须 > 0");
+
+    // model（tcbs::dual_yaw::ModelParams；dx/dy 取 tf 的小 yaw 偏移，不重复配置）
+    const YAML::Node& md = rc["model"];
+    if (!md || !md.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + R + ".model' 配置段");
+    const std::string M = R + ".model";
+    auto& m = k.model;
+    m.gravity        = requireScalar<double>(md, "gravity", M);
+    m.mUKnown        = requireScalar<double>(md, "m_u_known", M);
+    m.JbigEff        = requireScalar<double>(md, "Jbig_eff", M);
+    m.Js             = requireScalar<double>(md, "Js", M);
+    m.Px             = requireScalar<double>(md, "Px", M);
+    m.Py             = requireScalar<double>(md, "Py", M);
+    m.fcBig          = requireScalar<double>(md, "fc_big", M);
+    m.fvBig          = requireScalar<double>(md, "fv_big", M);
+    m.fcSmall        = requireScalar<double>(md, "fc_small", M);
+    m.fvSmall        = requireScalar<double>(md, "fv_small", M);
+    m.frictionLambda = requireScalar<double>(md, "friction_lambda", M);
+    m.tauOffsetBig   = requireScalar<double>(md, "tau_offset_big", M);
+    m.tauOffsetSmall = requireScalar<double>(md, "tau_offset_small", M);
+    if (!(m.JbigEff > 0.0) || !(m.Js > 0.0))
+        throw std::runtime_error("RobotConfig: '" + M + "' 的 Jbig_eff / Js 必须 > 0");
+    if (!(m.frictionLambda >= 0.0))
+        throw std::runtime_error("RobotConfig: '" + M + ".friction_lambda' 必须 >= 0");
+
+    // mpc（tcbs::dual_yaw::DualYawMpcConfig；dt_control 取 robot_controller.dt_control）
+    const YAML::Node& mp = rc["mpc"];
+    if (!mp || !mp.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + R + ".mpc' 配置段");
+    const std::string P = R + ".mpc";
+    auto& c = k.mpc;
+    c.n                   = requireScalar<int>(mp, "pred_n", P);
+    c.substeps            = requireScalar<int>(mp, "substeps", P);
+    c.useRk4              = requireScalar<bool>(mp, "use_rk4", P);
+    c.maxIter             = requireScalar<int>(mp, "max_iter", P);
+    c.wBigAzimuth         = requireScalar<double>(mp, "w_big_azimuth", P);
+    c.wSmallAzimuth       = requireScalar<double>(mp, "w_small_azimuth", P);
+    c.wSmallCenter        = requireScalar<double>(mp, "w_small_center", P);
+    c.wSmallLimit         = requireScalar<double>(mp, "w_small_limit", P);
+    c.smallLimitSoftRatio = requireScalar<double>(mp, "small_limit_soft_ratio", P);
+    c.rBigTorque          = requireScalar<double>(mp, "r_big_torque", P);
+    c.rSmallTorque        = requireScalar<double>(mp, "r_small_torque", P);
+    c.rdBigRate           = requireScalar<double>(mp, "rd_big_rate", P);
+    c.rdSmallRate         = requireScalar<double>(mp, "rd_small_rate", P);
+    c.smoothEps           = requireScalar<double>(mp, "smooth_eps", P);
+    c.refDelaySteps       = requireScalar<int>(mp, "ref_delay_steps", P);
+    c.bigMaxTorque        = requireScalar<double>(mp, "big_max_torque", P);
+    c.bigMaxTorqueRate    = requireScalar<double>(mp, "big_max_torque_rate", P);
+    c.smallMaxTorque      = requireScalar<double>(mp, "small_max_torque", P);
+    c.smallMaxTorqueRate  = requireScalar<double>(mp, "small_max_torque_rate", P);
+    if (c.n < 1)        throw std::runtime_error("RobotConfig: '" + P + ".pred_n' 必须 >= 1");
+    if (c.substeps < 1) throw std::runtime_error("RobotConfig: '" + P + ".substeps' 必须 >= 1");
+    if (c.maxIter < 1)  throw std::runtime_error("RobotConfig: '" + P + ".max_iter' 必须 >= 1");
+    if (!(c.smallLimitSoftRatio > 0.0 && c.smallLimitSoftRatio <= 1.0))
+        throw std::runtime_error("RobotConfig: '" + P + ".small_limit_soft_ratio' 必须落在 (0, 1]");
+    if (c.refDelaySteps < 0)
+        throw std::runtime_error("RobotConfig: '" + P + ".ref_delay_steps' 必须 >= 0");
+    if (!(c.bigMaxTorque > 0.0) || !(c.bigMaxTorqueRate > 0.0) ||
+        !(c.smallMaxTorque > 0.0) || !(c.smallMaxTorqueRate > 0.0))
+        throw std::runtime_error("RobotConfig: '" + P + "' 的力矩上限与力矩变化率上限必须 > 0");
+
+    // estimator（tcbs::YawStateEstimator::Config）
+    const YAML::Node& es = rc["estimator"];
+    if (!es || !es.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + R + ".estimator' 配置段");
+    const std::string E = R + ".estimator";
+    auto& e = k.estimator;
+    e.imuLocation        = requireScalar<int>(es, "imu_location", E);
+    e.mountYaw           = requireScalar<double>(es, "mount_yaw", E);
+    e.mountPitch         = requireScalar<double>(es, "mount_pitch", E);
+    e.mountRoll          = requireScalar<double>(es, "mount_roll", E);
+    e.headMountYaw       = requireScalar<double>(es, "head_mount_yaw", E);
+    e.headMountPitch     = requireScalar<double>(es, "head_mount_pitch", E);
+    e.headMountRoll      = requireScalar<double>(es, "head_mount_roll", E);
+    e.transportDelayS    = requireScalar<double>(es, "transport_delay_s", E);
+    e.bigEncMaxJump      = requireScalar<double>(es, "big_enc_max_jump", E);
+    e.staleAgeS          = requireScalar<double>(es, "stale_age_s", E);
+    e.chassisImuTimeoutS = requireScalar<double>(es, "chassis_imu_timeout_s", E);
+    e.maxExtrapS         = requireScalar<double>(es, "max_extrap_s", E);
+    e.rateLpfAlpha       = requireScalar<double>(es, "rate_lpf_alpha", E);
+    e.pitchRateLpfAlpha  = requireScalar<double>(es, "pitch_rate_lpf_alpha", E);
+    e.pitchAccLpfAlpha   = requireScalar<double>(es, "pitch_acc_lpf_alpha", E);
+    e.boreX              = requireScalar<double>(es, "bore_x", E);
+    e.boreY              = requireScalar<double>(es, "bore_y", E);
+    e.boreZ              = requireScalar<double>(es, "bore_z", E);
+    e.gravity            = requireScalar<double>(es, "gravity", E);
+    e.useChassisImu      = requireScalar<bool>(es, "use_chassis_imu", E);
+    e.sourceTimeoutS     = requireScalar<double>(es, "source_timeout_s", E);
+    if (e.imuLocation != 0 && e.imuLocation != 1)
+        throw std::runtime_error("RobotConfig: '" + E + ".imu_location' 只能是 0（ON_BIG_YAW）"
+                                 " 或 1（ON_HEAD）");
+    if (!(e.rateLpfAlpha > 0.0 && e.rateLpfAlpha <= 1.0))
+        throw std::runtime_error("RobotConfig: '" + E + ".rate_lpf_alpha' 必须落在 (0, 1]");
+    if (!(e.pitchRateLpfAlpha > 0.0 && e.pitchRateLpfAlpha <= 1.0))
+        throw std::runtime_error("RobotConfig: '" + E + ".pitch_rate_lpf_alpha' 必须落在 (0, 1]");
+    if (!(e.pitchAccLpfAlpha >= 0.0 && e.pitchAccLpfAlpha <= 1.0))
+        throw std::runtime_error("RobotConfig: '" + E + ".pitch_acc_lpf_alpha' 必须落在 [0, 1]");
+
+    // mcu_linear（tcbs::McuDataPreprocessor::LinearParams）
+    const YAML::Node& ml = rc["mcu_linear"];
+    if (!ml || !ml.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + R + ".mcu_linear' 配置段");
+    const std::string L = R + ".mcu_linear";
+    auto& l = k.mcuLinear;
+    l.sendPitchScale         = requireScalar<double>(ml, "send_pitch_scale", L);
+    l.sendPitchOffset        = requireScalar<double>(ml, "send_pitch_offset", L);
+    l.recvPitchScale         = requireScalar<double>(ml, "recv_pitch_scale", L);
+    l.recvPitchOffset        = requireScalar<double>(ml, "recv_pitch_offset", L);
+    l.recvBigYawScale        = requireScalar<double>(ml, "recv_big_yaw_scale", L);
+    l.recvBigYawOffset       = requireScalar<double>(ml, "recv_big_yaw_offset", L);
+    l.recvBigOmegaScale      = requireScalar<double>(ml, "recv_big_omega_scale", L);
+    l.sendBigYawScale        = requireScalar<double>(ml, "send_big_yaw_scale", L);
+    l.sendBigYawOffset       = requireScalar<double>(ml, "send_big_yaw_offset", L);
+    l.sendBigVelocityScale   = requireScalar<double>(ml, "send_big_velocity_scale", L);
+    l.sendBigTorqueScale     = requireScalar<double>(ml, "send_big_torque_scale", L);
+    l.recvSmallYawScale      = requireScalar<double>(ml, "recv_small_yaw_scale", L);
+    l.recvSmallYawOffset     = requireScalar<double>(ml, "recv_small_yaw_offset", L);
+    l.recvSmallOmegaScale    = requireScalar<double>(ml, "recv_small_omega_scale", L);
+    l.sendSmallYawScale      = requireScalar<double>(ml, "send_small_yaw_scale", L);
+    l.sendSmallYawOffset     = requireScalar<double>(ml, "send_small_yaw_offset", L);
+    l.sendSmallVelocityScale = requireScalar<double>(ml, "send_small_velocity_scale", L);
+    l.sendSmallTorqueScale   = requireScalar<double>(ml, "send_small_torque_scale", L);
+
+    // controller（tcbs::McuMpcController::Config；loop_period 取 dt_control）
+    const YAML::Node& ct = rc["controller"];
+    if (!ct || !ct.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + R + ".controller' 配置段");
+    const std::string C = R + ".controller";
+    auto& q = k.controller;
+    q.bigTorqueOnly      = requireScalar<bool>(ct, "big_torque_only", C);
+    q.smallTorqueOnly    = requireScalar<bool>(ct, "small_torque_only", C);
+    q.integralGainBig    = requireScalar<double>(ct, "integral_gain_big", C);
+    q.integralGainSmall  = requireScalar<double>(ct, "integral_gain_small", C);
+    q.integralLimitBig   = requireScalar<double>(ct, "integral_limit_big", C);
+    q.integralLimitSmall = requireScalar<double>(ct, "integral_limit_small", C);
+    q.integralOnBig      = requireScalar<bool>(ct, "integral_on_big", C);
+    if (q.integralGainBig < 0.0 || q.integralGainSmall < 0.0)
+        throw std::runtime_error("RobotConfig: '" + C + "' 的 integral_gain_big / "
+                                 "integral_gain_small 必须 >= 0");
+
+    // ── joints（行程与回中；MPC JointLimits / small_center_angle 与拆分器共用）──
+    const YAML::Node& jn = node["joints"];
+    if (!jn || !jn.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + S + ".joints' 配置段");
+    const std::string J = S + ".joints";
+    auto& j = out.joints;
+    j.bigMinAngle      = requireScalar<double>(jn, "big_min_angle", J);
+    j.bigMaxAngle      = requireScalar<double>(jn, "big_max_angle", J);
+    j.smallMinAngle    = requireScalar<double>(jn, "small_min_angle", J);
+    j.smallMaxAngle    = requireScalar<double>(jn, "small_max_angle", J);
+    j.smallCenterAngle = requireScalar<double>(jn, "small_center_angle", J);
+    if (!(j.bigMinAngle < j.bigMaxAngle))
+        throw std::runtime_error("RobotConfig: '" + J + "' 的 big_min_angle 必须小于 big_max_angle");
+    if (!(j.smallMinAngle < j.smallMaxAngle))
+        throw std::runtime_error("RobotConfig: '" + J + "' 的 small_min_angle 必须小于 small_max_angle");
+    if (j.smallCenterAngle < j.smallMinAngle || j.smallCenterAngle > j.smallMaxAngle)
+        throw std::runtime_error("RobotConfig: '" + J + ".small_center_angle' 必须落在小 yaw 行程内");
+
+    // ── splitter（大 yaw 平滑轨迹规划器）──
+    const YAML::Node& sp = node["splitter"];
+    if (!sp || !sp.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + S + ".splitter' 配置段");
+    const std::string SP = S + ".splitter";
+    auto& s = out.splitter;
+    s.plannerMaxVelocity     = requireScalar<double>(sp, "planner_max_velocity", SP);
+    s.plannerMaxAcceleration = requireScalar<double>(sp, "planner_max_acceleration", SP);
+    s.plannerMaxJerk         = requireScalar<double>(sp, "planner_max_jerk", SP);
+    s.plannerSubsteps        = requireScalar<int>(sp, "planner_substeps", SP);
+    if (!(s.plannerMaxVelocity > 0.0) || !(s.plannerMaxAcceleration > 0.0) ||
+        !(s.plannerMaxJerk > 0.0))
+        throw std::runtime_error("RobotConfig: '" + SP + "' 的 planner_max_velocity / "
+                                 "planner_max_acceleration / planner_max_jerk 必须 > 0");
+    if (s.plannerSubsteps < 1)
+        throw std::runtime_error("RobotConfig: '" + SP + ".planner_substeps' 必须 >= 1");
+}
+
+// 解析 common.big_small_yaw：构型开关 + 两支。
+// ⚠ 约定：**只需填写当前 mode 那一支**；另一支可以整段省略，若写了则同样严格校验
+//   （缺字段报错），当前构型那一支缺失或字段不全一律抛异常。
+void parseBigSmallYawParams(const YAML::Node& bs, RobotConfig::BigSmallYawParams& out) {
+    const std::string S = "common.big_small_yaw";
+    if (!bs || !bs.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + S + "' 配置段");
+
+    // 构型开关（字符串，仅接受 single / big_small）
+    const std::string modeStr = requireScalar<std::string>(bs, "mode", S);
+    if (modeStr == "single")         out.mode = YawMode::SINGLE;
+    else if (modeStr == "big_small") out.mode = YawMode::BIG_SMALL;
+    else throw std::runtime_error("RobotConfig: " + S + ".mode 只能是 'single' 或 "
+                                  "'big_small'，实际为 '" + modeStr + "'");
+
+    // 两支：存在即严格校验
+    out.singlePresent   = (bool)bs["single"];
+    out.bigSmallPresent = (bool)bs["big_small"];
+    if (out.singlePresent)   parseSingleYawBranch(bs["single"], out.single);
+    if (out.bigSmallPresent) parseBigSmallYawBranch(bs["big_small"], out.bigSmall);
+
+    // 当前构型那一支必须存在（另一支缺失是允许的）
+    if (out.mode == YawMode::SINGLE && !out.singlePresent) {
+        throw std::runtime_error("RobotConfig: " + S + ".mode = 'single' 时必须提供 "
+                                 "'" + S + ".single' 配置段（本构型的 tf / robot_controller）");
+    }
+    if (out.mode == YawMode::BIG_SMALL && !out.bigSmallPresent) {
+        throw std::runtime_error("RobotConfig: " + S + ".mode = 'big_small' 时必须提供 "
+                                 "'" + S + ".big_small' 配置段"
+                                 "（本构型的 tf / robot_controller / joints / splitter）");
+    }
+}
+
 } // namespace
 
 
@@ -139,20 +426,11 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     const YAML::Node& cm = root["common"];
     if (!cm || !cm.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common' 配置段");
 
-    // ── common.tf 偏移 ──
-    const YAML::Node& tf = cm["tf"];
-    if (!tf || !tf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.tf' 配置段");
-    cfg.common.tf.yawJointZOffset   = requireScalar<float>(tf, "yaw_joint_z_offset", "common.tf");
-    cfg.common.tf.pitchJointYOffset = requireScalar<float>(tf, "pitch_joint_y_offset", "common.tf");
-    cfg.common.tf.imuOffsetX        = requireScalar<float>(tf, "imu_offset_x", "common.tf");
-    cfg.common.tf.imuOffsetY        = requireScalar<float>(tf, "imu_offset_y", "common.tf");
-    cfg.common.tf.imuOffsetZ        = requireScalar<float>(tf, "imu_offset_z", "common.tf");
-    cfg.common.tf.cameraOffsetX     = requireScalar<float>(tf, "camera_offset_x", "common.tf");
-    cfg.common.tf.cameraOffsetY     = requireScalar<float>(tf, "camera_offset_y", "common.tf");
-    cfg.common.tf.cameraOffsetZ     = requireScalar<float>(tf, "camera_offset_z", "common.tf");
-    cfg.common.tf.muzzleOffsetX     = requireScalar<float>(tf, "muzzle_offset_x", "common.tf");
-    cfg.common.tf.muzzleOffsetY     = requireScalar<float>(tf, "muzzle_offset_y", "common.tf");
-    cfg.common.tf.muzzleOffsetZ     = requireScalar<float>(tf, "muzzle_offset_z", "common.tf");
+    // ── common.big_small_yaw（yaw 构型开关 + **构型相关参数**）──
+    // 本段内按构型分为 single / big_small 两支，**只需填写当前 mode 那一支**；
+    // 当前构型那一支内的字段全部必填（缺字段抛异常，绝不静默采用默认值），
+    // 变换树偏移（tf）与控制器参数（robot_controller）都在此段内，见文件头约定。
+    parseBigSmallYawParams(cm["big_small_yaw"], cfg.common.bigSmallYaw);
 
     // ── common.input_mode（按输入模式自动选择：camera_mode / video_mode）──
     const YAML::Node& im = cm["input_mode"];
@@ -257,28 +535,8 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     cfg.common.predictedBallistic.timeErrorTolerance = requireScalar<double>(pb, "time_error_tolerance", "common.predicted_ballistic");
 
     // ── common.robot_controller ──
-    const YAML::Node& rc = cm["robot_controller"];
-    if (!rc || !rc.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.robot_controller' 配置段");
-    cfg.common.robotController.sequenceMode  = requireScalar<bool>(rc, "sequence_mode", "common.robot_controller");
-    cfg.common.robotController.yawTorqueOnlyMode = requireScalar<bool>(rc, "yaw_torque_only_mode", "common.robot_controller");
-    cfg.common.robotController.dtControl     = requireScalar<double>(rc, "dt_control", "common.robot_controller");
-    cfg.common.robotController.mpcPredN      = requireScalar<int>(rc, "mpc_pred_n", "common.robot_controller");
-    cfg.common.robotController.J             = requireScalar<double>(rc, "J", "common.robot_controller");
-    cfg.common.robotController.tauC          = requireScalar<double>(rc, "tau_c", "common.robot_controller");
-    cfg.common.robotController.b             = requireScalar<double>(rc, "b", "common.robot_controller");
-    cfg.common.robotController.tauD          = requireScalar<double>(rc, "tau_d", "common.robot_controller");
-    cfg.common.robotController.maxTorque     = requireScalar<double>(rc, "max_torque", "common.robot_controller");
-    cfg.common.robotController.maxTorqueRate = requireScalar<double>(rc, "max_torque_rate", "common.robot_controller");
-    cfg.common.robotController.Q             = requireScalar<double>(rc, "Q", "common.robot_controller");
-    cfg.common.robotController.R             = requireScalar<double>(rc, "R", "common.robot_controller");
-    cfg.common.robotController.Rd            = requireScalar<double>(rc, "Rd", "common.robot_controller");
-    cfg.common.robotController.maxIter       = requireScalar<int>(rc, "max_iter", "common.robot_controller");
-    cfg.common.robotController.integralGain  = requireScalar<double>(rc, "integral_gain", "common.robot_controller");
-    cfg.common.robotController.smoothEps     = requireScalar<double>(rc, "smooth_eps", "common.robot_controller");
-    cfg.common.robotController.sendPitchScale  = requireScalar<double>(rc, "send_pitch_scale", "common.robot_controller");
-    cfg.common.robotController.sendPitchOffset = requireScalar<double>(rc, "send_pitch_offset", "common.robot_controller");
-    cfg.common.robotController.recvPitchScale  = requireScalar<double>(rc, "recv_pitch_scale", "common.robot_controller");
-    cfg.common.robotController.recvPitchOffset = requireScalar<double>(rc, "recv_pitch_offset", "common.robot_controller");
+    // 注：原本的 common.tf / common.robot_controller 两段已并入
+    //     common.big_small_yaw 的构型分支（single / big_small），此处不再解析。
 
     // ── common.predict_sequence ──
     const YAML::Node& ic = cm["predict_sequence"];

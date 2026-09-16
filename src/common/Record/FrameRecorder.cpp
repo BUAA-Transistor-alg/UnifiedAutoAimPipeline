@@ -69,10 +69,14 @@ bool FrameRecorder::start() {
         session_dir_.clear();
         return false;
     }
-    info_file_ << "# UnifiedAutoAim frame_info v2\n";
+    info_file_ << "# UnifiedAutoAim frame_info v3\n";
     info_file_ << "# columns: frame_index dt_s timestamp_s accepted"
                   " imu_euler_yaw imu_euler_pitch imu_euler_roll yaw_pos pitch_angle"
-                  " chassis_yaw chassis_pitch chassis_roll chassis_x chassis_y chassis_z\n";
+                  " chassis_yaw chassis_pitch chassis_roll chassis_x chassis_y chassis_z"
+                  " yaw_big_pos yaw_small_pos bs_imu_euler_yaw bs_imu_euler_pitch"
+                  " bs_imu_euler_roll bs_pitch_angle\n";
+    info_file_ << "# 列 4..14 = 单 yaw 包（ExtraInputInfo::single；当前为大小 yaw 构型时写 nan）"
+                  "；列 15..20 = 大小 yaw 包（ExtraInputInfo::big_small；当前为单 yaw 构型时写 nan）\n";
 
     started_ = true;
     stopped_no_space_ = false;
@@ -174,17 +178,23 @@ bool FrameRecorder::recordFrame(cv::Mat frame,
                << ts_s << " "
                << (accepted ? 1 : 0) << " "
                << std::setprecision(12)
-               << extra_info.imu_euler_yaw << " "
-               << extra_info.imu_euler_pitch << " "
-               << extra_info.imu_euler_roll << " "
-               << extra_info.yaw_pos << " "
-               << extra_info.pitch_angle << " "
+               << extra_info.single.imu_euler_yaw << " "
+               << extra_info.single.imu_euler_pitch << " "
+               << extra_info.single.imu_euler_roll << " "
+               << extra_info.single.yaw_pos << " "
+               << extra_info.single.pitch_angle << " "
                << extra_info.chassis_yaw << " "
                << extra_info.chassis_pitch << " "
                << extra_info.chassis_roll << " "
                << extra_info.chassis_x << " "
                << extra_info.chassis_y << " "
-               << extra_info.chassis_z << "\n";
+               << extra_info.chassis_z << " "
+               << extra_info.big_small.yaw_big_pos << " "
+               << extra_info.big_small.yaw_small_pos << " "
+               << extra_info.big_small.imu_euler_yaw << " "
+               << extra_info.big_small.imu_euler_pitch << " "
+               << extra_info.big_small.imu_euler_roll << " "
+               << extra_info.big_small.pitch_angle << "\n";
     ++frame_index_;
     return true;
 }

@@ -395,6 +395,57 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
         }
     }
 
+    // ── 大小 yaw 线段（仅 mode = big_small 填充）──
+    // 两段**固定长度**（kYawSegLenM）方向线段，避免按两轴实际间距画会太短：
+    //   · 大 yaw 线段（绿）：起点 = 大 yaw 轴在 XY 平面上的位置（≈ 底盘位置），
+    //     方向 = ψ_big（大 yaw 平台 x 轴的世界方位角）；
+    //   · 小 yaw 线段（青）：起点 = 大 yaw 起点 + Rz(θ_big)·d 的 xy 分量
+    //     （d = 小 yaw 轴相对大 yaw 轴的偏移，随大 yaw 旋转），方向 = ψ_small（瞄准方位角）；
+    //   · 小 yaw 线段画在大 yaw 线段之上，便于直接看出“小 yaw 需要偏离多少”。
+    if (data.big_small.valid) {
+        constexpr float kYawSegLenM = 0.5f;   // 线段固定长度（米）
+        const double tb = data.big_small.yaw_big_joint;
+        const cv::Vec3f d = data.big_small.small_axis_offset;
+        const float dbx = (float)(d[0] * std::cos(tb) - d[1] * std::sin(tb));
+        const float dby = (float)(d[0] * std::sin(tb) + d[1] * std::cos(tb));
+        const cv::Vec3f big0 = data.xy.chassis_position;
+        const cv::Vec3f small0(big0[0] + dbx, big0[1] + dby, big0[2] + d[2]);
+        // 方位角 → XY 平面单位方向（世界方位角定义：x 轴方位角，方向 = (cos, sin)）
+        const float cB = (float)std::cos(data.big_small.yaw_big_azimuth);
+        const float sB = (float)std::sin(data.big_small.yaw_big_azimuth);
+        const float cS = (float)std::cos(data.big_small.yaw_small_azimuth);
+        const float sS = (float)std::sin(data.big_small.yaw_small_azimuth);
+
+        const cv::Point pBig0 = w2p(big0[0], big0[1]);
+        const cv::Point pBig1 = w2p(big0[0] + cB * kYawSegLenM, big0[1] + sB * kYawSegLenM);
+        const cv::Point pSm0 = w2p(small0[0], small0[1]);
+        const cv::Point pSm1 = w2p(small0[0] + cS * kYawSegLenM, small0[1] + sS * kYawSegLenM);
+        cv::line(xy_buf_, pBig0, pBig1, cv::Scalar(0, 200, 0), 2, cv::LINE_AA);      // 大 yaw：绿
+        cv::line(xy_buf_, pSm0, pSm1, cv::Scalar(255, 255, 0), 2, cv::LINE_AA);      // 小 yaw：青
+        // 小 yaw 轴原点真实偏移（短线连接两起点，直观显示两轴不共轴）
+        cv::line(xy_buf_, pBig0, pSm0, cv::Scalar(160, 160, 160), 1, cv::LINE_AA);
+        cv::circle(xy_buf_, pSm0, 3, cv::Scalar(255, 255, 0), -1, cv::LINE_AA);
+
+        // 角度/参考/越限文字（越软限位标红）
+        const cv::Scalar kOk(200, 255, 200), kBad(0, 0, 255);
+        cv::putText(xy_buf_, cv::format("big: psi=%.1f deg  ref=%.1f", data.big_small.yaw_big_azimuth * 180.0 / M_PI, data.big_small.big_ref_front * 180.0 / M_PI),
+                    cv::Point(14, kSize - 76), cv::FONT_HERSHEY_SIMPLEX, 0.45, kOk, 1, cv::LINE_AA);
+        cv::putText(xy_buf_, cv::format("small: psi=%.1f deg  theta=%.1f deg  ref=%.1f", data.big_small.yaw_small_azimuth * 180.0 / M_PI, data.big_small.yaw_small_joint * 180.0 / M_PI, data.big_small.small_ref_front * 180.0 / M_PI),
+                    cv::Point(14, kSize - 58), cv::FONT_HERSHEY_SIMPLEX, 0.45, kOk, 1, cv::LINE_AA);
+        if (data.big_small.split_valid) {
+            const bool bad = data.big_small.split_over_limit || data.big_small.small_ref_over_limit;
+            cv::putText(xy_buf_, cv::format("split: |theta_s|max=%.1f deg  soft=[%.1f, %.1f]  jumps=%d/%d seg%s",
+                                            data.big_small.split_theta_small_max_abs * 180.0 / M_PI,
+                                            data.big_small.split_soft_min * 180.0 / M_PI,
+                                            data.big_small.split_soft_max * 180.0 / M_PI,
+                                            data.big_small.split_jump_count,
+                                            data.big_small.split_unlimited_episodes,
+                                            bad ? "  OVER_LIMIT" : ""),
+                        cv::Point(14, kSize - 40), cv::FONT_HERSHEY_SIMPLEX, 0.45,
+                        bad ? kBad : kOk, 1, cv::LINE_AA);
+        }
+    }
+
     // ── 瞄准目标位置（品红叉 + 圆）──
     if (data.xy.aim_valid) {
         const cv::Point p = w2p(data.xy.aim_point[0], data.xy.aim_point[1]);

@@ -93,6 +93,12 @@ set(COMMON_SOURCES
     src/common/TransformTree/TransformNode.cpp
     src/common/TransformTree/TransformTreeManager.cpp
     src/common/TransformTree/RobotTfTree.cpp
+    # 新构型（大/小双 yaw，TorqueControllerForBigSmallYaw 子模组）适配器：
+    # 状态包/转换、大 yaw 平滑轨迹规划器、大小 yaw 拆分器、新构型云台输出模式
+    src/common/BigSmallYaw/RobotStateForBigSmallYaw.cpp
+    src/common/BigSmallYaw/BigSmallYawTrajectoryPlanner.cpp
+    src/common/BigSmallYaw/BigSmallYawSplitter.cpp
+    src/common/BigSmallYaw/GimbalOutputForBigSmallYaw.cpp
     src/common/Ballistic/BallisticSolver.cpp
     src/common/Ballistic/GimbalSolver.cpp
     src/common/Ballistic/PredictedBallisticSolver.cpp
@@ -143,7 +149,8 @@ add_executable(unified_auto_aim
 target_link_libraries(unified_auto_aim PRIVATE
     ${OpenCV_LIBS}
     openvino::runtime
-    tcs::robot_comm_c     # TorqueController 子模组（tcs::RobotController 一体化封装）
+    tcs::robot_comm_c     # TorqueController 子模组（tcs::RobotController 一体化封装，单 yaw 构型）
+    tcbs::robot_comm_c    # TorqueControllerForBigSmallYaw 子模组（大小 yaw 构型，见 common/BigSmallYaw/）
     ${UDEV_LIBRARY}
     Threads::Threads
     ${MVCAMERA_LIB}

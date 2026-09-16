@@ -13,7 +13,7 @@ PredictedBallisticSolver::PredictedBallisticSolver(std::shared_ptr<GimbalSolver>
       time_error_tolerance_(RobotConfig::instance().common.predictedBallistic.timeErrorTolerance) {}
 
 std::vector<PredictedBallisticSolver::Result> PredictedBallisticSolver::solve(
-    const Predictor& predictor, double extra_predict_time) const {
+    const Predictor& predictor, double extra_predict_time, float yawBig) const {
     std::vector<Result> results;
     if (!gimbal_) return results;
 
@@ -53,7 +53,12 @@ std::vector<PredictedBallisticSolver::Result> PredictedBallisticSolver::solve(
             const cv::Point3f& pp = pred_list[i];
             const cv::Vec3f pred_point(pp.x, pp.y, pp.z);
 
-            const GimbalSolver::AimResult aim = gimbal_->solveAim(pred_point);
+            // 大小 yaw 构型：按该预测时刻的大 yaw 关节角解算（有效 yaw 旋转中心随 θ_big 旋转）；
+            // 单 yaw 构型 / 未给出 θ_big 时走原路径
+            const GimbalSolver::AimResult aim =
+                (gimbal_->isBigSmallYaw() && std::isfinite(yawBig))
+                    ? gimbal_->solveAim(pred_point, gimbal_->bulletVelocity(), yawBig)
+                    : gimbal_->solveAim(pred_point);
 
             // 时间误差：本次用于预测的飞行时间 与 弹道实际飞行时间 之差
             const double time_err = std::fabs(flight_time - aim.flight_time);

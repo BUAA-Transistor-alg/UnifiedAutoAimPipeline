@@ -3,6 +3,7 @@
 #define PREDICTED_BALLISTIC_SOLVER_H
 
 #include <functional>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -62,7 +63,12 @@ public:
     // （预测点 / 预测时间 / GimbalSolver 结果），不做目标选择——目标选择由调用方
     // （SequencePredictor）完成。
     // extra_predict_time：额外预测时间（秒），由调用方按序列元素传入（如 extra + i*dt）。
-    std::vector<Result> solve(const Predictor& predictor, double extra_predict_time) const;
+    // yawBig（可选）：大小 yaw 构型下该预测时刻的大 yaw 关节角（弧度，相对底盘），
+    // 用于把“小 yaw 轴相对大 yaw 轴的偏移随大 yaw 旋转”计入 muzzle 原点 ⇒ 有效 yaw
+    // 旋转中心（见 GimbalSolver）。单 yaw 构型传 NaN（默认）即走原路径；
+    // 大小 yaw 构型传 NaN 时用内部树当前的 θ_big（安全退路）。
+    std::vector<Result> solve(const Predictor& predictor, double extra_predict_time,
+                              float yawBig = std::numeric_limits<float>::quiet_NaN()) const;
 
 private:
     std::shared_ptr<GimbalSolver> gimbal_;

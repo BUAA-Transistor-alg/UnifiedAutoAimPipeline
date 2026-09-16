@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <deque>
+#include <functional>
 #include <thread>
 #include <atomic>
 #include <mutex>
@@ -32,7 +33,12 @@
  */
 class CameraInputMode : public IInputMode {
 public:
+    // 旧构型（单 yaw）：直接持有 tcs::RobotController，后台线程采样其严格反解数据包
     CameraInputMode(Camera& camera, tcs::RobotController& rc);
+    // 新构型（大/小双 yaw）等：由适配器提供「采样一次当前状态 → ExtraInputInfo」的
+    // 取样函数（见 common/BigSmallYaw/RobotStateForBigSmallYaw.h 的适配器），
+    // 本类不关心底层控制器是哪一个（构型相关的打包全部在取样函数里完成）。
+    CameraInputMode(Camera& camera, std::function<ExtraInputInfo()> sampler);
     ~CameraInputMode() override;
 
     bool getNextFrame(cv::Mat& frame,
@@ -51,7 +57,9 @@ private:
     };
 
     Camera& camera_;
-    tcs::RobotController& rc_;
+    // 状态取样函数（旧构型 = 包装 rc_.getState() → strict → ExtraInputInfo；
+    // 新构型 = 适配器提供的取样函数）。**只保留取样函数**，两种构型行为一致。
+    std::function<ExtraInputInfo()> sampler_;
 
     double extra_info_delay_ = 0.0;          // 秒，来自机器配置文件 common.input_mode.camera_mode.extra_info_delay
     std::thread state_thread_;               // 后台采样线程

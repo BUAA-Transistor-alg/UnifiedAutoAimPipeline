@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <stdexcept>
 #include <vector>
 
 #include "common/RobotConfig.h"
@@ -33,43 +35,106 @@ void GimbalSolver::setYaw(float yaw) {
     tree_->setYaw(yaw);
 }
 
+void GimbalSolver::setYawBig(float yaw_big) {
+    tree_->setYawBig(yaw_big);
+}
+
+void GimbalSolver::setYawSmall(float yaw_small) {
+    tree_->setYawSmall(yaw_small);
+}
+
+// ============================================================================
+// 有效 yaw 旋转中心（大小 yaw 构型的几何核心）
+//
+// 单 yaw 构型：chassis -> yaw，yaw 节点自身的固定位置就是旋转中心位置。
+// 大小 yaw 构型：chassis -> yaw_big -> yaw_small，小 yaw 的旋转中心相对底盘 =
+//     p_big + Rz(θ_big)·p_small
+// （p_big = yaw_big 节点相对 chassis 的位置，p_small = yaw_small 节点相对 yaw_big 的
+//   位置 = 配置里小 yaw 轴相对大 yaw 轴的偏移，随大 yaw 旋转）。
+// 由于两级都绕 z 旋转且 pitch 及以下全部挂在 yaw_small 之下，把旋转中心这样取定后，
+// 「绕总角 θ_big+θ_small 旋转」的表达式与单 yaw 构型完全同形，解算公式无需修改。
+// ============================================================================
+cv::Vec3f GimbalSolver::effectiveYawPos(float yawBig) const {
+    const TransformTreeManager& mgr = tree_->manager();
+    if (!tree_->isBigSmallYaw()) {
+        // 单 yaw：直接取 yaw 节点位置（yawBig 参数不使用）
+        if (auto n = mgr.getNode(RobotTfTree::YAW)) return n->getPosition();
+        return cv::Vec3f(0.0f, 0.0f, 0.0f);
+    }
+    auto bigNode   = mgr.getNode(RobotTfTree::YAW_BIG);
+    auto smallNode = mgr.getNode(RobotTfTree::YAW_SMALL);
+    if (!bigNode || !smallNode) return cv::Vec3f(0.0f, 0.0f, 0.0f);
+    const cv::Vec3f pBig   = bigNode->getPosition();
+    const cv::Vec3f pSmall = smallNode->getPosition();   // 大 yaw 系下的偏移
+    const float sy = std::sin(yawBig), cy = std::cos(yawBig);
+    return cv::Vec3f(pBig[0] + pSmall[0] * cy - pSmall[1] * sy,
+                     pBig[1] + pSmall[0] * sy + pSmall[1] * cy,
+                     pBig[2] + pSmall[2]);
+}
+
+cv::Vec3f GimbalSolver::effectiveYawPos() const {
+    if (!tree_->isBigSmallYaw()) return effectiveYawPos(0.0f);
+    return effectiveYawPos(tree_->yawBig());   // 用内部树当前的大 yaw 关节角
+}
+
 void GimbalSolver::setPitch(float pitch) {
     tree_->setPitch(pitch);
 }
 
-// ============================================================================
-// yaw 解算（由 RobotTfTree::computeYawToAimTarget 迁移而来，推广到任意 pitch）
-// ============================================================================
-bool GimbalSolver::computeYawToAimTarget(const cv::Vec3f& targetWorld, float pitch, float& yawOut) const {
-    // 直接读取内部树节点数据（不经缓存、不检查锁），与是否 lockAndComputeCache 无关
+// 当前两级 yaw 关节角之和（SINGLE = yaw 关节角；BIG_SMALL = θ_big + θ_small）
+float GimbalSolver::currentTotalYaw() const {
     const TransformTreeManager& mgr = tree_->manager();
-    auto chassisNode = mgr.getNode(RobotTfTree::CHASSIS);
-    auto yawNode     = mgr.getNode(RobotTfTree::YAW);
-    auto pitchNode   = mgr.getNode(RobotTfTree::PITCH);
-    auto headNode    = mgr.getNode(RobotTfTree::HEAD);
-    auto muzzleNode  = mgr.getNode(RobotTfTree::MUZZLE);
-    if (!chassisNode || !yawNode || !pitchNode || !headNode || !muzzleNode) {
-        yawOut = 0.0f;
-        return false;
+    if (!tree_->isBigSmallYaw()) {
+        if (auto n = mgr.getNode(RobotTfTree::YAW)) return n->getEuler()[0];
+        return 0.0f;
     }
+    auto bigNode   = mgr.getNode(RobotTfTree::YAW_BIG);
+    auto smallNode = mgr.getNode(RobotTfTree::YAW_SMALL);
+    const float yb = bigNode   ? bigNode->getEuler()[0]   : 0.0f;
+    const float ys = smallNode ? smallNode->getEuler()[0] : 0.0f;
+    return yb + ys;
+}
 
-    const cv::Vec3f chassisPos   = chassisNode->getPosition();
-    const cv::Vec3f chassisEuler = chassisNode->getEuler();
-    const cv::Vec3f yawPos       = yawNode->getPosition();  // yaw 旋转中心相对 chassis 的位置
-    const float     currentYaw   = yawNode->getEuler()[0];  // 退化情况下的回退值
+// ============================================================================
+// yaw 解算（由 RobotTfTree::computeYawToAimTarget 迁移而来，推广到任意 pitch，
+// 并推广到大小 yaw 构型：ctx.yawPos 取“有效 yaw 旋转中心”，解出的 yaw = θ_big + θ_small）
+// ============================================================================
+bool GimbalSolver::computeYawToAimTarget(const cv::Vec3f& targetWorld, float pitch,
+                                         float& yawOut) const {
+    return computeYawToAimTargetImpl(buildContext(), targetWorld, pitch, yawOut);
+}
+
+bool GimbalSolver::computeYawToAimTarget(const cv::Vec3f& targetWorld, float pitch, float yawBig,
+                                         float& yawOut) const {
+    if (!tree_->isBigSmallYaw()) {
+        throw std::logic_error("GimbalSolver: computeYawToAimTarget(..., yawBig, ...) 只适用于"
+                               "大小 yaw 构型（common.big_small_yaw.mode = big_small）；"
+                               "单 yaw 构型请使用不带 yawBig 的重载");
+    }
+    return computeYawToAimTargetImpl(buildContext(yawBig), targetWorld, pitch, yawOut);
+}
+
+bool GimbalSolver::computeYawToAimTargetImpl(const EvalContext& ctx,
+                                             const cv::Vec3f& targetWorld, float pitch,
+                                             float& yawOut) const {
+    // 直接读取内部树节点数据（不经缓存、不检查锁），与是否 lockAndComputeCache 无关；
+    // ctx 里的几何量为“本组 pitch 搜索期间不变”的快照（yawPos = 有效 yaw 旋转中心）
+    const cv::Vec3f chassisPos   = ctx.chassisPos;
+    const cv::Vec3f yawPos       = ctx.yawPos;
+    const float     currentYaw   = ctx.totalYaw;   // 退化情况下的回退值
 
     const float cp = std::cos(pitch), sp = std::sin(pitch);
 
     // muzzle 原点在 pitch 系中的位置 u = headPos + muzzlePos；
     // 在 yaw 系中的位置 v = pitchPos + Rx(pitch)*u（pitch = 0 时退化为 pitchPos+headPos+muzzlePos）。
-    const cv::Vec3f u = headNode->getPosition() + muzzleNode->getPosition();
-    const cv::Vec3f pitchPos = pitchNode->getPosition();
+    const cv::Vec3f u = ctx.u;
+    const cv::Vec3f pitchPos = ctx.pitchPos;
     const float vx = pitchPos[0] + u[0];
     const float vy = pitchPos[1] + u[1] * cp - u[2] * sp;
     const float vz = pitchPos[2] + u[1] * sp + u[2] * cp;
 
     // chassis 坐标系 -> world 坐标系的旋转（Rc = Rz(yaw_c) * Rx(pitch_c) * Ry(roll_c)）
-    const cv::Mat Rc = CoordinateTransform::eulerToRotationMatrix(chassisEuler);
+    const cv::Mat Rc = ctx.Rc;
     const float r11 = Rc.at<float>(0, 0);
     const float r12 = Rc.at<float>(0, 1);
     const float r13 = Rc.at<float>(0, 2);
@@ -81,7 +146,7 @@ bool GimbalSolver::computeYawToAimTarget(const cv::Vec3f& targetWorld, float pit
     //   muzzle +y 方向在 world 系的 xy 投影：
     //     D_xy(yaw) = (Rc * Rz(yaw) * [0, cp, sp]).xy
     //               = cp*Rc2*[-sin(yaw), cos(yaw)] + sp*[r13, r23]
-    //   muzzle 原点相对 K（yaw 旋转中心在 world xy 的投影）的 xy 偏移：
+    //   muzzle 原点相对 K（**有效 yaw 旋转中心**在 world xy 的投影）的 xy 偏移：
     //     m_xy(yaw) = Rc2*Rz2(yaw)*[vx, vy] + vz*[r13, r23]
     // 条件：cross(target_xy - K - m_xy, D_xy) = 0 且 dot(...) >= 0（射线向前经过目标）。
     // 展开 cross 后仍为 A''*sin(yaw) + B''*cos(yaw) = r'' 的标准形式：
@@ -193,7 +258,30 @@ GimbalSolver::EvalContext GimbalSolver::buildContext() const {
         ctx.chassisPos = n->getPosition();
         ctx.Rc = CoordinateTransform::eulerToRotationMatrix(n->getEuler());
     }
-    if (auto n = mgr.getNode(RobotTfTree::YAW))    ctx.yawPos   = n->getPosition();
+    // 有效 yaw 旋转中心（SINGLE = yaw 节点；BIG_SMALL = p_big + Rz(θ_big)·p_small）
+    ctx.yawPos = effectiveYawPos();
+    ctx.totalYaw = currentTotalYaw();
+    if (auto n = mgr.getNode(RobotTfTree::PITCH))  ctx.pitchPos = n->getPosition();
+    if (auto n = mgr.getNode(RobotTfTree::HEAD))   ctx.u += n->getPosition();
+    if (auto n = mgr.getNode(RobotTfTree::MUZZLE)) ctx.u += n->getPosition();
+    ctx.stopZ = stop_z_;
+    return ctx;
+}
+
+GimbalSolver::EvalContext GimbalSolver::buildContext(float yawBig) const {
+    if (!tree_->isBigSmallYaw()) {
+        throw std::logic_error("GimbalSolver: buildContext(yawBig) 只适用于大小 yaw 构型"
+                               "（common.big_small_yaw.mode = big_small）");
+    }
+    EvalContext ctx;
+    const TransformTreeManager& mgr = tree_->manager();
+    if (auto n = mgr.getNode(RobotTfTree::CHASSIS)) {
+        ctx.chassisPos = n->getPosition();
+        ctx.Rc = CoordinateTransform::eulerToRotationMatrix(n->getEuler());
+    }
+    ctx.yawPos = effectiveYawPos(yawBig);
+    // 回退用“当前总角” = 该时刻的大 yaw 关节角 + 树中当前小 yaw 关节角
+    ctx.totalYaw = yawBig + (tree_->yawSmall());
     if (auto n = mgr.getNode(RobotTfTree::PITCH))  ctx.pitchPos = n->getPosition();
     if (auto n = mgr.getNode(RobotTfTree::HEAD))   ctx.u += n->getPosition();
     if (auto n = mgr.getNode(RobotTfTree::MUZZLE)) ctx.u += n->getPosition();
@@ -291,6 +379,32 @@ bool GimbalSolver::computePitchToAimTarget(const cv::Vec3f& targetWorld, float y
                                            double& flightTimeOut) const {
     // 读取一次不变的树数据（评估函数只读、不修改内部树，可并行执行）
     const EvalContext ctx = buildContext();
+    return computePitchToAimTargetImpl(ctx, targetWorld, yaw, bulletVelocity,
+                                       pitchOut, minDistanceOut, minDistancePlaneOut,
+                                       flightTimeOut);
+}
+
+bool GimbalSolver::computePitchToAimTarget(const cv::Vec3f& targetWorld, float yaw,
+                                           double bulletVelocity, float yawBig,
+                                           float& pitchOut, double& minDistanceOut,
+                                           double& minDistancePlaneOut,
+                                           double& flightTimeOut) const {
+    if (!tree_->isBigSmallYaw()) {
+        throw std::logic_error("GimbalSolver: computePitchToAimTarget(..., yawBig, ...) 只适用于"
+                               "大小 yaw 构型（common.big_small_yaw.mode = big_small）");
+    }
+    const EvalContext ctx = buildContext(yawBig);
+    return computePitchToAimTargetImpl(ctx, targetWorld, yaw, bulletVelocity,
+                                       pitchOut, minDistanceOut, minDistancePlaneOut,
+                                       flightTimeOut);
+}
+
+bool GimbalSolver::computePitchToAimTargetImpl(const EvalContext& ctx,
+                                               const cv::Vec3f& targetWorld, float yaw,
+                                               double bulletVelocity,
+                                               float& pitchOut, double& minDistanceOut,
+                                               double& minDistancePlaneOut,
+                                               double& flightTimeOut) const {
 
     // 粗搜索：先取整条距离曲线，用于收集全部局部极小值。
     // 各候选 pitch 的评估相互独立，交给线程池（TaskPool）并行执行（始终保持并行）。
@@ -347,30 +461,58 @@ bool GimbalSolver::computePitchToAimTarget(const cv::Vec3f& targetWorld, float y
 // ============================================================================
 GimbalSolver::AimResult GimbalSolver::solveAim(const cv::Vec3f& targetWorld,
                                                double bulletVelocity) const {
+    // 单 yaw 构型：等价于“按内部树当前 θ_yaw 解算”
+    if (tree_->isBigSmallYaw()) {
+        return solveAim(targetWorld, bulletVelocity, tree_->yawBig());
+    }
+    return solveAimImpl(targetWorld, bulletVelocity, /*useYawBig=*/false, 0.0f);
+}
+
+GimbalSolver::AimResult GimbalSolver::solveAim(const cv::Vec3f& targetWorld,
+                                               double bulletVelocity, float yawBig) const {
+    if (!tree_->isBigSmallYaw()) {
+        throw std::logic_error("GimbalSolver: solveAim(target, v, yawBig) 只适用于大小 yaw 构型"
+                               "（common.big_small_yaw.mode = big_small）");
+    }
+    return solveAimImpl(targetWorld, bulletVelocity, /*useYawBig=*/true, yawBig);
+}
+
+GimbalSolver::AimResult GimbalSolver::solveAimImpl(const cv::Vec3f& targetWorld,
+                                                   double bulletVelocity, bool useYawBig,
+                                                   float yawBig) const {
     AimResult result;
 
     // 1) yaw（pitch = 0 假设）
     float yaw = 0.0f;
-    if (!computeYawToAimTarget(targetWorld, 0.0f, yaw)) {
+    const bool yawOk = useYawBig ? computeYawToAimTarget(targetWorld, 0.0f, yawBig, yaw)
+                                 : computeYawToAimTarget(targetWorld, 0.0f, yaw);
+    if (!yawOk) {
         return result;  // yaw 一步失效
     }
 
     // 2) pitch
     float pitch = 0.0f;
     double dist = 0.0, distPlane = 0.0, flight = 0.0;
-    bool ok = computePitchToAimTarget(targetWorld, yaw, bulletVelocity,
-                                      pitch, dist, distPlane, flight);
+    bool ok = useYawBig ? computePitchToAimTarget(targetWorld, yaw, bulletVelocity, yawBig,
+                                                  pitch, dist, distPlane, flight)
+                        : computePitchToAimTarget(targetWorld, yaw, bulletVelocity,
+                                                  pitch, dist, distPlane, flight);
 
     // 3) 首轮最近距离超过迭代触发阈值（distance_iterate_threshold）时，触发 yaw-pitch 迭代优化：
     //    使用新 pitch 重算 yaw，并再次解算 pitch；两轮结果保留更优者（迭代只用于改进，不会使结果变差）。
     //    最终是否成功仍以原阈值（distance_threshold）为准：最终距离不超过该值才算解算成功。
     if (!ok && dist > distance_iterate_threshold_) {
         float yaw2 = yaw;
-        if (computeYawToAimTarget(targetWorld, pitch, yaw2)) {
+        const bool yaw2Ok = useYawBig ? computeYawToAimTarget(targetWorld, pitch, yawBig, yaw2)
+                                      : computeYawToAimTarget(targetWorld, pitch, yaw2);
+        if (yaw2Ok) {
             float pitch2 = 0.0f;
             double dist2 = 0.0, distPlane2 = 0.0, flight2 = 0.0;
-            const bool ok2 = computePitchToAimTarget(targetWorld, yaw2, bulletVelocity,
-                                                     pitch2, dist2, distPlane2, flight2);
+            const bool ok2 = useYawBig
+                ? computePitchToAimTarget(targetWorld, yaw2, bulletVelocity, yawBig,
+                                          pitch2, dist2, distPlane2, flight2)
+                : computePitchToAimTarget(targetWorld, yaw2, bulletVelocity,
+                                          pitch2, dist2, distPlane2, flight2);
             if (dist2 < dist) {
                 yaw = yaw2;
                 pitch = pitch2;
@@ -400,20 +542,22 @@ GimbalSolver::AimResult GimbalSolver::solveAim(const cv::Vec3f& targetWorld) con
 
 cv::Vec3f GimbalSolver::muzzleWorldOrigin() const {
     // 与 evaluateDistance 的 muzzle 解析一致，但使用内部树当前的 yaw/pitch 关节角
+    // （大小 yaw 构型：yaw = θ_big + θ_small，旋转中心 = 有效 yaw 旋转中心）；
+    // 注：pitch 取 pitchNode->getEuler()[0]（= 0）的既有约定保持不变，此处只做“当前
+    // 枪口原点的粗估”，用于预测初值/目标选择，两种构型行为一致。
     const TransformTreeManager& mgr = tree_->manager();
     auto chassisNode = mgr.getNode(RobotTfTree::CHASSIS);
-    auto yawNode     = mgr.getNode(RobotTfTree::YAW);
     auto pitchNode   = mgr.getNode(RobotTfTree::PITCH);
     auto headNode    = mgr.getNode(RobotTfTree::HEAD);
     auto muzzleNode  = mgr.getNode(RobotTfTree::MUZZLE);
-    if (!chassisNode || !yawNode || !pitchNode || !headNode || !muzzleNode) {
+    if (!chassisNode || !pitchNode || !headNode || !muzzleNode) {
         return cv::Vec3f(0.0f, 0.0f, 0.0f);
     }
 
     const cv::Vec3f chassisPos = chassisNode->getPosition();
     const cv::Mat   Rc         = CoordinateTransform::eulerToRotationMatrix(chassisNode->getEuler());
-    const cv::Vec3f yawPos     = yawNode->getPosition();
-    const float     yaw        = yawNode->getEuler()[0];
+    const cv::Vec3f yawPos     = effectiveYawPos();
+    const float     yaw        = currentTotalYaw();
     const float     pitch      = pitchNode->getEuler()[0];
 
     const float cp = std::cos(pitch), sp = std::sin(pitch);
@@ -435,16 +579,17 @@ cv::Vec3f GimbalSolver::muzzleWorldOrigin() const {
 }
 
 cv::Vec3f GimbalSolver::yawWorldOrigin() const {
-    // yaw 系原点 = chassis 原点 + Rc·yawPos（yaw 节点位置相对 chassis，旋转不移动原点）
+    // yaw 系原点 = chassis 原点 + Rc·（有效 yaw 旋转中心相对 chassis 的位置）
+    //   SINGLE    ：yaw 节点位置（旋转不移动原点）；
+    //   BIG_SMALL ：小 yaw 轴旋转中心（含随 θ_big 旋转的偏移 p_small）。
     const TransformTreeManager& mgr = tree_->manager();
     auto chassisNode = mgr.getNode(RobotTfTree::CHASSIS);
-    auto yawNode     = mgr.getNode(RobotTfTree::YAW);
-    if (!chassisNode || !yawNode) {
+    if (!chassisNode) {
         return cv::Vec3f(0.0f, 0.0f, 0.0f);
     }
     const cv::Vec3f chassisPos = chassisNode->getPosition();
     const cv::Mat   Rc         = CoordinateTransform::eulerToRotationMatrix(chassisNode->getEuler());
-    const cv::Vec3f yawPos     = yawNode->getPosition();
+    const cv::Vec3f yawPos     = effectiveYawPos();
     cv::Mat m = Rc * (cv::Mat_<float>(3, 1) << yawPos[0], yawPos[1], yawPos[2]);
     return cv::Vec3f(chassisPos[0] + m.at<float>(0, 0),
                      chassisPos[1] + m.at<float>(1, 0),

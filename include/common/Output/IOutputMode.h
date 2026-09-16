@@ -13,7 +13,11 @@
 #include "common/Output/OutputContext.h"
 #include "tcs/RobotController.h"
 
-enum class OutputMode { NONE, VISUALIZE, GIMBAL };
+// GIMBAL          ：单 yaw 构型云台输出（tcs::RobotController，见 GimbalOutput）
+// GIMBAL_BIG_SMALL：大小 yaw 构型云台输出（tcbs::RobotController + 大小 yaw 拆分器，
+//                   见 common/BigSmallYaw/GimbalOutputForBigSmallYaw）
+// 两者互斥（由 config common.big_small_yaw.mode 决定用哪一个）。
+enum class OutputMode { NONE, VISUALIZE, GIMBAL, GIMBAL_BIG_SMALL };
 
 class IOutputMode {
 public:

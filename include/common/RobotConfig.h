@@ -8,14 +8,20 @@
 //
 // ⚠ 重要约定（给后续修改者）：机器配置文件中的所有参数均为必填，本文件及
 //   RobotConfig.cpp 中不设任何默认值/回退值——缺段或缺字段时 RobotConfig::load
-//   直接抛异常退出，绝不静默采用默认值。新增配置项时必须同步：
+//   直接抛异常退出，绝不静默采用默认值。
+//   **唯一例外**：common.big_small_yaw 下按 yaw 构型分为 single / big_small 两支，
+//   只需填写当前 mode 对应的那一支（另一支可整段省略——两种构型的参数互不通用，
+//   写没用到的那一份纯属冗余）；当前构型那一支内部的字段依旧全部必填。
+//   新增配置项时必须同步：
 //   1) 在 config/robots/<active_config>.yaml 对应段中添加字段并写明含义；
 //   2) 在 RobotConfig.h 对应结构体中添加成员（无默认初始化）；
 //   3) 在 src/common/RobotConfig.cpp 中通过 requireScalar 等读取。
 //
 // 机器配置文件顶层分为三个大类：
 //   - common      ：两个流水线共用的参数（tf 偏移 / 相机内参 / 弹道 / MPC / 输入控制器 /
-//                    min_delay_seconds 等）
+//                    min_delay_seconds 等；其中 common.big_small_yaw 决定 yaw 构型
+//                    （single = 旧单 yaw / big_small = 大/小双 yaw）并提供新构型的
+//                    tcbs::RobotController 参数与大小 yaw 拆分器参数，见 YawMode）
 //   - armor     ：Armor 流水线独占参数（推理模型 / 批量 / 观测丢失超时 /
 //                   OutpostESEKF 与 SuperPower EKF 滤波参数）
 //   - power_rune  ：PowerRune 流水线独占参数（推理模型 / NMS / 阈值 / 批量）
@@ -33,15 +39,38 @@
 
 #include <opencv2/opencv.hpp>
 
+// yaw 构型（config: common.big_small_yaw.mode；**初始化时定型，运行中不可切换**）：
+//   SINGLE    ：单 yaw（旧，TorqueController 子模组）：chassis -> yaw -> pitch -> ...
+//   BIG_SMALL ：大/小双 yaw（新，TorqueControllerForBigSmallYaw 子模组）：
+//               chassis -> yaw_big -> yaw_small -> pitch -> ...
+// 构型决定变换树节点结构、ExtraInputInfo 使用哪一包关节角、瞄准解算几何与输出模式，
+// 因此两边（树 / 输入信息 / 状态包）都按本构型只填自己那一包，另一包整体置 NaN，
+// 越界调用（如单 yaw 下调 setYawBig）直接抛异常，绝不静默混用。
+enum class YawMode {
+    SINGLE    = 0,
+    BIG_SMALL = 1,
+};
+
 class RobotConfig {
 public:
-    // 变换树各节点相对其父节点的固定偏移（单位：米）
+    // 变换树各节点相对其父节点的固定偏移（单位：米）。
+    // ⚠ 两个 yaw 构型的 tf 分支**内容不同**（见 BigSmallYawParams）：
+    //   single 分支：只需 yawJointZOffset（yaw 关节）+ 其余公共偏移，
+    //                smallYawOffset* 不存在（该构型没有小 yaw 轴）；
+    //   big_small 分支：yawJointZOffset 表示**大 yaw**关节沿 z 的偏移，
+    //                并额外需要 smallYawOffset*（小 yaw 轴相对大 yaw 轴的偏移，大 yaw 系）。
     struct TfOffsets {
-        float yawJointZOffset;  // yaw 关节沿 z 轴偏移（相对 chassis）
+        float yawJointZOffset;  // yaw 关节沿 z 轴偏移（相对 chassis；big_small 下为大 yaw 关节）
         float pitchJointYOffset;  // pitch 关节沿 y 轴偏移（相对 yaw 旋转中心）
         float imuOffsetX, imuOffsetY, imuOffsetZ;          // imu 相对 head
         float cameraOffsetX, cameraOffsetY, cameraOffsetZ;  // camera 相对 head
         float muzzleOffsetX, muzzleOffsetY, muzzleOffsetZ;  // muzzle 相对 head
+        // ── 仅 big_small 分支必填：小 yaw 轴相对大 yaw 轴的偏移（**大 yaw 系**，米）──
+        // 同时作为变换树里 yaw_small 节点相对 yaw_big 节点的位置与双级 yaw 平面模型的
+        // 平面偏置 dx/dy（z 分量只进变换树，不进平面模型）。改机械后必须同步修改。
+        float smallYawOffsetX = 0.0f;
+        float smallYawOffsetY = 0.0f;
+        float smallYawOffsetZ = 0.0f;
     };
 
     // 相机参数（分辨率 + 内参 + 畸变；相机模式额外含 IP/曝光/增益/extra_info_delay）
@@ -144,6 +173,162 @@ public:
                                     // 平均距离)。0 = 关闭瞄准点滞回。
     };
 
+    // ══════════════════════════════════════════════════════════════════════
+    // yaw 构型与**构型相关参数**（config: common.big_small_yaw）
+    //
+    // ⚠ 配置约定（本工程唯一的例外，见 config/robots/*.yaml 文件头）：
+    //   common.big_small_yaw 下按构型分为 single / big_small **两支**，
+    //   **只需填写当前 mode 那一支**（另一支可以整段省略、不必写）；
+    //   当前构型那一支内的字段依旧**全部必填**（缺字段直接抛异常，不设代码默认值）；
+    //   另一支若写了则同样严格校验（防止半截残留的自相矛盾配置）。
+    //
+    //   mode = single    → 只填 single 支：tf（单 yaw 链）+ robot_controller（tcs 子模组）
+    //   mode = big_small → 只填 big_small 支：tf（含小 yaw 偏移）+ robot_controller
+    //                      （tcbs 子模组：model / mpc / estimator / mcu_linear / controller）
+    //                      + joints（行程/回中）+ splitter（大 yaw 平滑轨迹规划器）
+    //
+    // 参数来源约定（Sentry1.yaml 即按此填写）：
+    //   - big_small.robot_controller.model / mpc / estimator / mcu_linear / controller
+    //     与子模组的 tcbs::dual_yaw::ModelParams、tcbs::dual_yaw::DualYawMpcConfig、
+    //     tcbs::YawStateEstimator::Config、tcbs::McuDataPreprocessor::LinearParams、
+    //     tcbs::McuMpcController::Config 一一对应（子模组默认值见
+    //     sub_module/TorqueControllerForBigSmallYaw/include/tcbs/mpc/planar_yaw_params.h 等）；
+    //   - 小 yaw 轴相对大 yaw 轴的偏移只配置一处（big_small.tf.small_yaw_offset_*），
+    //     同时作为变换树 yaw_small 节点位置与模型平面偏置 dx/dy；
+    //   - big_small.joints 的行程 / 回中目标是 MPC 与拆分器**共用**的同一份配置，
+    //     mpc.small_limit_soft_ratio 亦为二者共用的软限位比例（避免“拆分器以为能瞄准、
+    //     MPC 却已进软限位”这类不一致）。
+    // ══════════════════════════════════════════════════════════════════════
+    struct BigSmallYawParams {
+        YawMode mode;   // 构型开关（config: mode；single | big_small）
+
+        // ── 单 yaw 构型分支（mode = single 时必填；big_small 下可整段省略）──
+        struct SingleBranch {
+            TfOffsets tf;                             // 变换树偏移（chassis -> yaw -> pitch -> head）
+            RobotControllerParams robotController;    // tcs::RobotController 构造参数
+        };
+        SingleBranch single;
+        bool singlePresent = false;   // 配置文件中是否写了 single 支（写了就严格校验）
+
+        // ── 大小 yaw 构型分支（mode = big_small 时必填；single 下可整段省略）──
+        struct BigSmallBranch {
+            TfOffsets tf;   // 含 smallYawOffsetX/Y/Z（小 yaw 轴相对大 yaw 轴的偏移）
+
+            // tcbs::RobotController 构造参数（**仅本构型使用**）
+            struct RobotControllerParamsBS {
+                bool   sequenceMode;  // 必须为 true（大/小 yaw 输出按序列下发）
+                double dtControl;     // 控制周期（秒）：序列间隔 / MPC 步长 / 后台 loop 周期
+
+                // 双级 yaw 平面模型（tcbs::dual_yaw::ModelParams）
+                struct ModelParams {
+                    double gravity;            // 重力加速度
+                    double mUKnown;            // 上装质量（未知则 0）
+                    double JbigEff;            // 大 yaw 侧惯量（含 m_u|d|²）
+                    double Js;                 // 上装绕小 yaw 轴总惯量
+                    double Px, Py;             // 上装一阶矩（kg·m）
+                    double fcBig, fvBig;       // 大 yaw 库仑/粘滞摩擦
+                    double fcSmall, fvSmall;   // 小 yaw 库仑/粘滞摩擦
+                    double frictionLambda;     // 库仑摩擦软符号系数 λ
+                    double tauOffsetBig;       // 可选常数负载
+                    double tauOffsetSmall;
+                };
+                ModelParams model;
+
+                // MPC（tcbs::dual_yaw::DualYawMpcConfig；dt_control 取本结构的 dtControl）
+                struct MpcParams {
+                    int    n;                  // 预测步数 N
+                    int    substeps;           // 每控制步 RK4 子步
+                    bool   useRk4;             // true: RK4；false: 半隐式欧拉
+                    int    maxIter;            // 求解迭代上限
+                    double wBigAzimuth;        // 大 yaw 世界方位角跟踪权重
+                    double wSmallAzimuth;      // 小 yaw 世界方位角跟踪权重
+                    double wSmallCenter;       // 小 yaw 回中权重
+                    double wSmallLimit;        // 小 yaw 软限位权重
+                    double smallLimitSoftRatio;  // 软限位比例（拆分器判界与 MPC 代价共用）
+                    double rBigTorque, rSmallTorque;    // 力矩惩罚
+                    double rdBigRate, rdSmallRate;      // 力矩变化率惩罚
+                    double smoothEps;          // 位置误差平滑常数
+                    int    refDelaySteps;      // 参考延迟步数（0 = 不延迟）
+                    double bigMaxTorque;       // 大 yaw 力矩上限（N·m）
+                    double bigMaxTorqueRate;   // 大 yaw 力矩变化率上限（N·m/s）
+                    double smallMaxTorque;     // 小 yaw 力矩上限（N·m）
+                    double smallMaxTorqueRate; // 小 yaw 力矩变化率上限（N·m/s）
+                };
+                MpcParams mpc;
+
+                // 状态估计（tcbs::YawStateEstimator::Config）
+                struct EstimatorParams {
+                    int    imuLocation;         // 0 = ON_BIG_YAW（IMU 在大 yaw 转子上）；1 = ON_HEAD
+                    double mountYaw, mountPitch, mountRoll;            // R_A_IMU（ZXY）
+                    double headMountYaw, headMountPitch, headMountRoll; // R_H_IMU（ZXY）
+                    double transportDelayS;     // 链路传输时延（s）
+                    double bigEncMaxJump;       // 大 yaw 单次测量最大修正幅度（rad）
+                    double staleAgeS;           // 过旧判定阈值（s）
+                    double chassisImuTimeoutS;  // 底盘 IMU 可用超时（s）
+                    double maxExtrapS;          // 可信量外推上限（s）
+                    double rateLpfAlpha;        // 角速度低通系数
+                    double pitchRateLpfAlpha;   // pitch 角速度低通系数
+                    double pitchAccLpfAlpha;    // pitch 角加速度低通系数（0 = 不用）
+                    double boreX, boreY, boreZ; // 视轴方向（head 系单位矢量）
+                    double gravity;             // 估计器内重力
+                    bool   useChassisImu;       // 是否用底盘 IMU 分离大 yaw 关节角速度
+                    double sourceTimeoutS;      // 数据源超时（s）
+                };
+                EstimatorParams estimator;
+
+                // MCU 数据线性映射（tcbs::McuDataPreprocessor::LinearParams）
+                struct McuLinearParams {
+                    double sendPitchScale, sendPitchOffset;   // 关节角 → 电控 pitch 目标值
+                    double recvPitchScale, recvPitchOffset;   // 电控原始 pitch → 关节角
+                    double recvBigYawScale, recvBigYawOffset;
+                    double recvBigOmegaScale;
+                    double sendBigYawScale, sendBigYawOffset;
+                    double sendBigVelocityScale, sendBigTorqueScale;
+                    double recvSmallYawScale, recvSmallYawOffset;
+                    double recvSmallOmegaScale;
+                    double sendSmallYawScale, sendSmallYawOffset;
+                    double sendSmallVelocityScale, sendSmallTorqueScale;
+                };
+                McuLinearParams mcuLinear;
+
+                // 控制器（tcbs::McuMpcController::Config；loop 周期取 dtControl）
+                struct ControllerParams {
+                    bool   bigTorqueOnly;      // 大 yaw 仅力矩模式位（发送给电控）
+                    bool   smallTorqueOnly;    // 小 yaw 仅力矩模式位
+                    double integralGainBig, integralGainSmall;    // 逐关节积分补偿增益
+                    double integralLimitBig, integralLimitSmall;  // 逐关节积分限幅
+                    bool   integralOnBig;      // 是否允许大 yaw 积分补偿
+                };
+                ControllerParams controller;
+            };
+            RobotControllerParamsBS robotController;
+
+            // 关节行程与回中目标（rad；MPC JointLimits / small_center_angle 与拆分器共用）
+            struct JointParams {
+                double bigMinAngle;       // 大 yaw 行程下界（多圈，通常 -1e9 = 不限位）
+                double bigMaxAngle;       // 大 yaw 行程上界
+                double smallMinAngle;     // 小 yaw 行程下界（非对称，例：-25°）
+                double smallMaxAngle;     // 小 yaw 行程上界（例：+20°）
+                double smallCenterAngle;  // 小 yaw 回中目标关节角（0 = 关节零位；拆分器与
+                                          // 小 yaw MPC 代价项共用，非对称行程下 0 不是行程中心）
+            };
+            JointParams joints;
+
+            // 大小 yaw 拆分器（common/BigSmallYaw/BigSmallYawSplitter）的大 yaw 平滑轨迹规划器
+            // （同时满足最大速度/加速度/加加速度限制；移植自子模组
+            //   python/scripts/trajectory_planner.py）
+            struct SplitterParams {
+                double plannerMaxVelocity;      // 大 yaw 平滑轨迹最大角速度（rad/s）
+                double plannerMaxAcceleration;  // 最大角加速度（rad/s²）
+                double plannerMaxJerk;          // 最大角加加速度（rad/s³）
+                int    plannerSubsteps;         // 单步细化倍数（>= 1；1 = 与 Python 一致）
+            };
+            SplitterParams splitter;
+        };
+        BigSmallBranch bigSmall;
+        bool bigSmallPresent = false;   // 配置文件中是否写了 big_small 支（写了就严格校验）
+    };
+
     // 流水线缓冲队列与批量参数（config 各流水线段的 pipeline 子段）
     // 两条流水线结构相同（5 阶段 / 6 队列），各用各的一份配置。
     struct PipelineParams {
@@ -238,7 +423,26 @@ public:
 
     // 共用参数（两个流水线共享）
     struct CommonParams {
-        TfOffsets    tf;                        // 变换树偏移
+        // yaw 构型与**构型相关参数**（tf / 控制器参数 / 新构型模型与拆分器参数）。
+        // ⚠ config 里只需填写当前 mode 那一支（见 BigSmallYawParams 与 yaml 文件头约定）。
+        BigSmallYawParams bigSmallYaw;
+
+        /// 当前构型（bigSmallYaw.mode）对应的 tf 偏移（另一支可能不存在，不读取）
+        const TfOffsets& tf() const {
+            return (bigSmallYaw.mode == YawMode::SINGLE) ? bigSmallYaw.single.tf
+                                                         : bigSmallYaw.bigSmall.tf;
+        }
+        /// 当前构型的控制周期（秒）：两构型语义相同（预测序列间隔 / MPC 步长 /
+        /// 后台 loop 周期），取自该构型分支的 robot_controller.dt_control
+        double dtControl() const {
+            return (bigSmallYaw.mode == YawMode::SINGLE)
+                       ? bigSmallYaw.single.robotController.dtControl
+                       : bigSmallYaw.bigSmall.robotController.dtControl;
+        }
+        /// 单 yaw 构型（tcs::RobotController）参数；构型不符时内部为空分支（不要读取）
+        const RobotControllerParams& singleYawRobotController() const {
+            return bigSmallYaw.single.robotController;
+        }
 
         // 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择
         struct InputModeParams {

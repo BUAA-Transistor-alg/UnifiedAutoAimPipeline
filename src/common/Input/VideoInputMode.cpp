@@ -70,14 +70,58 @@ void VideoInputMode::parseExtraInputInfoFile() {
             tokens.push_back(token);
         }
 
-        // 格式探测：v2 = 15 列（frame_index dt timestamp accepted + 11 个 ExtraInputInfo 字段）；
-        // v1 = 原 8 列（frame_index dt x y z yaw pitch roll）
+        // 格式探测（按列数，优先取更长的新格式）：
+        //   v3 = 21 列（v2 + 大小 yaw 包 6 列）；v2 = 15 列（单 yaw 包 11 列）；
+        //   v1 = 原 8 列（frame_index dt x y z yaw pitch roll）
         if (!format_detected) {
-            format_v2_ = (tokens.size() >= 15);
+            format_v3_ = (tokens.size() >= 21);
+            format_v2_ = !format_v3_ && (tokens.size() >= 15);
             format_detected = true;
         }
 
-        if (format_v2_) {
+        if (format_v3_) {
+            if (tokens.size() < 21) {
+                cerr << "[VideoInputMode] WARNING: Extra info line " << line_no
+                     << " (v3) has insufficient fields (" << tokens.size()
+                     << " < 21), skipping: " << trimmed << endl;
+                continue;
+            }
+            ExtraFrameEntry entry;
+            try {
+                int frame_idx = stoi(tokens[0]);
+                entry.dt       = stof(tokens[1]);
+                entry.timestamp = stod(tokens[2]);
+                entry.accepted = (stoi(tokens[3]) != 0);
+                entry.has_full_info = true;
+                entry.full_info.single.imu_euler_yaw   = stod(tokens[4]);
+                entry.full_info.single.imu_euler_pitch = stod(tokens[5]);
+                entry.full_info.single.imu_euler_roll  = stod(tokens[6]);
+                entry.full_info.single.yaw_pos         = stod(tokens[7]);
+                entry.full_info.single.pitch_angle     = stod(tokens[8]);
+                entry.full_info.chassis_yaw   = stod(tokens[9]);
+                entry.full_info.chassis_pitch = stod(tokens[10]);
+                entry.full_info.chassis_roll  = stod(tokens[11]);
+                entry.full_info.chassis_x     = stod(tokens[12]);
+                entry.full_info.chassis_y     = stod(tokens[13]);
+                entry.full_info.chassis_z     = stod(tokens[14]);
+                // 大小 yaw 包（v3 追加列）
+                entry.has_big_small_info = true;
+                entry.full_info.big_small.yaw_big_pos     = stod(tokens[15]);
+                entry.full_info.big_small.yaw_small_pos   = stod(tokens[16]);
+                entry.full_info.big_small.imu_euler_yaw   = stod(tokens[17]);
+                entry.full_info.big_small.imu_euler_pitch = stod(tokens[18]);
+                entry.full_info.big_small.imu_euler_roll  = stod(tokens[19]);
+                entry.full_info.big_small.pitch_angle     = stod(tokens[20]);
+
+                extra_info_map_[frame_idx] = entry;
+                if (frame_idx > extra_info_max_frame_) {
+                    extra_info_max_frame_ = frame_idx;
+                }
+            } catch (const std::exception& e) {
+                cerr << "[VideoInputMode] WARNING: Extra info line " << line_no
+                     << " parse error: " << e.what() << ", skipping: " << trimmed << endl;
+            }
+        } else if (format_v2_) {
             if (tokens.size() < 15) {
                 cerr << "[VideoInputMode] WARNING: Extra info line " << line_no
                      << " (v2) has insufficient fields (" << tokens.size()
@@ -91,11 +135,11 @@ void VideoInputMode::parseExtraInputInfoFile() {
                 entry.timestamp = stod(tokens[2]);
                 entry.accepted = (stoi(tokens[3]) != 0);
                 entry.has_full_info = true;
-                entry.full_info.imu_euler_yaw   = stod(tokens[4]);
-                entry.full_info.imu_euler_pitch = stod(tokens[5]);
-                entry.full_info.imu_euler_roll  = stod(tokens[6]);
-                entry.full_info.yaw_pos         = stod(tokens[7]);
-                entry.full_info.pitch_angle     = stod(tokens[8]);
+                entry.full_info.single.imu_euler_yaw   = stod(tokens[4]);
+                entry.full_info.single.imu_euler_pitch = stod(tokens[5]);
+                entry.full_info.single.imu_euler_roll  = stod(tokens[6]);
+                entry.full_info.single.yaw_pos         = stod(tokens[7]);
+                entry.full_info.single.pitch_angle     = stod(tokens[8]);
                 entry.full_info.chassis_yaw     = stod(tokens[9]);
                 entry.full_info.chassis_pitch   = stod(tokens[10]);
                 entry.full_info.chassis_roll    = stod(tokens[11]);
@@ -142,7 +186,7 @@ void VideoInputMode::parseExtraInputInfoFile() {
     }
 
     cout << "[VideoInputMode] Loaded " << extra_info_map_.size()
-         << " Extra info entries (format v" << (format_v2_ ? "2" : "1")
+         << " Extra info entries (format v" << (format_v3_ ? "3" : (format_v2_ ? "2" : "1"))
          << ", max frame index: " << extra_info_max_frame_ << ")";
     if (skip_unaccepted_frames_) {
         cout << " [skip unaccepted frames: ON]";
@@ -229,11 +273,14 @@ bool VideoInputMode::getNextFrame(cv::Mat& frame,
             }
 
             if (last_valid_entry_.has_full_info) {
-                // v2：完整 ExtraInputInfo 按原样还原
+                // v2 / v3：ExtraInputInfo 按原样还原（未记录的那一包保持 NaN；
+                // v2 没有大小 yaw 包 ⇒ 回放新模式时会立刻在 TfTreeSync 报错，
+                // 不会静默用 NaN 算姿态）。
                 extra_info = last_valid_entry_.full_info;
             } else {
                 // v1：解析出的相机欧拉角 → chassis 欧拉角 且 imu_euler 同值，
-                // 相机坐标 → 底盘 xyz，其余字段（yaw_pos/pitch_angle 等）为 0。
+                // 相机坐标 → 底盘 xyz；**当前构型**的关节角包显式填 0
+                // （v1 记录不含任何云台关节角），另一包保持 NaN。
                 extra_info = ExtraInputInfo{};
                 extra_info.chassis_x     = last_valid_entry_.x;
                 extra_info.chassis_y     = last_valid_entry_.y;
@@ -241,12 +288,21 @@ bool VideoInputMode::getNextFrame(cv::Mat& frame,
                 extra_info.chassis_yaw   = last_valid_entry_.yaw;
                 extra_info.chassis_pitch = last_valid_entry_.pitch;
                 extra_info.chassis_roll  = last_valid_entry_.roll;
-                extra_info.imu_euler_yaw   = last_valid_entry_.yaw;
-                extra_info.imu_euler_pitch = last_valid_entry_.pitch;
-                extra_info.imu_euler_roll  = last_valid_entry_.roll;
+                extra_info.fillCurrentPackZeros(RobotConfig::instance().common.bigSmallYaw.mode);
+                if (RobotConfig::instance().common.bigSmallYaw.mode == YawMode::SINGLE) {
+                    extra_info.single.imu_euler_yaw   = last_valid_entry_.yaw;
+                    extra_info.single.imu_euler_pitch = last_valid_entry_.pitch;
+                    extra_info.single.imu_euler_roll  = last_valid_entry_.roll;
+                } else {
+                    extra_info.big_small.imu_euler_yaw   = last_valid_entry_.yaw;
+                    extra_info.big_small.imu_euler_pitch = last_valid_entry_.pitch;
+                    extra_info.big_small.imu_euler_roll  = last_valid_entry_.roll;
+                }
             }
         } else {
+            // 完全没有 extra-info 文件：底盘位姿为 0，当前构型关节角包填 0
             extra_info = ExtraInputInfo{};
+            extra_info.fillCurrentPackZeros(RobotConfig::instance().common.bigSmallYaw.mode);
         }
 
         // --- Check overflow warning ---

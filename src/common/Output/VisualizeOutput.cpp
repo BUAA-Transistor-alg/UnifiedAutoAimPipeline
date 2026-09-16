@@ -1,4 +1,5 @@
 // VisualizeOutput.cpp — 可视化输出模式实现
+#include "common/TransformTree/TfTreeSync.h"
 #include "common/Output/VisualizeOutput.h"
 #include "common/RobotConfig.h"
 #include "Armor/ArmorModel.h"
@@ -87,12 +88,19 @@ void drawGimbalYAxisOverlays(cv::Mat& img, const SequencePredictor::Result& seq,
     drawCamYAxisCrosshair(img, cur_world, cur_tree, proj, cv::Scalar(0, 255, 0), false);
 
     // 需要的云台位姿：底盘沿用当前树状态，yaw/pitch 关节角 = 解算原始关节角
+    // （大小 yaw 构型：item.gimbal_yaw 是两级关节角之和 θ_big+θ_small，
+    //   这里沿用当前树的大 yaw 关节角，小 yaw 取差值 ⇒ head 朝向与单 yaw 构型一致）
     req_tree.unlock();
     {
         const RobotTfTree::State st = cur_tree.saveState();
         req_tree.setChassisPosition(st.chassisPosition[0], st.chassisPosition[1], st.chassisPosition[2]);
         req_tree.setChassisEuler(st.chassisEuler[0], st.chassisEuler[1], st.chassisEuler[2]);
-        req_tree.setYaw(item.gimbal_yaw);
+        if (req_tree.isBigSmallYaw()) {
+            req_tree.setYawBig(st.yawBig);
+            req_tree.setYawSmall(item.gimbal_yaw - st.yawBig);
+        } else {
+            req_tree.setYaw(item.gimbal_yaw);
+        }
         req_tree.setPitch(item.gimbal_pitch);
     }
     req_tree.lockAndComputeCache();
@@ -115,12 +123,9 @@ VisualizeOutput::VisualizeOutput(std::shared_ptr<CameraProjection> camera_proj)
 void VisualizeOutput::syncTree(const ExtraInputInfo& info)
 {
     RobotTfTree& tree = tree_;
-    tree.unlock();
-    tree.setChassisPosition((float)info.chassis_x, (float)info.chassis_y, (float)info.chassis_z);
-    tree.setChassisEuler((float)info.chassis_yaw, (float)info.chassis_pitch, (float)info.chassis_roll);
-    tree.setYaw((float)info.yaw_pos);
-    tree.setPitch((float)info.pitch_angle);
-    tree.lockAndComputeCache();
+    // 同步本阶段独立变换树（ExtraInputInfo = 底盘位姿 + **当前构型**的关节角包；
+    // 构型取包与越界检查统一在 TfTreeSync 中完成）
+    syncTreeFromExtraInfo(tree, info);
 }
 
 void VisualizeOutput::update(const PipelineResult& result, tcs::RobotController* rc,
@@ -137,7 +142,7 @@ void VisualizeOutput::update(const PipelineResult& result, tcs::RobotController*
     // 渲染当前流水线模式的画面（写入成员缓冲 render_buf_，复用以免每帧分配）
     const PipelineMode mode = mode_.load(std::memory_order_relaxed);
     if (mode == PipelineMode::ARMOR)
-        renderArmor(result, rc, seq);
+        renderArmor(result, rc, seq, ctx);
     else
         renderPowerRune(result, rc);
 
@@ -162,7 +167,7 @@ cv::Mat VisualizeOutput::display() const
 }
 
 void VisualizeOutput::renderArmor(const PipelineResult& result, tcs::RobotController* rc,
-                                  const SequencePredictor::Result& seq)
+                                  const SequencePredictor::Result& seq, const OutputContext& ctx)
 {
     const ArmorPerception& p = result.armor;
 
@@ -192,6 +197,32 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, tcs::RobotContro
     vis.xy.aim_point = seq.first_point;
 
     vis.robot_state = rc ? rc->getState() : tcs::RobotController::State{};
+
+    // ── 大小 yaw 构型数据（仅 mode = big_small：控制器状态快照 + 拆分器诊断）──
+    if (ctx.yaw_mode == YawMode::BIG_SMALL) {
+        const bsy::RobotState& bs = ctx.bsy_state;
+        vis.big_small.valid             = true;
+        vis.big_small.yaw_big_joint     = bs.yaw_big_joint;
+        vis.big_small.yaw_small_joint   = bs.yaw_small_joint;
+        vis.big_small.yaw_big_azimuth   = bs.yaw_big_azimuth;
+        vis.big_small.yaw_small_azimuth = bs.yaw_small_azimuth;
+        vis.big_small.small_ref_over_limit = bs.small_ref_over_limit;
+        vis.big_small.big_ref_front     = bs.ref_big_azimuth_seq.empty()
+                                              ? bs.yaw_big_azimuth : bs.ref_big_azimuth_seq.front();
+        vis.big_small.small_ref_front   = bs.ref_small_azimuth_seq.empty()
+                                              ? bs.yaw_small_azimuth : bs.ref_small_azimuth_seq.front();
+        vis.big_small.split_valid       = ctx.split_diag.valid;
+        vis.big_small.split_jump_count  = ctx.split_diag.jump_count;
+        vis.big_small.split_unlimited_episodes = ctx.split_diag.unlimited_episodes;
+        vis.big_small.split_over_limit  = ctx.split_diag.over_limit;
+        vis.big_small.split_theta_small_max_abs = ctx.split_diag.theta_small_max_abs;
+        vis.big_small.split_soft_min    = ctx.split_diag.soft_min;
+        vis.big_small.split_soft_max    = ctx.split_diag.soft_max;
+        const RobotConfig::TfOffsets& tf_bs =
+            RobotConfig::instance().common.bigSmallYaw.bigSmall.tf;
+        vis.big_small.small_axis_offset = cv::Vec3f(tf_bs.smallYawOffsetX, tf_bs.smallYawOffsetY,
+                                                    tf_bs.smallYawOffsetZ);
+    }
 
     vis.fps = fps_.fps();
     vis.frame_timestamp = result.frame_timestamp;

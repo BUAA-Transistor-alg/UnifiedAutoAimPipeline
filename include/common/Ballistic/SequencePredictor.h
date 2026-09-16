@@ -53,6 +53,7 @@
 #include <opencv2/opencv.hpp>
 
 #include "tcs/RobotController.h"
+#include "common/BigSmallYaw/RobotStateForBigSmallYaw.h"
 #include "common/TaskPool.h"
 #include "common/Ballistic/GimbalSolver.h"
 #include "common/Ballistic/PredictedBallisticSolver.h"
@@ -175,6 +176,19 @@ public:
     Result predict(const tcs::RobotController::State& st, const Predictor& predictor,
                    const std::chrono::steady_clock::time_point& timestamp);
 
+    /// 新构型（大/小双 yaw，common.big_small_yaw.mode = big_small）状态包输入版本。
+    /// 与单 yaw 版本**互不混用**（各自只读自己那一包，见 ExtraInputInfo 两包约定）：
+    ///   - 树同步用大小 yaw 包（θ_big / θ_small / pitch）；
+    ///   - item.yaw 的底盘修正项改用严格反解的 chassis 欧拉 yaw（而非“IMU 欧拉 − 单 yaw
+    ///     关节角”——该式只对单 yaw 构型成立）；
+    ///   - 逐预测点的大 yaw 关节角 θ_big(t) 取「该状态包里的 MPC 预测大 yaw 世界方位角
+    ///     序列（线性插值，超出覆盖区间用最后一个值）− 当帧底盘 yaw」，muzzle 原点/瞄准
+    ///     解算因此按“大 yaw 未来实际会到哪”求有效 yaw 旋转中心（见 GimbalSolver）；
+    ///     MPC 序列不可用（从未开启云台控制等）时退回**上一轮解算所用的 θ_big 序列**，
+    ///     再没有则用当帧实测 θ_big。
+    Result predict(const bsy::RobotState& st, const Predictor& predictor,
+                   const std::chrono::steady_clock::time_point& timestamp);
+
     /// 预测器不可用：重置自身跨帧状态（State）与当前来源记录；
     /// 下次 predict() 从新来源重新开始维护状态
     void invalidate();
@@ -225,6 +239,33 @@ private:
     };
     State state_;
     PredictorSource active_source_;   // 当前 state_ 对应的来源（无有效预测时为 NONE）
+
+    // 上一轮解算所用的逐点大 yaw 关节角序列（仅 BIG_SMALL；MPC 预测序列不可用时的退路）
+    std::vector<float> last_yaw_big_seq_;
+
+    // ── 构型无关的输入快照（两种构型各自从自己的状态包填充，未使用构型不参与）──
+    struct InputSnapshot {
+        bool   big_small = false;          // 是否大小 yaw 构型
+        ExtraInputInfo info;               // 底盘位姿 + 对应构型的关节角包
+        double bullet_velocity = 0.0;
+        bool   has_bullet_velocity = false;
+        bool   auto_aim_switch = false;
+        // item.yaw 的底盘 yaw 修正项：
+        //   SINGLE    ：imu_euler_yaw − yaw_pos（原式）；
+        //   BIG_SMALL ：严格反解的 chassis 欧拉 yaw（与树的底盘欧拉角同一约定）
+        double chassis_yaw_correction = 0.0;
+        // 仅 BIG_SMALL：MPC 预测的大 yaw 世界方位角序列（长度 N、步长 dt_control），空 = 不可用
+        std::vector<double> pred_big_azimuth_seq;
+    };
+    InputSnapshot snapshotFromSingle(const tcs::RobotController::State& st) const;
+    InputSnapshot snapshotFromBigSmall(const bsy::RobotState& st) const;
+    Result predictImpl(const InputSnapshot& in, const Predictor& predictor,
+                       const std::chrono::steady_clock::time_point& timestamp);
+
+    // 逐返回点的大 yaw 关节角序列（仅 BIG_SMALL；长度 = 总返回点数）：
+    // 优先用 MPC 预测大 yaw 世界方位角序列（线性插值 + 末值保持）− 当帧底盘 yaw；
+    // 不可用时用 last_yaw_big_seq_（上一轮解算所用值，按索引夹取）；再没有用当帧 θ_big。
+    std::vector<float> buildYawBigSequence(const InputSnapshot& in, int total_points) const;
 
     // 线性插值：lo + t*(hi - lo)（t ∈ [0,1]）
     static Item lerpItem(const Item& lo, const Item& hi, double t);

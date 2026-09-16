@@ -21,7 +21,13 @@
 //    或热键 '1'/'2' 切换；切换只交换指针（推理进程按上述策略常驻或按需切换）；
 //  - 输入模式（相机/视频/交互）与输出模式（无/可视化/云台控制）在启动时
 //    指定，运行时也可通过 API（switchPipeline / toggleOutput）或热键 '1'/'2'、'v'/'g' 切换；
-//  - tcs::RobotController（串口 + MPC）仅在需要时构造（相机输入或云台输出）。
+//  - 控制器仅在需要时构造（相机输入或云台输出），具体是哪一个由 config
+//    common.big_small_yaw.mode 决定（初始化时定型、运行中不可切换）：
+//      single    → tcs::RobotController（旧单 yaw）
+//      big_small → bsy::RobotControllerAdapter（tcbs::RobotController + 大小 yaw 拆分器，
+//                  适配器见 include/common/BigSmallYaw/）
+//    两种构型的输入信息、变换树、瞄准解算与云台输出模式各不相同，互不混用
+//    （信息包按构型分两包，未使用的一包整体为 NaN，取错即报错）。
 #include "common/Input/IInputMode.h"
 #include "common/Input/CameraInputMode.h"
 #include "common/Input/VideoInputMode.h"
@@ -34,6 +40,8 @@
 #include "common/Output/OutputContext.h"
 #include "common/Output/VisualizeOutput.h"
 #include "common/Output/GimbalOutput.h"
+#include "common/BigSmallYaw/GimbalOutputForBigSmallYaw.h"
+#include "common/BigSmallYaw/RobotStateForBigSmallYaw.h"
 #include "common/Ballistic/SequencePredictor.h"
 #include "common/LatestSlot.h"
 #include "common/RobotConfig.h"
@@ -212,6 +220,7 @@ static void drawOverlay(cv::Mat& img,
                         double gimbal_fps,
                         double visualize_fps,
                         tcs::RobotController* rc,
+                        const bsy::RobotState* bsy_state,   // 新构型（大小 yaw）状态；单 yaw 构型为 nullptr
                         const std::chrono::steady_clock::time_point& frame_ts,
                         const PipelineResult::QueueSizes& queue_sizes,
                         double extra_delay_s) {
@@ -219,6 +228,8 @@ static void drawOverlay(cv::Mat& img,
     // 第 4 块串口信息区同样使用该状态（此处统一获取一次，避免重复加锁）
     const tcs::RobotController::State st =
         (rc != nullptr) ? rc->getState() : tcs::RobotController::State{};
+    // 新构型（大小 yaw）下 MPC 后台循环帧率取自适配器状态包
+    const double mpc_loop_fps = bsy_state ? bsy_state->loop_fps : st.mpc.loop_fps;
 
     // 1. 热键提醒（顶部）
     cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
@@ -246,7 +257,7 @@ static void drawOverlay(cv::Mat& img,
         << "  Ballistic: " << fpsText(ballistic_fps)
         << "  Gimbal: " << fpsText(gimbal_fps)
         << "  Visual: " << fpsText(visualize_fps)
-        << "  MPC: " << fpsText(st.mpc.loop_fps);
+        << "  MPC: " << fpsText(mpc_loop_fps);
     int baseline = 0;
     cv::Size sz = cv::getTextSize(oss.str(), cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
     cv::putText(img, oss.str(), cv::Point(img.cols - sz.width - 10, 30),
@@ -267,6 +278,44 @@ static void drawOverlay(cv::Mat& img,
         cv::putText(img, t, cv::Point(8, y), cv::FONT_HERSHEY_SIMPLEX, 0.45, color, 1);
         y += lineH;
     };
+    if (bsy_state != nullptr) {
+        // ── 新构型（大/小双 yaw）：按关节角 / 世界方位角 / MPC 分块显示 ──
+        oss.str(""); oss << std::fixed << std::setprecision(3);
+        put("--- BIG/SMALL YAW ---");
+        if (bsy_state->valid) {
+            oss.str(""); oss << "theta_big: " << bsy_state->yaw_big_joint
+                             << "  psi_big: " << bsy_state->yaw_big_azimuth
+                             << "  rate: " << bsy_state->platform_rate;
+            put(oss.str());
+            oss.str(""); oss << "theta_small: " << bsy_state->yaw_small_joint
+                             << "  psi_small: " << bsy_state->yaw_small_azimuth
+                             << "  rate: " << bsy_state->yaw_small_rate;
+            put(oss.str());
+            oss.str(""); oss << "pitch: " << bsy_state->pitch_joint
+                             << "  bullet: " << bsy_state->bullet_velocity
+                             << "  aim: " << (int)bsy_state->auto_aim_switch;
+            put(oss.str());
+        } else {
+            put("(no data)");
+        }
+        oss.str(""); oss << "--- MPC (big/small) ---";
+        put(oss.str());
+        oss.str(""); oss << "tau: " << bsy_state->torque_big << " / " << bsy_state->torque_small
+                         << "  target_joint: " << bsy_state->target_joint_big << " / "
+                         << bsy_state->target_joint_small;
+        put(oss.str());
+        oss.str(""); oss << "ref: " << (bsy_state->ref_big_azimuth_seq.empty() ? 0.0
+                                                                             : bsy_state->ref_big_azimuth_seq.front())
+                         << " / " << (bsy_state->ref_small_azimuth_seq.empty() ? 0.0
+                                                                              : bsy_state->ref_small_azimuth_seq.front());
+        put(oss.str());
+        // 小 yaw 参考越软限位（拆分器判界的同一边界）：越限标红
+        oss.str(""); oss << "small over_soft_limit: " << (bsy_state->small_ref_over_limit ? "YES" : "no")
+                         << "  solve: " << bsy_state->solve_ms << " ms"
+                         << "  fail: " << bsy_state->solve_fail_count;
+        put(oss.str(), bsy_state->small_ref_over_limit ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 0));
+        return;
+    }
     if (rc == nullptr) {
         put("Serial: N/A (RobotController not constructed)");
         return;
@@ -436,11 +485,28 @@ int main(int argc, char** argv) {
     // 线程化后构造可能发生在窗口线程（运行时开启云台），读取发生在处理/弹道/
     // 窗口线程，用 rc_mtx 保护指针的按需构造与读取。
     std::mutex rc_mtx;
+    // yaw 构型由 config common.big_small_yaw.mode 决定（初始化时定型）：
+    //   SINGLE    → tcs::RobotController（单 yaw，旧）
+    //   BIG_SMALL → bsy::RobotControllerAdapter（tcbs::RobotController 适配器，大/小双 yaw）
+    // 两者互斥构造：同一时刻只存在当前构型的控制器实例。
+    const YawMode yaw_mode = cfg.common.bigSmallYaw.mode;
+    std::cout << "[main] Yaw mode: "
+              << (yaw_mode == YawMode::SINGLE ? "single (tcs::RobotController)"
+                                              : "big_small (tcbs::RobotController + 大小 yaw 拆分器)")
+              << std::endl;
     std::unique_ptr<tcs::RobotController> robot_controller;
+    std::unique_ptr<bsy::RobotControllerAdapter> bsy_adapter;
     auto ensureRobotController = [&]() {
         std::lock_guard<std::mutex> lock(rc_mtx);
+        if (yaw_mode == YawMode::BIG_SMALL) {
+            if (bsy_adapter) return;
+            bsy_adapter = std::make_unique<bsy::RobotControllerAdapter>();
+            std::cout << "[main] tcbs::RobotController constructed via adapter "
+                         "(serial threads may fail silently without hardware)." << std::endl;
+            return;
+        }
         if (robot_controller) return;
-        const auto& rp = cfg.common.robotController;
+        const auto& rp = cfg.common.singleYawRobotController();
         robot_controller = std::make_unique<tcs::RobotController>(
             rp.dtControl, rp.mpcPredN, rp.J, rp.tauC, rp.b, rp.tauD,
             rp.maxTorque, rp.maxTorqueRate, rp.Q, rp.R, rp.Rd, rp.maxIter,
@@ -453,10 +519,16 @@ int main(int argc, char** argv) {
             /*smooth_eps=*/rp.smoothEps);
         std::cout << "[main] RobotController constructed (serial threads may fail silently without hardware)." << std::endl;
     };
-    // 线程安全读取当前 tcs::RobotController 指针（未构造时为 nullptr）
+    // 线程安全读取当前 tcs::RobotController 指针（未构造时为 nullptr；新构型恒为 nullptr）
     auto robotControllerPtr = [&]() -> tcs::RobotController* {
         std::lock_guard<std::mutex> lock(rc_mtx);
         return robot_controller.get();
+    };
+    // 线程安全读取新构型控制器状态快照（单 yaw 构型返回 valid = false 的空包）
+    auto bsyStateSnapshot = [&]() -> bsy::RobotState {
+        std::lock_guard<std::mutex> lock(rc_mtx);
+        if (!bsy_adapter) return bsy::RobotState{};
+        return bsy_adapter->state();
     };
     if (opt.input == InputKind::CAMERA || opt.output.gimbal) {
         ensureRobotController();
@@ -474,7 +546,14 @@ int main(int argc, char** argv) {
                 std::cerr << "Camera start failed!" << std::endl;
                 return -1;
             }
-            input_mode = std::make_unique<CameraInputMode>(*camera, *robot_controller);
+            if (yaw_mode == YawMode::BIG_SMALL) {
+                // 新构型：由适配器提供“采样一次当前状态 → ExtraInputInfo”的取样函数
+                // （大小 yaw 包；控制器实例由 ensureRobotController 保证已构造）
+                input_mode = std::make_unique<CameraInputMode>(
+                    *camera, [&bsy_adapter]() { return bsy_adapter->sampleExtraInfo(); });
+            } else {
+                input_mode = std::make_unique<CameraInputMode>(*camera, *robot_controller);
+            }
             break;
         }
         case InputKind::VIDEO:
@@ -589,13 +668,16 @@ int main(int argc, char** argv) {
     //   → visualize_thread（可视化输出循环线程，模式首次开启时创建，随后不销毁）
     // 各处理阶段所需时间戳直接取最新 shared_frame_timestamp（见各线程体）。
     struct BallisticRequest {
-        tcs::RobotController::State st;      // 弹道解算所需云台/串口状态快照
+        tcs::RobotController::State st;      // 单 yaw 构型：弹道解算所需云台/串口状态快照
+        bsy::RobotState st_bsy;              // 大小 yaw 构型：新控制器状态快照（另一包，不混用）
         tcs::RobotController* rc = nullptr;  // 转发给可视化线程
         std::unique_ptr<PipelineResult> result;  // 流水线结果（移动转发，含 predictor 快照）
         std::unique_ptr<OutputContext> ctx;      // 输出上下文（process_thread 产生，逐级转发）
     };
     struct GimbalRequest {
-        std::shared_ptr<GimbalOutput> gimbal;   // 当前云台输出（模式关闭时为空 → 短路直通，不处理）
+        // 当前云台输出模式（GimbalOutput 或 GimbalOutputForBigSmallYaw；
+        // 模式关闭时为空 → 短路直通，不处理）
+        std::shared_ptr<IOutputMode> gimbal;
         std::unique_ptr<PipelineResult> result; // 完整流水线结果（云台处理完/短路后转发给可视化）
         tcs::RobotController* rc = nullptr;          // 转发给可视化线程
         std::unique_ptr<OutputContext> ctx;     // 输出上下文（逐级转发给可视化）
@@ -639,11 +721,14 @@ int main(int argc, char** argv) {
                 return std::static_pointer_cast<VisualizeOutput>(m);
         return nullptr;
     };
-    auto findGimbal = [&]() -> std::shared_ptr<GimbalOutput> {
+    // 当前构型对应的云台输出模式（单 yaw → GIMBAL；大小 yaw → GIMBAL_BIG_SMALL）
+    const OutputMode gimbal_mode =
+        (yaw_mode == YawMode::BIG_SMALL) ? OutputMode::GIMBAL_BIG_SMALL : OutputMode::GIMBAL;
+    auto findGimbal = [&]() -> std::shared_ptr<IOutputMode> {
         std::lock_guard<std::mutex> lock(output_mtx);
         for (auto& m : output_modes)
-            if (m->type() == OutputMode::GIMBAL)
-                return std::static_pointer_cast<GimbalOutput>(m);
+            if (m->type() == gimbal_mode)
+                return m;
         return nullptr;
     };
     // 当前输出模式组合名（覆盖层显示用，如 "Visualize+Gimbal" / "None"）
@@ -678,7 +763,12 @@ int main(int argc, char** argv) {
         if (oc.gimbal) {
             ensureRobotController();
             // 云台线程已在启动时无条件创建（必建级联级，可视化级联在其后）
-            auto gimbal = std::make_shared<GimbalOutput>(*robot_controller);
+            std::shared_ptr<IOutputMode> gimbal;
+            if (yaw_mode == YawMode::BIG_SMALL) {
+                gimbal = std::make_shared<bsy::GimbalOutputForBigSmallYaw>(*bsy_adapter);
+            } else {
+                gimbal = std::make_shared<GimbalOutput>(*robot_controller);
+            }
             std::lock_guard<std::mutex> lock(output_mtx);
             output_modes.push_back(gimbal);
         }
@@ -752,10 +842,15 @@ int main(int argc, char** argv) {
                 }
                 std::lock_guard<std::mutex> lock(output_mtx);
                 output_modes.push_back(vis);
-            } else if (m == OutputMode::GIMBAL) {
+            } else if (m == OutputMode::GIMBAL || m == OutputMode::GIMBAL_BIG_SMALL) {
                 ensureRobotController();
                 // 云台线程已在启动时无条件创建（必建级联级，可视化级联在其后）
-                auto gimbal = std::make_shared<GimbalOutput>(*robot_controller);
+                std::shared_ptr<IOutputMode> gimbal;
+                if (yaw_mode == YawMode::BIG_SMALL) {
+                    gimbal = std::make_shared<bsy::GimbalOutputForBigSmallYaw>(*bsy_adapter);
+                } else {
+                    gimbal = std::make_shared<GimbalOutput>(*robot_controller);
+                }
                 std::lock_guard<std::mutex> lock(output_mtx);
                 output_modes.push_back(gimbal);
             }
@@ -856,15 +951,21 @@ int main(int argc, char** argv) {
             // ── 有效帧：填充弹道解算缓冲位（本线程工作至此截止）──
             // 缓冲位未被取走时直接覆盖（latest-wins），流水线提取不因下游耗时阻塞。
             if (result.valid) {
-                tcs::RobotController::State st;
+                tcs::RobotController::State st;      // 单 yaw 构型状态
+                bsy::RobotState st_bsy;              // 大小 yaw 构型状态
                 tcs::RobotController* rc = nullptr;
                 {
                     std::lock_guard<std::mutex> lock(rc_mtx);
-                    rc = robot_controller.get();
-                    if (rc) st = rc->getState();
+                    if (yaw_mode == YawMode::BIG_SMALL) {
+                        if (bsy_adapter) st_bsy = bsy_adapter->state();
+                    } else {
+                        rc = robot_controller.get();
+                        if (rc) st = rc->getState();
+                    }
                 }
                 BallisticRequest req;
                 req.st = st;
+                req.st_bsy = st_bsy;
                 req.rc = rc;
                 req.result = std::make_unique<PipelineResult>(std::move(result));
                 req.ctx = std::make_unique<OutputContext>();  // 输出上下文：本线程创建并逐级转发，
@@ -899,9 +1000,16 @@ int main(int argc, char** argv) {
                 //    invalidate() 重置 SequencePredictor 内部状态；
                 //    predict_result 保持默认无效 → 输出模式进入保持模式。
                 const TimePoint timestamp = shared_frame_timestamp.load(std::memory_order_acquire);
+                req.ctx->yaw_mode = yaw_mode;
+                if (yaw_mode == YawMode::BIG_SMALL) {
+                    // 新构型：写当帧控制器状态快照（供云台输出/可视化），并用大小 yaw
+                    // 状态包版本解算（逐预测点的大 yaw 关节角取自该包里的 MPC 预测序列）
+                    req.ctx->bsy_state = req.st_bsy;
+                }
                 if (req.result->predictor_valid) {
-                    req.ctx->predict_result = sequence_predictor.predict(
-                        req.st, req.result->predictor, timestamp);
+                    req.ctx->predict_result = (yaw_mode == YawMode::BIG_SMALL)
+                        ? sequence_predictor.predict(req.st_bsy, req.result->predictor, timestamp)
+                        : sequence_predictor.predict(req.st, req.result->predictor, timestamp);
                 } else {
                     sequence_predictor.invalidate();
                 }
@@ -987,12 +1095,16 @@ int main(int argc, char** argv) {
                 cv::Mat to_show = vis_active ? last_display : last_raw_frame;
                 if (!to_show.empty()) {
                     if (vis_active) {
+                        // 新构型：窗口帧率行/串口信息块显示大小 yaw 状态（单 yaw 构型传 nullptr）
+                        bsy::RobotState bsy_st = (yaw_mode == YawMode::BIG_SMALL)
+                                                     ? bsyStateSnapshot() : bsy::RobotState{};
                         drawOverlay(to_show, active_pipeline->name(), outputNames(),
                                     pipeline_fps.load(std::memory_order_relaxed),
                                     ballistic_fps.load(std::memory_order_relaxed),
                                     gimbal_stage.fps.load(std::memory_order_relaxed),
                                     visualize_stage.fps.load(std::memory_order_relaxed),
                                     robotControllerPtr(),
+                                    (yaw_mode == YawMode::BIG_SMALL) ? &bsy_st : nullptr,
                                     shared_frame_timestamp.load(std::memory_order_acquire),
                                     last_qs, backlog_delay.extraDelaySeconds());
                     }
@@ -1027,7 +1139,7 @@ int main(int argc, char** argv) {
                     // 开关可视化：关闭后窗口仅显示原始画面，热键始终可用，可随时恢复
                     toggleOutput(OutputMode::VISUALIZE);
                 } else if (key == 'g') {
-                    toggleOutput(OutputMode::GIMBAL);
+                    toggleOutput(gimbal_mode);
                 }
                 if (!got) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));

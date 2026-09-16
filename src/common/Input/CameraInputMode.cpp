@@ -5,7 +5,10 @@
 #include <iostream>
 
 CameraInputMode::CameraInputMode(Camera& camera, tcs::RobotController& rc)
-    : camera_(camera), rc_(rc) {
+    : CameraInputMode(camera, [&rc]() { return stateToExtraInfo(rc.getState()); }) {}
+
+CameraInputMode::CameraInputMode(Camera& camera, std::function<ExtraInputInfo()> sampler)
+    : camera_(camera), sampler_(std::move(sampler)) {
     // ── extra_info 延迟状态队列：启动后台采样线程 ──
     // 延迟时间必须由配置文件提供（无默认值）
     extra_info_delay_ = RobotConfig::instance().common.inputMode.cameraMode.extraInfoDelay;
@@ -55,16 +58,17 @@ bool CameraInputMode::getNextFrame(cv::Mat& frame,
 // ==================== extra_info 延迟状态队列 ====================
 
 ExtraInputInfo CameraInputMode::stateToExtraInfo(const tcs::RobotController::State& st) {
-    // strict 数据包 → ExtraInputInfo；底盘 xyz 保持 0
+    // strict 数据包 → ExtraInputInfo 的**单 yaw 包**（旧构型）；底盘 xyz 保持 0。
+    // big_small 包保持默认 NaN（未使用的包整体置 NaN，防止按错构型取值）。
     ExtraInputInfo info;
-    info.imu_euler_yaw   = st.strict.imu_euler_yaw;
-    info.imu_euler_pitch = st.strict.imu_euler_pitch;
-    info.imu_euler_roll  = st.strict.imu_euler_roll;
-    info.yaw_pos         = st.strict.yaw_pos;
-    info.pitch_angle     = st.strict.pitch_angle;
-    info.chassis_yaw     = st.strict.chassis_yaw;
-    info.chassis_pitch   = st.strict.chassis_pitch;
-    info.chassis_roll    = st.strict.chassis_roll;
+    info.single.imu_euler_yaw   = st.strict.imu_euler_yaw;
+    info.single.imu_euler_pitch = st.strict.imu_euler_pitch;
+    info.single.imu_euler_roll  = st.strict.imu_euler_roll;
+    info.single.yaw_pos         = st.strict.yaw_pos;
+    info.single.pitch_angle     = st.strict.pitch_angle;
+    info.chassis_yaw   = st.strict.chassis_yaw;
+    info.chassis_pitch = st.strict.chassis_pitch;
+    info.chassis_roll  = st.strict.chassis_roll;
     // chassis_x / chassis_y / chassis_z 保持 0
     return info;
 }
@@ -84,8 +88,7 @@ void CameraInputMode::trimStateQueueLocked(
 
 void CameraInputMode::stateSamplerLoop() {
     while (!state_thread_exit_.load(std::memory_order_acquire)) {
-        const tcs::RobotController::State st = rc_.getState();
-        ExtraInputInfo info = stateToExtraInfo(st);
+        ExtraInputInfo info = sampler_();
         const auto now = std::chrono::steady_clock::now();
         {
             std::lock_guard<std::mutex> lock(state_mtx_);

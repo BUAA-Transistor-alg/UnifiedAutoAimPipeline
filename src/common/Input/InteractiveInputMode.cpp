@@ -1,4 +1,5 @@
 #include "common/Input/InteractiveInputMode.h"
+#include "common/RobotConfig.h"
 #include <iostream>
 #include <string>
 
@@ -11,7 +12,9 @@ InteractiveInputMode::InteractiveInputMode() {
 bool InteractiveInputMode::getNextFrame(cv::Mat& frame,
                                         std::chrono::steady_clock::time_point& timestamp,
                                         ExtraInputInfo& extra_info) {
-    extra_info = ExtraInputInfo{};  // default all-zero
+    // 无云台数据：底盘位姿与**当前构型**关节角包显式填 0，另一包保持 NaN
+    extra_info = ExtraInputInfo{};
+    extra_info.fillCurrentPackZeros(RobotConfig::instance().common.bigSmallYaw.mode);
     while (true) {
         cout << "> " << flush;
         string input_path;
