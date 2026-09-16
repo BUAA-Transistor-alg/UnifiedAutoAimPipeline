@@ -517,7 +517,9 @@ PipelineResult PowerRunePipeline::tryPopFrame(const std::chrono::steady_clock::t
         fillPerception(front.get(), result.power_rune);
         // ── 组装弹道解算所需的目标预测器（sequence_predictor.predict 的直接
         //    输入，随 PipelineResult 输出）：靶点预测函数快照（从本帧 stage5
-        //    移出，本流水线内部持有；组合自 RollPredictor 位姿预测 + 旋转次数）
+        //    移出，本流水线内部持有；输入预测时间，返回 (预测车体中心位置
+        //    （能量机关取旋转中心）, 预测靶点位置列表)，组合自 RollPredictor
+        //    位姿预测 + 旋转次数）
         //    + 来源标注（powerRune()，整体算一种来源）+ 快照时间戳（dt 零点 =
         //    快照帧时间戳）+ 屏蔽的瞄准点索引（本帧 stage5.masked_indices）。
         //    无可用靶点预测函数（target_predictor 为空）时 predictor_valid 保持

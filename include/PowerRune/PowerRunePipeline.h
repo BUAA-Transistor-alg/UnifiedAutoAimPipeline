@@ -85,9 +85,11 @@ struct PowerRunePipelineData {
         std::vector<int> filtered_rotation_counts;
         // 位姿预测函数快照（RollPredictor::capturePredictor）
         std::unique_ptr<std::function<std::pair<cv::Vec3f, cv::Mat>(float)>> predictor_lambda;
-        // 靶点预测函数快照：std::vector<cv::Point3f>(double dt)（world 系；
+        // 靶点预测函数快照：输入预测时间（秒），返回 (预测车体中心位置
+        // （能量机关取旋转中心）, 预测靶点世界坐标列表)（world 系；
         // 已为 SequencePredictor 统一签名，无需外部包装）
-        std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> target_predictor;
+        std::unique_ptr<std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>>
+            target_predictor;
         std::chrono::steady_clock::time_point predictor_timestamp;  // 快照对应帧的时间戳（dt 零点）
         // 本帧屏蔽的目标点索引：索引对应 target_predictor 返回列表中瞄准点的下标
         // （预留：由本流水线按需填写；tryPopFrame 组装结果 Predictor 时一并移出）

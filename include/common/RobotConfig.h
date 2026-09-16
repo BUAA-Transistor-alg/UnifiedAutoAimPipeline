@@ -140,8 +140,8 @@ public:
         double fireAngleLength;     // fire 判定弧长（米）
         double aimStickRatio;       // 瞄准点滞回幅度系数（无单位，>=0）：SequencePredictor
                                     // 在“慢目标”帧启用瞄准点滞回时，滞回量 =
-                                    // aim_stick_ratio × (t=0 全部瞄准点到其质心的平均距离)。
-                                    // 0 = 关闭瞄准点滞回。
+                                    // aim_stick_ratio × (t=0 全部瞄准点到预测车体中心的
+                                    // 平均距离)。0 = 关闭瞄准点滞回。
     };
 
     // 流水线缓冲队列与批量参数（config 各流水线段的 pipeline 子段）

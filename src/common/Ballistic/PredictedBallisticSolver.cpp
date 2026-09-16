@@ -17,8 +17,10 @@ std::vector<PredictedBallisticSolver::Result> PredictedBallisticSolver::solve(
     std::vector<Result> results;
     if (!gimbal_) return results;
 
-    // 当前时刻的目标点列表：提供目标点数量与首轮距离预估所需的当前坐标
-    const std::vector<cv::Point3f> centers_now = predictor(0.0);
+    // 当前时刻的预测函数结果（first = 车体中心，本类不用；second = 目标点列表）：
+    // 目标点列表提供目标点数量与首轮距离预估所需的当前坐标
+    const PredictorResult now = predictor(0.0);
+    const std::vector<cv::Point3f>& centers_now = now.second;
     if (centers_now.empty()) return results;
 
     const cv::Vec3f muzzle = gimbal_->muzzleWorldOrigin();
@@ -44,7 +46,8 @@ std::vector<PredictedBallisticSolver::Result> PredictedBallisticSolver::solve(
 
             // 预测时间 = 额外预测时间(传入) + 飞行时间；取预测列表中第 i 个点作为预测目标点
             const double pred_t = extra_predict_time + flight_time;
-            const std::vector<cv::Point3f> pred_list = predictor(pred_t);
+            const PredictorResult pred = predictor(pred_t);
+            const std::vector<cv::Point3f>& pred_list = pred.second;
             if (i >= pred_list.size()) break;   // 防御：预测列表长度与当前不一致
 
             const cv::Point3f& pp = pred_list[i];

@@ -121,8 +121,9 @@ struct PipelineResult {
     cv::Mat frame;                      // 原始帧（移动自流水线数据，供可视化输出模式绘制）
 
     // 预组装的预测器（sequence_predictor.predict 的直接输入）：激活的流水线在
-    // tryPopFrame 输出本结果时组装完成——预测函数快照（Predictor::function，
-    // 由本帧目标滤波/拟合产生，world 系）+ 来源标注（Predictor::source：
+    // tryPopFrame 输出本结果时组装完成——预测函数快照（Predictor::function：
+    // 输入预测时间，返回 (预测车体中心位置, 预测目标点位置列表)，由本帧目标
+    // 滤波/拟合产生，world 系）+ 来源标注（Predictor::source：
     // Armor 流水线按 target_label 记 armor(label)，PowerRune 流水线记
     // powerRune()）+ 快照时间戳（Predictor::timestamp，dt 零点 = 快照帧的
     // frame_timestamp）+ 目标屏蔽索引列表（Predictor::masked_indices，索引对应

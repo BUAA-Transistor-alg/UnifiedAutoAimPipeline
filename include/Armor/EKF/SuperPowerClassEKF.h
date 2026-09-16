@@ -3,6 +3,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <opencv2/core.hpp>
@@ -92,15 +93,16 @@ public:
      * @brief 仿照 OutpostESEKF::capturePosePredictor：state 可用时完全捕捉当前
      * 后验状态，构造一个独立的装甲位置预测器快照。
      *
-     * 返回的函数签名为 std::vector<cv::Point3f>(double dt)：传入预测时间 dt（秒，
-     * 可为任意实数，0 表示当前时刻），返回 4 块装甲中心位置（世界坐标，米）。
+     * 返回的函数签名为 std::pair<cv::Point3f, std::vector<cv::Point3f>>(double dt)：
+     * 传入预测时间 dt（秒，可为任意实数，0 表示当前时刻），返回 (预测车体中心位置,
+     * 4 块装甲中心位置（世界坐标，米))——车体中心由同一 state_ 的匀速平移外推给出。
      * 与 OutpostESEKF 的差异：目标数是 4（旋转装甲），运动模型为匀速平移 +
      * 匀角速旋转外推。快照复制调用时刻的 state_（值拷贝），不随后续
      * processFrame / update / missUpdate 改变。
      *
      * @return state 可用（最近一帧 predictor_->ready()）时返回预测器；否则返回 nullptr
      */
-    std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>>
+    std::unique_ptr<std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>>
     capturePosePredictor() const;
 
     /// 经原接口 clear() 清空内部预测器状态与计时（下次观测自动重新初始化）。

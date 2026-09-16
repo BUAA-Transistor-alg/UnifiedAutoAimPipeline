@@ -9,7 +9,8 @@
 // 由 main 弹道线程写入当帧 OutputContext（含瞄准点 / 云台序列 / yaw 系原点），
 // 沿"弹道 → 云台 → 可视化"级联逐级转发给输出模式（输出模式不再持有本类引用）。
 //
-// 目标预测器以 Predictor 结构体传入（而非仅 std::function）：内含预测函数、
+// 目标预测器以 Predictor 结构体传入（而非仅 std::function）：内含预测函数
+// （输入预测时间，返回 (预测车体中心位置, 预测目标点位置列表)）、
 // 目标预测器来源标注（PredictorSource，见下）、快照时间戳（predictor_timestamp）
 // 与目标屏蔽索引列表（masked_indices，见 Predictor）。
 // PredictedBallisticSolver::solve 已不再参与目标（瞄准点）选择：它对预测函数
@@ -79,7 +80,11 @@ public:
     // 目标屏蔽索引列表（两条流水线在输出结果时组装本结构并存于 PipelineResult，
     // main 弹道线程直接传入 predict()）
     struct Predictor {
-        PredictedBallisticSolver::Predictor function;   // 原预测函数 std::vector<cv::Point3f>(double)（world 系）
+        // 预测函数（world 系）：输入预测时间（秒），返回 (预测车体中心位置,
+        // 预测目标点位置列表)；目标点列表下标即目标索引（masked_indices 用同一
+        // 套下标）。预测车体中心供 predict() 计算瞄准点滞回幅度直接使用
+        // （不再由全部目标点的均值位置推算中心）。
+        PredictedBallisticSolver::Predictor function;
         PredictorSource source;                         // 来源标注
         std::chrono::steady_clock::time_point timestamp;  // predictor_timestamp：
                                                           // 产生该预测器快照的那一帧的时间戳（dt 零点）

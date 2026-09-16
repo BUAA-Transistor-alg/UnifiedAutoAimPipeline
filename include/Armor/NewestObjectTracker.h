@@ -3,6 +3,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <opencv2/core.hpp>
@@ -59,13 +60,14 @@ public:
     /**
      * @brief 快照预测器：valid() 时返回仅含该物体最新位置的预测器。
      *
-     * 返回的函数签名为 std::vector<cv::Point3f>(double dt)：始终返回保存的
-     * 最新位置（world，米），仅 1 个物体；无运动模型，dt 参数不参与外推。
+     * 返回的函数签名为 std::pair<cv::Point3f, std::vector<cv::Point3f>>(double dt)：
+     * 始终返回保存的最新位置（world，米），仅 1 个物体；车体中心即该物体位置
+     * （无独立车体中心可观测量），无运动模型，dt 参数不参与外推。
      * 快照复制调用时刻的 position_，不随后续 processFrame 改变。
      *
      * @return valid() 时返回预测器；否则返回 nullptr
      */
-    std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>>
+    std::unique_ptr<std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>>
     capturePosePredictor() const;
 
 private:

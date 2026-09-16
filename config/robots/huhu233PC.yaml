@@ -171,7 +171,7 @@ common:
     fire_angle_length: 0.05          # fire 判定弧长（米）：动态阈值 = length / 目标与 yaw 原点 xy 距离
     aim_stick_ratio: 0.1             # 瞄准点滞回幅度系数（无单位，>=0；0 = 关闭）：SequencePredictor 在
                                      # “慢目标”帧启用瞄准点滞回时，滞回量 = ratio × (t=0 全部瞄准点到
-                                     # 其质心的平均距离)。慢目标由 armor.target_selection 施密特触发器给出。
+                                     # 预测车体中心的平均距离)。慢目标由 armor.target_selection 施密特触发器给出。
 
 # ════════════════════════════════════════════════════════════
 # armor — Armor 流水线独占参数

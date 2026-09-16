@@ -58,18 +58,20 @@ void NewestObjectTracker::reset() {
     last_obs_ts_ = TimePoint{};
 }
 
-std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>>
+std::unique_ptr<std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>>
 NewestObjectTracker::capturePosePredictor() const {
     if (!valid_) return nullptr;
 
     // 完全捕捉当前保存的位姿（值拷贝，独立于后续变化）；无运动模型，
-    // 始终返回该物体最新位置，仅 1 个物体。
+    // 始终返回该物体最新位置，仅 1 个物体（车体中心 = 该物体位置）。
     const cv::Vec3d pos = position_;
-    return std::make_unique<std::function<std::vector<cv::Point3f>(double)>>(
-        [pos](double) -> std::vector<cv::Point3f> {
-            return {cv::Point3f(static_cast<float>(pos[0]),
+    return std::make_unique<
+        std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>>(
+        [pos](double) -> std::pair<cv::Point3f, std::vector<cv::Point3f>> {
+            const cv::Point3f p(static_cast<float>(pos[0]),
                                 static_cast<float>(pos[1]),
-                                static_cast<float>(pos[2]))};
+                                static_cast<float>(pos[2]));
+            return {p, {p}};
         });
 }
 

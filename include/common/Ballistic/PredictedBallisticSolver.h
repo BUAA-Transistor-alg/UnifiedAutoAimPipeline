@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <opencv2/opencv.hpp>
@@ -14,14 +15,17 @@
 // 预测弹道解算器：结合"自身位姿预测函数"与 GimbalSolver，对目标关键点做
 // 飞行时间迭代的提前量预测并解算云台角度。
 //
-// 对预测函数返回列表中的每个目标点 i 迭代求解：
+// 对预测函数返回的目标点列表中的每个目标点 i 迭代求解：
 //   1) 飞行时间首次估计 = |当前 muzzle 系原点(world) - 目标点| / 弹速；
 //   2) 预测时间 = 额外预测时间(extra_predict_time，solve 时传入) + 飞行时间；
-//   3) 预测点 = 预测函数(预测时间) 返回列表中的第 i 个点；
+//   3) 预测点 = 预测函数(预测时间) 返回的目标点列表中的第 i 个点；
 //   4) 用 GimbalSolver 解算该预测点，得到实际弹道飞行时间 flight_time；
 //   5) 时间误差 = |本次用于预测的飞行时间 - flight_time|，小于容差则提前停止，
 //      否则以 flight_time 作为下一次迭代的飞行时间；
 //   6) 选取迭代中时间误差最小的一次作为该目标点的预测结果。
+//
+// 预测函数返回的“预测车体中心位置”不参与本类解算（本类只用目标点列表），
+// 供调用方（SequencePredictor）作为车体中心使用。
 //
 // solve() 返回预测函数列表中全部目标点的结果（每个目标点一个 Result），
 // 不在内部做目标（瞄准点）选择：从这些结果中挑哪个作为实际使用目标由调用方
@@ -31,8 +35,14 @@
 // ============================================================================
 class PredictedBallisticSolver {
 public:
-    // 预测函数签名：传入预测时间（秒），返回该时刻的目标关键点列表（world 系）
-    using Predictor = std::function<std::vector<cv::Point3f>(double)>;
+    // 预测函数一次调用的返回（均为 world 系，米）：
+    //   first  = 该时刻预测的车体中心位置（PowerRune 等无车体的来源为旋转中心）；
+    //   second = 该时刻预测的目标关键点列表，下标即目标索引。
+    using PredictorResult = std::pair<cv::Point3f, std::vector<cv::Point3f>>;
+
+    // 预测函数签名：传入预测时间（秒），返回该时刻的
+    // (预测车体中心位置, 预测目标关键点列表)
+    using Predictor = std::function<PredictorResult(double)>;
 
     // 单个目标点的求解结果（solve 返回向量中的一个元素；元素位置 = 目标点索引）
     struct Result {
@@ -48,7 +58,7 @@ public:
     // predicted_ballistic 配置段）读取，不在外部传入。
     explicit PredictedBallisticSolver(std::shared_ptr<GimbalSolver> gimbal);
 
-    // 对预测函数返回列表中的每个目标点迭代求解，返回全部目标点的预测结果
+    // 对预测函数返回的目标点列表中的每个目标点迭代求解，返回全部目标点的预测结果
     // （预测点 / 预测时间 / GimbalSolver 结果），不做目标选择——目标选择由调用方
     // （SequencePredictor）完成。
     // extra_predict_time：额外预测时间（秒），由调用方按序列元素传入（如 extra + i*dt）。

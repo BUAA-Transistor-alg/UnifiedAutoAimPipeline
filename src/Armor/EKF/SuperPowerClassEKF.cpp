@@ -142,7 +142,7 @@ bool ClassEKF::processFrame(const std::vector<cv::Vec3f>& world_pos,
     return state_available_;
 }
 
-std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>>
+std::unique_ptr<std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>>
 ClassEKF::capturePosePredictor() const {
     if (!state_available_) return nullptr;
 
@@ -150,14 +150,21 @@ ClassEKF::capturePosePredictor() const {
     const EKFTargetState s = state_;
 
     // 匀速平移 + 匀角速旋转外推，重建 4 块装甲中心位置（项目几何
-    // p = c + r*[sin(yaw), -cos(yaw)]；1/3 号装甲使用 r2 与高度偏置 h）。
-    return std::make_unique<std::function<std::vector<cv::Point3f>(double)>>(
-        [s](double dt) -> std::vector<cv::Point3f> {
+    // p = c + r*[sin(yaw), -cos(yaw)]；1/3 号装甲使用 r2 与高度偏置 h）；
+    // 车体中心 = 同一 state_ 的匀速平移外推结果。
+    return std::make_unique<
+        std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>>(
+        [s](double dt) -> std::pair<cv::Point3f, std::vector<cv::Point3f>> {
             constexpr int kArmorNum = 4;
             const double center_x = s.center_x + s.center_vx * dt;
             const double center_y = s.center_y + s.center_vy * dt;
             const double center_z = s.center_z + s.center_vz * dt;
             const double phase = s.yaw + s.w * dt;
+
+            const cv::Point3f body_center(
+                static_cast<float>(center_x / kMillimetersPerMeter),
+                static_cast<float>(center_y / kMillimetersPerMeter),
+                static_cast<float>(center_z / kMillimetersPerMeter));
 
             std::vector<cv::Point3f> armors;
             armors.reserve(kArmorNum);
@@ -173,7 +180,7 @@ ClassEKF::capturePosePredictor() const {
                     static_cast<float>(py / kMillimetersPerMeter),
                     static_cast<float>(pz / kMillimetersPerMeter));
             }
-            return armors;
+            return {body_center, std::move(armors)};
         });
 }
 

@@ -111,7 +111,10 @@ struct ArmorPipelineData {
         cv::Vec3d target_pos = cv::Vec3d(0, 0, 0);    // 所选目标车体中心（world，米）
         cv::Mat   target_R64;                          // 所选目标旋转矩阵（CV_64F）
         std::vector<cv::Point3f> target_pred_center_points;  // 预测目标关键点 t+0（world）
-        std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> target_predictor;  // 快照
+        // 目标预测函数快照：输入预测时间（秒），返回 (预测车体中心位置, 预测目标
+        // 关键点位置列表)（world 系；与 SequencePredictor 统一签名一致）
+        std::unique_ptr<std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>>
+            target_predictor;
         std::chrono::steady_clock::time_point target_predictor_timestamp;  // 快照对应帧的时间戳（dt 零点）
         // 本帧屏蔽的目标点索引：索引对应 target_predictor 返回列表中瞄准点的下标
         // （预留：由本流水线按需填写；tryPopFrame 组装结果 Predictor 时一并移出）

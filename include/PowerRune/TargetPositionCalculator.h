@@ -5,6 +5,7 @@
 #include <vector>
 #include <functional>
 #include <memory>
+#include <utility>
 
 /**
  * @brief 根据位置、姿态旋转矩阵和旋转次数，计算目标点在世界坐标系中的位置。
@@ -19,11 +20,13 @@ public:
     using PredictorFunc    = std::function<std::pair<cv::Vec3f, cv::Mat>(float)>;
     using PredictorFuncPtr = std::unique_ptr<PredictorFunc>;
 
-    /// 目标位置函数：输入 delta_t (秒)，返回目标世界坐标数组。
+    /// 目标位置函数：输入 delta_t (秒)，返回 (预测车体中心位置, 目标世界坐标数组)。
     /// 返回类型直接采用 SequencePredictor 所需的统一签名
-    /// （double 秒 → std::vector<cv::Point3f>，与 Armor predictor 一致），
-    /// 使流水线输出的 target_predictor 可直接传入 SequencePredictor，无需外部再包装。
-    using TargetPosFunc    = std::function<std::vector<cv::Point3f>(double)>;
+    /// （double 秒 → std::pair<cv::Point3f, std::vector<cv::Point3f>>，与 Armor
+    /// predictor 一致），使流水线输出的 target_predictor 可直接传入
+    /// SequencePredictor，无需外部再包装。能量机关无车体，中心取旋转中心
+    /// （即定位预测器给出的 position，world 系）。
+    using TargetPosFunc    = std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>;
     using TargetPosFuncPtr = std::unique_ptr<TargetPosFunc>;
 
     /**
@@ -41,11 +44,11 @@ public:
     /**
      * @brief 将预测器函数与目标位置计算组合，返回一个新的可调用对象。
      *
-     * 新函数签名为 std::vector<cv::Point3f>(double delta_t)（与
-     * PredictedBallisticSolver::Predictor / SequencePredictor 所需签名一致）：
+     * 新函数签名为 std::pair<cv::Point3f, std::vector<cv::Point3f>>(double delta_t)
+     * （与 PredictedBallisticSolver::Predictor / SequencePredictor 所需签名一致）：
      *   1. 调用 predictor((float)delta_t) 得到 (position, rotation_matrix)
-     *   2. 调用 calculate(position, rotation_matrix, rotation_counts) 并返回结果
-     *      （cv::Vec3f 逐个转为 cv::Point3f）
+     *   2. 调用 calculate(position, rotation_matrix, rotation_counts) 并返回
+     *      (车体中心 = position, 结果列表)（cv::Vec3f 逐个转为 cv::Point3f）
      *
      * @param predictor        由 RollPredictor::capturePredictor() 返回的快照函数
      * @param rotation_counts  旋转次数向量（将被复制到新函数内部）

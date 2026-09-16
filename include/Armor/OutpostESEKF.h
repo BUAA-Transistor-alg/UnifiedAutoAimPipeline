@@ -7,6 +7,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <opencv2/opencv.hpp>
@@ -105,11 +106,13 @@ public:
      * 目标中心关键点），不随 OutpostESEKF 后续 update/predict 而改变。
      * 预测运动模型与 predict(dt) 一致：位置不变，仅绕世界系 z 轴以 ω_z 恒速旋转。
      *
-     * @return 签名为 std::vector<cv::Point3f>(double dt) 的函数：传入预测时间 dt（秒，
-     *         可为任意实数，0 表示当前时刻），返回 OUTPOST_TARGET_CENTER_3D_LIST
-     *         关键点（含 dz 偏移）在预测后的位姿下转换到世界坐标系的关键点列表。
+     * @return 签名为 std::pair<cv::Point3f, std::vector<cv::Point3f>>(double dt) 的函数：
+     *         传入预测时间 dt（秒，可为任意实数，0 表示当前时刻），返回 (预测车体中心
+     *         位置, OUTPOST_TARGET_CENTER_3D_LIST 关键点（含 dz 偏移）在预测后的位姿下
+     *         转换到世界坐标系的关键点列表)。运动模型位置不变，车体中心即当前 position_。
      */
-    std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>> capturePosePredictor() const;
+    std::unique_ptr<std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>>
+    capturePosePredictor() const;
 
     std::vector<double> computeError(const cv::Vec3d& position, const cv::Mat& rotation_matrix,
                                      const std::vector<std::vector<cv::Point2f>>& points_2d_list,

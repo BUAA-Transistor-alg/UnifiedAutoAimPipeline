@@ -56,16 +56,18 @@ TargetPositionCalculator::TargetPosFuncPtr TargetPositionCalculator::compose(
     auto predictor_shared = std::shared_ptr<PredictorFunc>(std::move(predictor));
     auto counts = rotation_counts;  // 复制 rotation_counts
 
-    // 返回统一签名 std::vector<cv::Point3f>(double)（SequencePredictor 直接消费，
-    // 不再需要外部把 float/Vec3f 包装为 double/Point3f）
-    auto func = [predictor_shared, counts](double delta_t) -> std::vector<cv::Point3f> {
+    // 返回统一签名 std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)
+    // （SequencePredictor 直接消费，不再需要外部把 float/Vec3f 包装为 double/Point3f）；
+    // 中心取定位预测器给出的 position（能量机关旋转中心，world 系）
+    auto func = [predictor_shared, counts](
+                    double delta_t) -> std::pair<cv::Point3f, std::vector<cv::Point3f>> {
         auto [pos, R] = (*predictor_shared)(static_cast<float>(delta_t));
         const std::vector<cv::Vec3f> pts =
             TargetPositionCalculator::calculate(pos, R, counts);
         std::vector<cv::Point3f> out;
         out.reserve(pts.size());
         for (const auto& p : pts) out.emplace_back(p[0], p[1], p[2]);
-        return out;
+        return {cv::Point3f(pos[0], pos[1], pos[2]), std::move(out)};
     };
 
     return std::make_unique<TargetPosFunc>(std::move(func));

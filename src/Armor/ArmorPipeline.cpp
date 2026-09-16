@@ -515,7 +515,7 @@ void ArmorPipeline::processStage5(DataDeque& data)
         d->stage5.target_R64 = s5_.esekf->getRotationMatrix();
         d->stage5.target_predictor = s5_.esekf->capturePosePredictor();
         d->stage5.target_predictor_timestamp = ts;   // 快照的 dt 零点 = 本帧时间戳
-        d->stage5.target_pred_center_points = (*d->stage5.target_predictor)(0.0);
+        d->stage5.target_pred_center_points = (*d->stage5.target_predictor)(0.0).second;
         // 屏蔽目标：自上次 reset 以来从未被观测到的装甲面（对应预测函数返回
         // 列表中这些面的瞄准点索引）不参与目标选择（随 Predictor 输出，
         // 由 SequencePredictor 过滤）
@@ -533,7 +533,7 @@ void ArmorPipeline::processStage5(DataDeque& data)
         // 由 SequencePredictor 过滤）
         d->stage5.masked_indices = class_ekf.unseenArmorIndices();
         if (d->stage5.target_predictor) {
-            const std::vector<cv::Point3f> pts = (*d->stage5.target_predictor)(0.0);
+            const std::vector<cv::Point3f> pts = (*d->stage5.target_predictor)(0.0).second;
             d->stage5.target_pred_center_points = pts;
             d->stage5.target_world_points = pts;   // 4 块装甲位置（world，米）
         }
@@ -548,7 +548,7 @@ void ArmorPipeline::processStage5(DataDeque& data)
         d->stage5.target_predictor = tracker.capturePosePredictor();  // valid() 时非空
         d->stage5.target_predictor_timestamp = ts;
         if (d->stage5.target_predictor) {
-            const std::vector<cv::Point3f> pts = (*d->stage5.target_predictor)(0.0);
+            const std::vector<cv::Point3f> pts = (*d->stage5.target_predictor)(0.0).second;
             d->stage5.target_pred_center_points = pts;
             d->stage5.target_world_points = pts;   // 1 个点（world，米）
         }
@@ -675,7 +675,8 @@ PipelineResult ArmorPipeline::tryPopFrame(const std::chrono::steady_clock::time_
         fillPerception(front.get(), result.armor);
         // ── 组装弹道解算所需的目标预测器（sequence_predictor.predict 的直接
         //    输入，随 PipelineResult 输出）：预测函数快照（从本帧 stage5 移出，
-        //    本流水线内部持有）+ 来源标注（每类 label 0~8 各算一种来源：
+        //    本流水线内部持有；输入预测时间，返回 (预测车体中心位置, 预测目标
+        //    关键点位置列表)）+ 来源标注（每类 label 0~8 各算一种来源：
         //    6=OutpostESEKF、0~5=移植 EKF、7~8=最新物体）+ 快照时间戳（dt 零点
         //    = 快照帧时间戳）+ 屏蔽的瞄准点索引（本帧 stage5.masked_indices）。
         //    无可用预测函数（target_predictor 为空）时 predictor_valid 保持

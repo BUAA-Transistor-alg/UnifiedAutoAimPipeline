@@ -244,9 +244,9 @@ void VisualizeOutput::renderPowerRune(const PipelineResult& result, tcs::RobotCo
     }
     if (result.predictor_valid) {
         // 靶点预测函数由流水线组装进 result.predictor（Predictor::function，
-        // 统一签名 std::vector<cv::Point3f>(double)）；可视化数据仍用 Vec3f，
-        // 逐个转换
-        const auto pts = result.predictor.function(0.3);
+        // 统一签名 (double) -> (预测车体中心, 预测目标点列表)，取 second 为靶点
+        // 列表）；可视化数据仍用 Vec3f，逐个转换
+        const auto pts = result.predictor.function(0.3).second;
         vis.predictor_target_points.clear();
         vis.predictor_target_points.reserve(pts.size());
         for (const auto& pt : pts) {

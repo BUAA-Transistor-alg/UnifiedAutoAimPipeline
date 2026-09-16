@@ -33,7 +33,7 @@ TargetStrategy targetStrategyForSource(const SequencePredictor::PredictorSource&
 //   sticky_index >= 0 表示本实际计算点“粘”的瞄准点索引（上一帧序列第一个值
 //   选中的点 / 本帧前一个实际计算点选中的点）。粘滞目标若未被屏蔽且存在于候选
 //   列表中，则保持它，仅当存在其它未被屏蔽目标比它“明显更好”（criterion 优于
-//   sticky 超过 stick_delta，delta = aim_stick_ratio × t=0 全瞄准点到质心平均距离）
+//   sticky 超过 stick_delta，delta = aim_stick_ratio × t=0 全瞄准点到预测车体中心的平均距离）
 //   时才切换；sticky 不存在 / 被屏蔽 / 为 -1 → 退回纯策略选最优。
 // 结果为空（无可用目标）时返回默认无效 Result（success=false）。
 PredictedBallisticSolver::Result selectTargetResult(
@@ -145,7 +145,7 @@ SequencePredictor::Result SequencePredictor::predict(const tcs::RobotController:
     // invalidate()（重置自身跨帧状态与来源记录）并返回无效结果，与 main 在
     // "无可用预测器"时直接 invalidate() 的行为一致（输出模式进入保持模式）。
     if (!predictor.masked_indices.empty()) {
-        const std::vector<cv::Point3f> aims_now = predictor.function(0.0);
+        const std::vector<cv::Point3f> aims_now = predictor.function(0.0).second;
         bool any_aim_left = false;
         for (int i = 0; i < (int)aims_now.size(); ++i) {
             if (!predictor.isIndexMasked(i)) {
@@ -217,20 +217,20 @@ SequencePredictor::Result SequencePredictor::predict(const tcs::RobotController:
     const size_t T = gimbals_.size();
 
     // ── 慢目标瞄准点滞回参数（仅 predictor.slow_target 且 ratio > 0 时启用）──
-    // 滞回量 = aim_stick_ratio_ × (t=0 全部瞄准点到其质心的平均距离；忽略 mask、
-    // 用全部点，仅作该目标瞄准点分布的几何尺度估计)。
+    // 滞回量 = aim_stick_ratio_ × (t=0 全部瞄准点到预测车体中心的平均距离；忽略
+    // mask、用全部点，以预测函数直接给出的车体中心为基准——不再由全部瞄准点的
+    // 均值位置推算中心，仅作该目标瞄准点分布的几何尺度估计)。
     const bool aim_stick_enabled = predictor.slow_target && aim_stick_ratio_ > 0.0;
     double aim_stick_delta = 0.0;
     if (aim_stick_enabled) {
-        const std::vector<cv::Point3f> aims_now = predictor.function(0.0);
+        const PredictedBallisticSolver::PredictorResult now = predictor.function(0.0);
+        const std::vector<cv::Point3f>& aims_now = now.second;
         if (!aims_now.empty()) {
-            cv::Vec3f centroid(0.0f, 0.0f, 0.0f);
-            for (const auto& p : aims_now) centroid += cv::Vec3f(p.x, p.y, p.z);
-            centroid *= (1.0f / (float)aims_now.size());
+            const cv::Vec3f center(now.first.x, now.first.y, now.first.z);
             double dist_sum = 0.0;
             for (const auto& p : aims_now) {
                 const cv::Vec3f v(p.x, p.y, p.z);
-                dist_sum += cv::norm(v - centroid);
+                dist_sum += cv::norm(v - center);
             }
             aim_stick_delta = aim_stick_ratio_ * (dist_sum / (double)aims_now.size());
         }

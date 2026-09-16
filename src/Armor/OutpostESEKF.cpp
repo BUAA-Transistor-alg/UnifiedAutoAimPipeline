@@ -223,7 +223,7 @@ std::vector<int> OutpostESEKF::unseenPlateIndices() const {
     return unseen;
 }
 
-std::unique_ptr<std::function<std::vector<cv::Point3f>(double)>>
+std::unique_ptr<std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>>
 OutpostESEKF::capturePosePredictor() const {
     // 捕获调用时刻的所有状态（值拷贝），返回的函数不随 OutpostESEKF 后续状态变化而改变
     const cv::Vec3d pos = position_;
@@ -233,7 +233,13 @@ OutpostESEKF::capturePosePredictor() const {
     const double dz3 = dz3_;
     const std::vector<cv::Point3f> centers = target_centers_3d_list_;
 
-    auto func = [pos, q, yaw_rate, dz2, dz3, centers](double dt) -> std::vector<cv::Point3f> {
+    // 预测的车体中心（world，米）：运动模型无平移 → 恒定等于当前 position_
+    const cv::Point3f body_center(static_cast<float>(pos[0]),
+                                  static_cast<float>(pos[1]),
+                                  static_cast<float>(pos[2]));
+
+    auto func = [pos, q, yaw_rate, dz2, dz3, centers, body_center](
+                    double dt) -> std::pair<cv::Point3f, std::vector<cv::Point3f>> {
         // 与 predict(dt) 一致的运动模型：位置不变，仅绕世界系 z 轴以 ω_z 恒速旋转
         Eigen::Quaterniond q_pred = q;
         if (dt != 0.0) {
@@ -251,10 +257,11 @@ OutpostESEKF::capturePosePredictor() const {
             else if (i == 2) dz = dz3;
             local[i].z += (float)dz;
         }
-        return localToWorld(pos, R_pred, local);
+        return {body_center, localToWorld(pos, R_pred, local)};
     };
 
-    return std::make_unique<std::function<std::vector<cv::Point3f>(double)>>(std::move(func));
+    return std::make_unique<
+        std::function<std::pair<cv::Point3f, std::vector<cv::Point3f>>(double)>>(std::move(func));
 }
 
 std::vector<double> OutpostESEKF::computeError(const cv::Vec3d& position,
