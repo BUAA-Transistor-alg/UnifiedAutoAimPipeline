@@ -5,7 +5,6 @@
 
 #include <string>
 #include <iostream>
-#include <cmath>
 #include <algorithm>
 #include <limits>
 
@@ -109,8 +108,6 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
     : queue_max_sizes_(queue_max_sizes)
     , min_delay_seconds_(min_delay_seconds)
     , stage5_stick_priority_m_(RobotConfig::instance().armor.targetSelection.stage5StickPriorityM)
-    , slow_w_lower_(RobotConfig::instance().armor.targetSelection.slowAngularVelocityLower)
-    , slow_w_upper_(RobotConfig::instance().armor.targetSelection.slowAngularVelocityUpper)
     , s1_(RobotConfig::instance().armor.inputWidth,
           RobotConfig::instance().armor.inputHeight)
     , s4_(camera)
@@ -474,35 +471,26 @@ void ArmorPipeline::processStage5(DataDeque& data)
     }
     last_chosen_label_ = best_label;   // 记录本帧选中目标（供下一帧滞回）
 
-    // ── L2 慢目标施密特触发器（决定下游瞄准点滞回是否允许）──
+    // ── L2 目标旋转角速度（随预测器下发，供 SequencePredictor 判定慢目标）──
     // 仅 esekf（前哨站，label 6）与 ClassEKF（label 0~5）有目标自身角速度属性：
-    //   esekf → getYawRate()（绕世界系 z，rad/s）；ClassEKF → state_.w（rad/s）。
-    // 基地（label 7/8）无角速度 → 默认不滞回（slow_target = false）。
-    // 施密特触发（无连续帧计数）：|ω| < lower → 慢；|ω| > upper → 不慢；
-    // lower<=|ω|<=upper → 保持上一帧判定。目标切换时按新目标当前 |ω| 重新初始化。
-    double omega_abs = -1.0;   // -1 = 无角速度属性
+    //   esekf → getYawRate()（绕世界系 z，rad/s）；ClassEKF → state_.w（rad/s），
+    //   两者均带正负，此时角速度有效标志 = true。
+    // 基地（label 7/8）无角速度属性、角速度当前不可用（EKF 未初始化 / 无 state）
+    //   → 角速度填 0 且有效标志 = false（下游据此不判定慢目标）。
+    // 慢目标判定（施密特触发器）已移入 SequencePredictor::predict：本流水线只
+    // 提供角速度原始值与其有效标志，不再自行判定 slow_target。
+    double target_omega = 0.0;
+    bool   target_omega_valid = false;
     if (best_label == ArmorDetect::OUTPOST_CLASS && esekf_initialized) {
-        omega_abs = std::fabs(s5_.esekf->getYawRate());
+        target_omega = s5_.esekf->getYawRate();
+        target_omega_valid = true;
     } else if (best_label >= 0 && best_label < NUM_CLASS_EKF &&
                s5_.class_ekfs[best_label].stateAvailable()) {
-        omega_abs = std::fabs(s5_.class_ekfs[best_label].getAngularVelocity());
+        target_omega = s5_.class_ekfs[best_label].getAngularVelocity();
+        target_omega_valid = true;
     }
-    if (omega_abs < 0.0) {
-        // 无目标或无角速度属性：锁存复位，慢目标 = false
-        slow_latch_label_ = -1;
-        slow_latch_ = false;
-        d->stage5.slow_target = false;
-    } else {
-        if (slow_latch_label_ != best_label) {
-            // 目标切换：以当前 |ω| 重新初始化锁存（视新目标是否确实低于下阈值）
-            slow_latch_label_ = best_label;
-            slow_latch_ = (omega_abs < slow_w_lower_);
-        }
-        if (omega_abs < slow_w_lower_) slow_latch_ = true;
-        else if (omega_abs > slow_w_upper_) slow_latch_ = false;
-        // lower <= |ω| <= upper：保持 slow_latch_ 不变
-        d->stage5.slow_target = slow_latch_;
-    }
+    d->stage5.target_omega = target_omega;
+    d->stage5.target_omega_valid = target_omega_valid;
 
     d->stage5.target_valid = (best_label >= 0);
     d->stage5.target_label = best_label;
@@ -690,7 +678,8 @@ PipelineResult ArmorPipeline::tryPopFrame(const std::chrono::steady_clock::time_
             result.predictor.timestamp = front->stage5.target_predictor_timestamp;
             result.predictor.masked_indices =
                 std::move(front->stage5.masked_indices);
-            result.predictor.slow_target = front->stage5.slow_target;
+            result.predictor.target_omega = front->stage5.target_omega;
+            result.predictor.omega_valid = front->stage5.target_omega_valid;
         }
         result.valid = true;
         output_queue_.pop_front();
@@ -743,10 +732,8 @@ void ArmorPipeline::clear()
         for (auto& tracker : s5_.newest_object_trackers) {
             tracker.reset();
         }
-        // 重置 stage5 目标选取滞回跨帧状态（L1 目标粘滞 + L2 慢目标施密特锁存）
+        // 重置 stage5 目标选取滞回跨帧状态（L1 目标粘滞）
         last_chosen_label_ = -1;
-        slow_latch_label_ = -1;
-        slow_latch_ = false;
 
         // 队列计数归零
         for (auto& qs : queue_sizes_) qs.store(0);

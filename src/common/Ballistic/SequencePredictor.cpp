@@ -2,6 +2,7 @@
 #include "common/Ballistic/SequencePredictor.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 #include "common/RobotConfig.h"
@@ -29,7 +30,7 @@ TargetStrategy targetStrategyForSource(const SequencePredictor::PredictorSource&
 //   - NEAREST：预测点距离当前 muzzle 原点最近（默认）；
 //   - LOWEST_Z：预测点 world z 最低（PowerRune 能量机关模式）。
 // predictor.masked_indices 中索引对应的瞄准点（目标）不参与选择。
-// 慢目标瞄准点滞回（Armor 目标，predictor.slow_target == true）：
+// 慢目标瞄准点滞回（Armor 目标，本帧判定为慢目标时）：
 //   sticky_index >= 0 表示本实际计算点“粘”的瞄准点索引（上一帧序列第一个值
 //   选中的点 / 本帧前一个实际计算点选中的点）。粘滞目标若未被屏蔽且存在于候选
 //   列表中，则保持它，仅当存在其它未被屏蔽目标比它“明显更好”（criterion 优于
@@ -92,7 +93,10 @@ SequencePredictor::SequencePredictor()
       prediction_points_(RobotConfig::instance().common.predictSequence.predictionPoints),
       interpolation_refine_(RobotConfig::instance().common.predictSequence.interpolationRefine),
       exact_lead_points_(RobotConfig::instance().common.predictSequence.exactLeadPoints),
-      aim_stick_ratio_(RobotConfig::instance().common.predictSequence.aimStickRatio) {
+      aim_stick_ratio_(RobotConfig::instance().common.predictSequence.aimStickRatio),
+      // 慢目标施密特触发阈值：判定已移入本类 predict()，阈值仍取自 Armor 目标选取配置
+      slow_w_lower_(RobotConfig::instance().armor.targetSelection.slowAngularVelocityLower),
+      slow_w_upper_(RobotConfig::instance().armor.targetSelection.slowAngularVelocityUpper) {
     // 默认线程数 min(硬件核数/2, 4)；为每个工作线程准备一个独立的
     // GimbalSolver + 各自绑定的 PredictedBallisticSolver
     const size_t T = pool_.size();
@@ -160,12 +164,31 @@ SequencePredictor::Result SequencePredictor::predict(const tcs::RobotController:
     }
 
     // ── 自身跨帧状态：target_predictor 来源切换（含首次从无来源进入）时重置 ──
-    // State 存放慢目标瞄准点滞回所需的“上一帧序列第一个值瞄准点索引”；来源切换
-    // （如 Armor 目标种类变化 / Armor → PowerRune）时自动清零（粘滞点随总目标切换
-    // 失效）。
+    // State 存放慢目标施密特锁存与慢目标瞄准点滞回所需的“上一帧序列第一个值
+    // 瞄准点索引”；来源切换（如 Armor 目标种类变化 / Armor → PowerRune）时自动
+    // 清零（锁存与粘滞点均随总目标切换失效）。
     if (!(active_source_ == predictor.source)) {
         state_ = State{};
         active_source_ = predictor.source;
+    }
+
+    // ── 慢目标判定（施密特触发器，无连续帧计数；判定已从 ArmorPipeline
+    //    ::processStage5 移入本类，流水线只下发原始角速度及其可用标志）──
+    // 仅对“需要判定”的目标判定：Predictor::omega_valid == true 时取
+    // |target_omega|（带正负，rad/s）——|ω| < lower → 慢目标；|ω| > upper → 非慢目标；
+    // lower <= |ω| <= upper → 保持上一帧判定（锁存 state_.slow_latch）。
+    // omega_valid == false（PowerRune、基地 label 7/8 等无角速度属性，或角速度当前
+    // 不可用）按原方法处理：锁存复位，本帧不判定为慢目标（不启用瞄准点滞回）。
+    // 判定结果仅在本帧内部使用（是否允许瞄准点滞回），不再随预测器/结果下发。
+    bool slow_target = false;
+    if (predictor.omega_valid) {
+        const double omega_abs = std::fabs(predictor.target_omega);
+        if (omega_abs < slow_w_lower_) state_.slow_latch = true;
+        else if (omega_abs > slow_w_upper_) state_.slow_latch = false;
+        // lower <= |ω| <= upper：保持 state_.slow_latch 不变
+        slow_target = state_.slow_latch;
+    } else {
+        state_.slow_latch = false;
     }
 
     // 目标选择策略由来源自动选择（Armor → NEAREST，PowerRune → LOWEST_Z）。
@@ -216,11 +239,11 @@ SequencePredictor::Result SequencePredictor::predict(const tcs::RobotController:
     const int U = (int)solve_idx.size();
     const size_t T = gimbals_.size();
 
-    // ── 慢目标瞄准点滞回参数（仅 predictor.slow_target 且 ratio > 0 时启用）──
+    // ── 慢目标瞄准点滞回参数（仅本帧判定为慢目标且 ratio > 0 时启用）──
     // 滞回量 = aim_stick_ratio_ × (t=0 全部瞄准点到预测车体中心的平均距离；忽略
     // mask、用全部点，以预测函数直接给出的车体中心为基准——不再由全部瞄准点的
     // 均值位置推算中心，仅作该目标瞄准点分布的几何尺度估计)。
-    const bool aim_stick_enabled = predictor.slow_target && aim_stick_ratio_ > 0.0;
+    const bool aim_stick_enabled = slow_target && aim_stick_ratio_ > 0.0;
     double aim_stick_delta = 0.0;
     if (aim_stick_enabled) {
         const PredictedBallisticSolver::PredictorResult now = predictor.function(0.0);

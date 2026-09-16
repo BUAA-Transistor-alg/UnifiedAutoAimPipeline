@@ -11,14 +11,17 @@
 //
 // 目标预测器以 Predictor 结构体传入（而非仅 std::function）：内含预测函数
 // （输入预测时间，返回 (预测车体中心位置, 预测目标点位置列表)）、
-// 目标预测器来源标注（PredictorSource，见下）、快照时间戳（predictor_timestamp）
-// 与目标屏蔽索引列表（masked_indices，见 Predictor）。
+// 目标预测器来源标注（PredictorSource，见下）、快照时间戳（predictor_timestamp）、
+// 目标屏蔽索引列表（masked_indices）与目标旋转角速度（target_omega + omega_valid，
+// 见 Predictor）。
 // PredictedBallisticSolver::solve 已不再参与目标（瞄准点）选择：它对预测函数
 // 返回列表中的每个目标点独立求解并返回全部结果；实际目标选择由本类 predict()
 // 完成——依据来源标注自动选择目标选择策略（Armor → NEAREST、PowerRune →
 // LOWEST_Z），并在每个实际计算点的求解结果之间按该策略选出该点使用的目标
-// （masked_indices 中索引对应的瞄准点不参与选择）。同时 predict() 维护自身
-// 跨帧状态 State（当前暂为空，预留）：target_predictor 来源切换或
+// （masked_indices 中索引对应的瞄准点不参与选择）。慢目标判定（施密特触发器）
+// 同样在 predict() 内完成（依据 Predictor::target_omega 及其可用标志
+// omega_valid），不再由 Armor 流水线下发。predict() 维护自身跨帧状态 State
+// （慢目标锁存 + 上一帧瞄准点粘滞索引）：target_predictor 来源切换或
 // invalidate() 时重置。
 //
 // 序列生成（config common.predict_sequence）：
@@ -96,11 +99,18 @@ public:
         // 输出模式进入保持模式）。
         std::vector<int> masked_indices;
 
-        // 本帧目标是否为“慢目标”（Armor 侧按目标角速度的施密特触发器判定后随
-        // 预测器一起传下，见 ArmorPipelineData::Stage5Data.slow_target）。仅当其为
-        // true 时 predict() 才启用瞄准点（板）滞回；PowerRune 等无角速度属性的
-        // 来源恒为 false（默认不滞回，维持每点独立选最优的原有行为）。
-        bool slow_target = false;
+        // 本帧目标绕自身 z 轴的旋转角速度（rad/s，带正负）：由流水线随预测器
+        // 一起传下的原始角速度（Armor：前哨站 esekf yaw_rate / label 0~5 ClassEKF
+        // 的 w）。仅在 omega_valid == true 时有效。
+        double target_omega = 0.0;
+
+        // 角速度是否可用：true = 本帧目标有可用的旋转角速度（target_omega 有效）；
+        // false = 无角速度属性（PowerRune、基地 label 7/8）或当前不可用
+        // （EKF 未初始化 / 无 state），此时 target_omega 填 0 且不参与判定。
+        // 慢目标判定已移入 predict()：仅当本标志为 true 时按 |target_omega| 做
+        // 施密特触发判定（见 predict() 与 State::slow_latch）；为 false 时按原方法
+        // 处理——不判定、锁存复位、本帧不启用瞄准点（板）滞回。
+        bool omega_valid = false;
 
         /// 目标索引 index 是否被屏蔽（即位于 masked_indices 中）
         bool isIndexMasked(int index) const {
@@ -152,8 +162,13 @@ public:
     /// 全被屏蔽（屏蔽后无任何瞄准点可选）时自动转为调用 invalidate() 并返回
     /// 无效结果。
     ///
+    /// 慢目标判定（决定本帧是否启用瞄准点滞回）已从 ArmorPipeline::processStage5
+    /// 移入本类：predict() 仅在 predictor.omega_valid == true 时依据
+    /// predictor.target_omega 做施密特触发判定（角速度不可用则不判定），判定
+    /// 结果只在本帧内部使用（不再由 Armor 流水线下发 slow_target）。
+    ///
     /// @param predictor  目标预测器（预测函数 + 来源标注 + 快照时间戳 +
-    ///                   目标屏蔽索引列表）
+    ///                   目标屏蔽索引列表 + 目标旋转角速度及其可用标志）
     /// @param timestamp  调用时刻（当前帧时间戳）；额外预测时间自动加上
     ///                   (timestamp - predictor.timestamp)，补偿快照生成到
     ///                   消费之间的延迟
@@ -183,15 +198,30 @@ private:
     int    interpolation_refine_;    // K：插值细化倍数
     int    exact_lead_points_;       // n：序列最前面拼接的精确解算前导点数（0 = 关闭）
     double aim_stick_ratio_;         // 瞄准点滞回幅度系数（无单位，>=0；0 = 关闭）
+    // 慢目标施密特触发阈值（rad/s，构造时从 RobotConfig armor.target_selection
+    // 读取）：|ω| < lower → 慢目标；|ω| > upper → 非慢目标；介于两者之间保持
+    // 上一帧判定。判定在 predict() 内完成，仅用于本帧是否启用瞄准点滞回。
+    double slow_w_lower_;
+    double slow_w_upper_;
 
     // 自身跨帧状态（predict() 内部维护）：当 target_predictor 来源（PredictorSource）
     // 切换或 invalidate() 时整体重置（随“总目标”切换失效）。
     struct State {
         // 慢目标瞄准点滞回：上一帧预测序列“第一个值”选中的瞄准点索引
         // （= 上一帧 items.front().target_index；无有效上一帧时为 -1）。
-        // 仅当本帧 Predictor.slow_target == true 时被用于滞回；来源切换/失效时
-        // 随 state_ 一并清零（无粘滞点 → 直接选最优）。
+        // 仅当本帧判定为慢目标时被用于滞回；来源切换/失效时随 state_ 一并清零
+        // （无粘滞点 → 直接选最优）。
         int last_first_target_index = -1;
+
+        // 慢目标施密特锁存（判定已从 ArmorPipeline::processStage5 移入本类）：
+        // Predictor::omega_valid == true 时，|target_omega| < lower 置 true、
+        // > upper 置 false、介于两阈值之间保持不变，本帧慢目标判定 = 本锁存值；
+        // omega_valid == false（无角速度属性 / 当前不可用）时按原方法处理：
+        // 锁存复位为 false 且本帧不判定为慢目标。
+        // 来源切换（含 Armor 目标种类变化）时随 state_ 整体清零——新目标从
+        // false 起步，与原先“切目标时按新目标 |ω| 重新初始化锁存”的结果一致
+        // （初始化值随后立即被同一帧的阈值判定覆盖）。
+        bool slow_latch = false;
     };
     State state_;
     PredictorSource active_source_;   // 当前 state_ 对应的来源（无有效预测时为 NONE）

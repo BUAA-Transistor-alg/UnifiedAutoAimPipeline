@@ -208,9 +208,13 @@ public:
         // Armor 目标选取滞回参数（config: armor.target_selection）
         //   stage5 目标级滞回：上一帧选中的目标（filter/label）在再次选取时获得
         //   固定优先度，避免距底盘原点相近的多个候选来回切换（与角速度无关）；
-        //   慢目标（施密特触发器）判定：目标自身角速度 |ω| 低于下阈值视为慢目标
-        //   （SequencePredictor 瞄准点滞回允许），高于上阈值视为快目标，介于
-        //   两阈值之间保持上一帧判定（施密特触发器防抖，无连续帧计数）。
+        //   慢目标（施密特触发器）阈值：目标自身角速度 |ω| 低于下阈值视为慢目标
+        //   （瞄准点滞回允许），高于上阈值视为快目标，介于两阈值之间保持上一帧
+        //   判定（施密特触发器防抖，无连续帧计数）。判定本身由
+        //   SequencePredictor::predict 依据预测器下发的目标角速度（带正负）与其
+        //   可用标志（Predictor::omega_valid）完成，本段只提供阈值；
+        //   角速度不可用的目标（PowerRune / 基地 label 7/8 / EKF 未就绪：
+        //   omega_valid = false，角速度填 0）不判定、不启用瞄准点滞回。
         struct TargetSelectionParams {
             double stage5StickPriorityM;      // stage5 目标级滞回固定优先度（米，>=0）
             double slowAngularVelocityLower;  // 慢目标施密特触发下阈值（rad/s，>=0）

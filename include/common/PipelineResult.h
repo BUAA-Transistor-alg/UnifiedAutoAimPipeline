@@ -127,7 +127,8 @@ struct PipelineResult {
     // Armor 流水线按 target_label 记 armor(label)，PowerRune 流水线记
     // powerRune()）+ 快照时间戳（Predictor::timestamp，dt 零点 = 快照帧的
     // frame_timestamp）+ 目标屏蔽索引列表（Predictor::masked_indices，索引对应
-    // 瞄准点不参与目标选择）。
+    // 瞄准点不参与目标选择）+ 目标旋转角速度及其可用标志（Predictor::target_omega /
+    // omega_valid，供 predict() 判定慢目标；Armor 流水线填写，其余保持不可用）。
     // predictor_valid == false 表示本帧无可用目标预测器：main 弹道线程此时调用
     // sequence_predictor.invalidate() 而非 predict()（predict_result 保持无效 →
     // 输出模式进入保持模式）。

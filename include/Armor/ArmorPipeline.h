@@ -13,8 +13,10 @@
 //                               world_pos/world_euler）。两者均视为有效候选，以“距底盘
 //                               原点距离 + L1 目标级滞回优先度”选取本帧使用结果，写入
 //                               stage5（target_valid/target_label/target_pos/…）。
-//                               stage5 同时用所选目标角速度的施密特触发器判定“慢目标”
-//                               （stage5.slow_target，随预测器下发下游）。
+//                               stage5 同时给出所选目标的旋转角速度原始值及其可用标志
+//                               （stage5.target_omega / target_omega_valid，带正负），
+//                               随预测器下发下游；“慢目标”判定（施密特触发器）由
+//                               SequencePredictor::predict 完成。
 //
 // 弹道解算、控制序列生成与可视化均已移出流水线，由输出模式（common/Output/）
 // 负责；本流水线只输出感知结果（PipelineResult::armor）。
@@ -119,10 +121,15 @@ struct ArmorPipelineData {
         // 本帧屏蔽的目标点索引：索引对应 target_predictor 返回列表中瞄准点的下标
         // （预留：由本流水线按需填写；tryPopFrame 组装结果 Predictor 时一并移出）
         std::vector<int> masked_indices;
-        // 本帧所选目标是否为“慢目标”（施密特触发器判定，见 target_selection 配置）：
-        // true 时下游 SequencePredictor 对本目标启用瞄准点（板）滞回。仅 esekf/
-        // class_ekf 目标有角速度属性；基地（label 7/8）等无角速度 → 恒为 false。
-        bool slow_target = false;
+        // 本帧所选目标的旋转角速度（rad/s，带正负）：仅 esekf（label 6，yaw_rate）
+        // 与 ClassEKF（label 0~5，w）有该属性，此时 target_omega_valid = true；
+        // 基地（label 7/8）等无该属性、或角速度当前不可用（EKF 未初始化/无 state）
+        // 时 target_omega_valid = false（角速度填 0）。
+        // 慢目标判定（施密特触发器）不在此处进行：本值随预测器下发，
+        // 由 SequencePredictor::predict 依据 config armor.target_selection 的
+        // 上下阈值判定（仅当有效标志为 true 时判定）。
+        double target_omega = 0.0;
+        bool   target_omega_valid = false;
     } stage5;
 };
 
@@ -195,17 +202,14 @@ private:
     float nms_threshold_   = 0.45f;
 
     // ── 目标选取滞回（取自 config armor.target_selection）──
+    // L1：stage5 目标级滞回固定优先度（米）。L2 慢目标施密特触发阈值不再由本类
+    // 读取（判定已移入 SequencePredictor::predict，本类只下发原始角速度及其
+    // 可用标志）。
     double stage5_stick_priority_m_ = 0.0;  // L1：stage5 目标级滞回固定优先度（米）
-    double slow_w_lower_ = 0.0;             // L2：慢目标施密特触发下阈值（rad/s）
-    double slow_w_upper_ = 0.0;             // L2：慢目标施密特触发上阈值（rad/s）
 
     // ── stage5 目标选取跨帧状态（仅 stage5 worker 线程访问，单帧串行）──
     // L1：上一帧 stage5 选中的目标（label）；本帧仍为候选时获得固定优先度。
     int  last_chosen_label_ = -1;
-    // L2：慢目标施密特锁存——slow_latch_label_ 为该锁存所对应的目标 label
-    // （切换目标时按新目标当前 |ω| 重新初始化，避免继承旧目标的锁存状态）。
-    int  slow_latch_label_ = -1;
-    bool slow_latch_ = false;
 
     // ==================== 缓冲队列 ====================
     DataDeque input_queue_;

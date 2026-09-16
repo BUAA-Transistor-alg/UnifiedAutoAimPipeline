@@ -171,7 +171,9 @@ common:
     fire_angle_length: 0.05          # fire 判定弧长（米）：动态阈值 = length / 目标与 yaw 原点 xy 距离
     aim_stick_ratio: 0.1             # 瞄准点滞回幅度系数（无单位，>=0；0 = 关闭）：SequencePredictor 在
                                      # “慢目标”帧启用瞄准点滞回时，滞回量 = ratio × (t=0 全部瞄准点到
-                                     # 预测车体中心的平均距离)。慢目标由 armor.target_selection 施密特触发器给出。
+                                     # 预测车体中心的平均距离)。
+                                     # 慢目标判定（施密特触发器，阈值 armor.target_selection 的
+                                     # slow_angular_velocity_*）在 SequencePredictor::predict 内完成。
 
 # ════════════════════════════════════════════════════════════
 # armor — Armor 流水线独占参数
@@ -192,9 +194,13 @@ armor:
   #     （filter/label）在再次选取时减去该米数参与“距底盘原点最近”比较，其它目标须
   #     明显更近才切换（避免多目标来回切换；与角速度无关）。0 = 关闭。
   #   慢目标施密特触发器（slow_angular_velocity_lower/upper，rad/s）：目标自身角速度
-  #     |ω| 低于 lower 判定为“慢目标”（下游瞄准点滞回允许），高于 upper 判定为快目标，
-  #     介于两者之间保持上一帧判定（防抖，无连续帧计数）。前哨站=esekf yaw_rate、
-  #     机器人=ClassEKF 的 w；基地（label 7/8）无角速度属性 → 默认不滞回。
+  #     |ω| 低于 lower 判定为“慢目标”（瞄准点滞回允许），高于 upper 判定为快目标，
+  #     介于两者之间保持上一帧判定（防抖，无连续帧计数）。判定在 SequencePredictor::
+  #     predict 内完成，本段只提供阈值：ArmorPipeline 只下发目标角速度原始值（带正负）
+  #     及其可用标志（前哨站=esekf yaw_rate、label 0~5=ClassEKF 的 w 时有效；基地
+  #     label 7/8 及角速度当前不可用时标志为 false、角速度填 0）。标志为 false 时
+  #     不判定 → 不滞回（PowerRune 等无角速度来源同此）；标志为 true 时即使角速度
+  #     恰为 0 也按正常阈值判定（判定为慢目标）。
   target_selection:
     stage5_stick_priority_m: 0.5
     slow_angular_velocity_lower: 0.5
