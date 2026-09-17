@@ -28,6 +28,7 @@
 //                  适配器见 include/common/BigSmallYaw/）
 //    两种构型的输入信息、变换树、瞄准解算与云台输出模式各不相同，互不混用
 //    （信息包按构型分两包，未使用的一包整体为 NaN，取错即报错）。
+#include "common/Output/VisualizationControls.h"
 #include "common/Input/IInputMode.h"
 #include "common/Input/CameraInputMode.h"
 #include "common/Input/VideoInputMode.h"
@@ -223,7 +224,8 @@ static void drawOverlay(cv::Mat& img,
                         const bsy::RobotState* bsy_state,   // 新构型（大小 yaw）状态；单 yaw 构型为 nullptr
                         const std::chrono::steady_clock::time_point& frame_ts,
                         const PipelineResult::QueueSizes& queue_sizes,
-                        double extra_delay_s) {
+                        double extra_delay_s, const CommonVisualizationOptions& options) {
+    if (!options.status && !options.performance) return;
     // 提前获取 tcs::RobotController 状态：帧率行需显示 MPC 后台循环帧率（无统计时为 N/A），
     // 第 4 块串口信息区同样使用该状态（此处统一获取一次，避免重复加锁）
     const tcs::RobotController::State st =
@@ -232,36 +234,40 @@ static void drawOverlay(cv::Mat& img,
     const double mpc_loop_fps = bsy_state ? bsy_state->loop_fps : st.mpc.loop_fps;
 
     // 1. 热键提醒（顶部）
-    cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
+    if (options.status) cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
                 cv::Point(10, 20), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
 
     // 2. 当前流水线各缓存积压长度（与原来 main info 的 Q[...] 格式一致）；
     //    行尾追加队列积压自适应额外延迟 extra_delay_s（BacklogAdaptiveDelay，
     //    功能关闭时为 0，单位秒）
-    char qbuf[192];
-    std::snprintf(qbuf, sizeof(qbuf), "Q[in:%d i0:%d i1:%d i2:%d i3:%d out:%d] extra:%6.3fs",
-                  queue_sizes.input, queue_sizes.inter0, queue_sizes.inter1,
-                  queue_sizes.inter2, queue_sizes.inter3, queue_sizes.output,
-                  extra_delay_s);
-    cv::putText(img, qbuf, cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.6,
-                cv::Scalar(0, 255, 0), 2);
-
-    // 3. 帧数统计（原 drawFps 样式，右上角）
-    using namespace std::chrono;
     std::ostringstream oss;
-    // Pipeline=流水线输出提取帧率（原 FPS 统计，已重命名）；
-    // Ballistic=弹道解算循环线程帧率；Gimbal=云台输出循环线程帧率；
-    // Visual=可视化绘制循环线程帧率；MPC=McuMpcController 后台循环帧率。
-    // 各帧率无统计/不可用时显示 N/A。
-    oss << "Pipeline: " << fpsText(pipeline_fps)
-        << "  Ballistic: " << fpsText(ballistic_fps)
-        << "  Gimbal: " << fpsText(gimbal_fps)
-        << "  Visual: " << fpsText(visualize_fps)
-        << "  MPC: " << fpsText(mpc_loop_fps);
     int baseline = 0;
-    cv::Size sz = cv::getTextSize(oss.str(), cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
-    cv::putText(img, oss.str(), cv::Point(img.cols - sz.width - 10, 30),
-                cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 255), 2);
+    cv::Size sz;
+    if (options.performance) {
+        char qbuf[192];
+        std::snprintf(qbuf, sizeof(qbuf), "Q[in:%d i0:%d i1:%d i2:%d i3:%d out:%d] extra:%6.3fs",
+                      queue_sizes.input, queue_sizes.inter0, queue_sizes.inter1,
+                      queue_sizes.inter2, queue_sizes.inter3, queue_sizes.output,
+                      extra_delay_s);
+        cv::putText(img, qbuf, cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                    cv::Scalar(0, 255, 0), 2);
+
+        // 3. 帧数统计（原 drawFps 样式，右上角）
+        // Pipeline=流水线输出提取帧率（原 FPS 统计，已重命名）；
+        // Ballistic=弹道解算循环线程帧率；Gimbal=云台输出循环线程帧率；
+        // Visual=可视化绘制循环线程帧率；MPC=McuMpcController 后台循环帧率。
+        // 各帧率无统计/不可用时显示 N/A。
+        oss << "Pipeline: " << fpsText(pipeline_fps)
+            << "  Ballistic: " << fpsText(ballistic_fps)
+            << "  Gimbal: " << fpsText(gimbal_fps)
+            << "  Visual: " << fpsText(visualize_fps)
+            << "  MPC: " << fpsText(mpc_loop_fps);
+        sz = cv::getTextSize(oss.str(), cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &baseline);
+        cv::putText(img, oss.str(), cv::Point(img.cols - sz.width - 10, 30),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 255), 2);
+    }
+    if (!options.status) return;
+    using namespace std::chrono;
     // 时间戳 + 流水线名 + 输出模式（TS 行附加信息）
     auto epoch = duration_cast<duration<double>>(frame_ts.time_since_epoch()).count();
     oss.str("");
@@ -683,7 +689,6 @@ int main(int argc, char** argv) {
         std::unique_ptr<OutputContext> ctx;     // 输出上下文（逐级转发给可视化）
     };
     struct VisualizeRequest {
-        std::shared_ptr<VisualizeOutput> vis;  // 当前可视化输出（模式关闭时为空 → 仅更新原始帧）
         std::unique_ptr<PipelineResult> result;
         tcs::RobotController* rc = nullptr;
         std::unique_ptr<OutputContext> ctx;    // 输出上下文（最终传给 IOutputMode::update）
@@ -1055,7 +1060,6 @@ int main(int argc, char** argv) {
                 // （记录本帧 gimbal 模式开关状态，供可视化按 fire_out 首元素着色）
                 if (req.ctx) req.ctx->gimbal_enabled = (req.gimbal != nullptr);
                 VisualizeRequest vreq;
-                vreq.vis = findVisualize();
                 vreq.result = std::move(req.result);
                 vreq.rc = req.rc;
                 vreq.ctx = std::move(req.ctx);
@@ -1070,7 +1074,12 @@ int main(int argc, char** argv) {
     ensureVisualizeThread = [&]() {
         if (visualize_stage.thread) return;
         visualize_stage.thread = std::make_unique<std::thread>([&]() {
+            VisualizationControls controls;
+            controls.open();
+            VisualizeRequest cached;
+            std::shared_ptr<VisualizeOutput> render_owner;
             FrameRateCounter fps(60);
+            cv::Mat to_show;           // 复用显示缓冲，HUD 不写入缓存帧
             cv::Mat last_display;      // 最近渲染画面（可视化开启时显示 + 覆盖层）
             cv::Mat last_raw_frame;    // 最近原始帧（可视化关闭时窗口显示原始画面）
             PipelineResult::QueueSizes last_qs;
@@ -1078,21 +1087,44 @@ int main(int argc, char** argv) {
                 // 取可视化缓冲位（非阻塞；窗口泵不因无请求而停顿）
                 VisualizeRequest req;
                 const bool got = visualize_stage.slot.tryTake(req);
+                const std::shared_ptr<VisualizeOutput> vis = findVisualize();
+                const bool owner_changed = render_owner != vis;
+                if (owner_changed) {
+                    render_owner = vis;
+                    last_display.release();
+                }
+                if (vis) {
+                    vis->setArmorOptions(controls.options);
+                    vis->setCommonOptions(controls.common);
+                }
                 if (got && req.result) {
                     last_qs = req.result->queue_sizes;
-                    if (req.vis) {
-                        req.vis->update(*req.result, req.rc, *req.ctx);
-                        last_display = req.vis->display();
+                    last_raw_frame = req.result->frame;
+                    cached = std::move(req);
+                }
+                PipelineMode current_mode;
+                {
+                    std::lock_guard<std::mutex> lock(pipeline_mtx);
+                    current_mode = active_pipeline->mode();
+                }
+                const bool matching_frame = cached.result &&
+                    (current_mode == PipelineMode::ARMOR ? cached.result->armor.valid
+                                                       : cached.result->power_rune.valid);
+                if (vis && cached.ctx && matching_frame &&
+                    (got || controls.changed || owner_changed)) {
+                    vis->update(*cached.result, cached.rc, *cached.ctx);
+                    last_display = vis->display();
+                    if (got) {
                         fps.tick();
                         visualize_stage.fps.store(fps.fps(), std::memory_order_relaxed);
                     }
-                    last_raw_frame = req.result->frame;   // 浅拷贝（引用计数保活）
                 }
+                controls.changed = false;
+                controls.show(vis != nullptr, vis && current_mode == PipelineMode::ARMOR);
 
-                // ── 窗口泵：drawOverlay + imshow + 按键读取（均在本线程）──
-                const std::shared_ptr<VisualizeOutput> vis = findVisualize();
-                const bool vis_active = (vis != nullptr && !last_display.empty());
-                cv::Mat to_show = vis_active ? last_display : last_raw_frame;
+                // Paint HUD on a clean copy, never accumulate overlays on cached pixels.
+                const bool vis_active = vis && matching_frame && !last_display.empty();
+                (vis_active ? last_display : last_raw_frame).copyTo(to_show);
                 if (!to_show.empty()) {
                     if (vis_active) {
                         // 新构型：窗口帧率行/串口信息块显示大小 yaw 状态（单 yaw 构型传 nullptr）
@@ -1106,7 +1138,7 @@ int main(int argc, char** argv) {
                                     robotControllerPtr(),
                                     (yaw_mode == YawMode::BIG_SMALL) ? &bsy_st : nullptr,
                                     shared_frame_timestamp.load(std::memory_order_acquire),
-                                    last_qs, backlog_delay.extraDelaySeconds());
+                                    last_qs, backlog_delay.extraDelaySeconds(), controls.common);
                     }
                     cv::imshow("Unified Auto-Aim", to_show);
                 }
@@ -1135,6 +1167,8 @@ int main(int argc, char** argv) {
                         vis_to_close->closeArmorXYWindow();
                     }
                     std::cout << "[main] Output modes: " << outputNames() << std::endl;
+                } else if (key == 'c') {
+                    controls.open();
                 } else if (key == 'v') {
                     // 开关可视化：关闭后窗口仅显示原始画面，热键始终可用，可随时恢复
                     toggleOutput(OutputMode::VISUALIZE);
@@ -1145,6 +1179,7 @@ int main(int argc, char** argv) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
             }
+            controls.close();
         });
     };
 

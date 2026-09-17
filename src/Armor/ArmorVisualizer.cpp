@@ -12,30 +12,33 @@
 void ArmorVisualizer::render(cv::Mat& image,
                                const ArmorVisualizationData& data,
                                const RobotTfTree& tf_tree,
-                               const CameraProjection& camera_proj) const {
+                               const CameraProjection& camera_proj,
+                               const ArmorVisualizationOptions& options, const std::string& model_name) const {
     // ── 1. 每物体 PnP 角点重投影 + 序号 ──
-    for (size_t i = 0; i < data.raw_pose.reprojected_points.size(); ++i) {
+    for (size_t i = 0; options.pnp && i < data.raw_pose.reprojected_points.size(); ++i) {
         drawReprojectedPoints(image, (int)i, data.raw_pose.reprojected_points[i]);
     }
 
     // ── 2. OutpostESEKF 滤波结果 ──
     if (data.filtered_pose.valid) {
         // EKF 世界关键点投影（红）
-        drawEskfProjectedPoints(image, data.filtered_pose.world_points, tf_tree, camera_proj);
+        if (options.filtered_projection) drawEskfProjectedPoints(image, data.filtered_pose.world_points, tf_tree, camera_proj);
 
         // 预测目标中心关键点（t+0，绿）
-        drawPredictedCenterPoints(image, data.filtered_pose.pred_center_points, tf_tree, camera_proj);
+        if (options.centers) drawPredictedCenterPoints(image, data.filtered_pose.pred_center_points, tf_tree, camera_proj);
 
         // 滤波后的位置与欧拉角（文字）
-        cv::Mat R64 = data.filtered_pose.R64;
-        cv::Mat R32;
-        R64.convertTo(R32, CV_32F);
-        cv::Vec3f ekf_euler = CoordinateTransform::rotationMatrixToEuler(R32);
-        drawEskfPose(image,
-                     cv::Vec3f((float)data.filtered_pose.pos[0],
-                               (float)data.filtered_pose.pos[1],
-                               (float)data.filtered_pose.pos[2]),
-                     ekf_euler);
+        if (options.filtered_pose) {
+            cv::Mat R64 = data.filtered_pose.R64;
+            cv::Mat R32;
+            R64.convertTo(R32, CV_32F);
+            cv::Vec3f ekf_euler = CoordinateTransform::rotationMatrixToEuler(R32);
+            drawEskfPose(image,
+                         cv::Vec3f((float)data.filtered_pose.pos[0],
+                                   (float)data.filtered_pose.pos[1],
+                                   (float)data.filtered_pose.pos[2]),
+                         ekf_euler);
+        }
     }
 
     // ── 3. 瞄准点（品红） ──
@@ -48,10 +51,10 @@ void ArmorVisualizer::render(cv::Mat& image,
     // 两个流水线的可视化行为一致（串口信息 + 帧数统计 + 热键提醒）：
 
     // ── 5. 检测结果（最上层） ──
-    drawDetectionResults(image, data.detection.objects);
+    if (options.detections) drawDetectionResults(image, data.detection.objects, model_name, options.details);
 
     // ── 6. 每个物体的世界坐标位姿 ──
-    for (size_t i = 0; i < data.raw_pose.world_positions.size(); ++i) {
+    for (size_t i = 0; options.raw_pose && i < data.raw_pose.world_positions.size(); ++i) {
         drawWorldPose(image, (int)i, data.raw_pose.world_positions[i], data.raw_pose.world_eulers[i]);
     }
 }
@@ -471,7 +474,8 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
 // ============================================================================
 
 void ArmorVisualizer::drawDetectionResults(cv::Mat& image,
-                                             const std::vector<ArmorDetect::Object>& objects) {
+                                             const std::vector<ArmorDetect::Object>& objects,
+                                             const std::string& model_name, bool details) {
     static const cv::Scalar COLOR_RED   = cv::Scalar(0, 0, 255);
     static const cv::Scalar COLOR_BLUE  = cv::Scalar(255, 0, 0);
     static const cv::Scalar COLOR_GREEN = cv::Scalar(0, 255, 0);
@@ -486,10 +490,14 @@ void ArmorVisualizer::drawDetectionResults(cv::Mat& image,
             obj.rect.x + obj.rect.width <= 0 || obj.rect.y + obj.rect.height <= 0)
             continue;
 
-        cv::Scalar color = (obj.color == 1) ? COLOR_RED :
-                                (obj.color == 0) ? COLOR_BLUE : COLOR_GREEN;
-        cv::Scalar color_dim = (obj.color == 1) ? cv::Scalar(0, 0, 180) :
-                                    (obj.color == 0) ? cv::Scalar(180, 0, 0) : cv::Scalar(0, 180, 0);
+        // Object colors, not raw tensor indices: 0726 already converts blue=0/red=1
+        // in postprocess0726. Both supported models expose red=0/blue=1 here.
+        const bool known_model = model_name == "0526" || model_name == "0726";
+        const bool red = known_model && obj.color == 0;
+        const bool blue = known_model && obj.color == 1;
+        const char* tag = red ? "RED" : blue ? "BLUE" : "?";
+        cv::Scalar color = red ? COLOR_RED : blue ? COLOR_BLUE : COLOR_GREEN;
+        cv::Scalar color_dim = red ? cv::Scalar(0,0,180) : blue ? cv::Scalar(180,0,0) : cv::Scalar(0,180,0);
 
         // 检测框 + 角标
         cv::rectangle(image, obj.rect, color, 2);
@@ -513,14 +521,15 @@ void ArmorVisualizer::drawDetectionResults(cv::Mat& image,
         for (int i = 0; i < 4; ++i) {
             cv::line(image, pts[i], pts[(i+1)%4], color_dim, 1);
             cv::circle(image, pts[i], 3, color, -1);
-            cv::putText(image, std::to_string(i), cv::Point(pts[i].x + 5, pts[i].y - 5),
+            if (details) cv::putText(image, std::to_string(i), cv::Point(pts[i].x + 5, pts[i].y - 5),
                         cv::FONT_HERSHEY_SIMPLEX, 0.4, COLOR_WHITE, 1);
         }
 
         // 标签
         static const char* CLS[] = {"Sentry","1","2","3","4","5","Armor","Base","BigBase"};
         const char* cname = (obj.label >= 0 && obj.label < 9) ? CLS[obj.label] : "?";
-        std::string lbl = cv::format("%s %.1f%%", cname, obj.prob * 100.f);
+        std::string lbl = cv::format("%s [%s]", cname, tag);
+        if (details) lbl += cv::format(" %.1f%%", obj.prob * 100.f);
         int baseline;
         cv::Size lsz = cv::getTextSize(lbl, cv::FONT_HERSHEY_SIMPLEX, 0.6, 2, &baseline);
         cv::Rect lbg(obj.rect.x, obj.rect.y - lsz.height - 8, lsz.width + 12, lsz.height + 6);
@@ -539,14 +548,8 @@ void ArmorVisualizer::drawDetectionResults(cv::Mat& image,
         cv::putText(image, lbl, cv::Point(lbg.x + 6, lbg.y + lsz.height + 2),
                     cv::FONT_HERSHEY_SIMPLEX, 0.6, color, 1);
 
-        // 颜色 + 编号
-        std::string tag = (obj.color == 0) ? "RED" : (obj.color == 1) ? "BLUE" : "?";
-        std::string ids = cv::format("[%s] #%d", tag.c_str(), obj.label);
-        cv::putText(image, ids, cv::Point(obj.rect.x + 5, obj.rect.y + 20),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.45, COLOR_WHITE, 1);
-        cv::putText(image, ids, cv::Point(obj.rect.x + 5, obj.rect.y + 20),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.45, color, 1);
-
+        if (!details) continue;
+        
         // 尺寸
         int iy = obj.rect.y + obj.rect.height + 15;
         if (lbg.y > obj.rect.y) iy = lbg.y + lbg.height + 5;
@@ -568,5 +571,6 @@ void ArmorVisualizer::drawDetectionResults(cv::Mat& image,
         }
         cv::putText(image, cv::format("%.1f%%", obj.prob * 100.f),
                     cv::Point(bx + bw + 4, by + bh), cv::FONT_HERSHEY_SIMPLEX, 0.35, color, 1);
+
     }
 }

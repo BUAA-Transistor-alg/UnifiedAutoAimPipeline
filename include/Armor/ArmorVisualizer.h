@@ -3,6 +3,8 @@
 #ifndef ARMOR_VISUALIZER_H
 #define ARMOR_VISUALIZER_H
 
+#include "Armor/ArmorVisualizationOptions.h"
+#include <string>
 #include <vector>
 #include <chrono>
 
@@ -108,7 +110,8 @@ public:
     void render(cv::Mat& image,
                 const ArmorVisualizationData& data,
                 const RobotTfTree& tf_tree,
-                const CameraProjection& camera_proj) const;
+                const CameraProjection& camera_proj,
+                const ArmorVisualizationOptions& options, const std::string& model_name) const;
 
     // ---- XY 平面窗口（顶视图；仿照 transistor_rm2027_algorithm_visual_ws 的
     //      RMM 顶视图窗口）----
@@ -134,7 +137,8 @@ public:
 
     /// 绘制检测框 + 关键点 + 标签（复制自原 RobotDetectionModel 绘制逻辑）
     static void drawDetectionResults(cv::Mat& image,
-                                     const std::vector<ArmorDetect::Object>& objects);
+                                     const std::vector<ArmorDetect::Object>& objects,
+                                     const std::string& model_name, bool details = false);
 
 private:
     // ── 世界坐标位姿文字 ──

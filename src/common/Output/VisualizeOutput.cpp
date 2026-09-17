@@ -152,10 +152,10 @@ void VisualizeOutput::update(const PipelineResult& result, tcs::RobotController*
     display_ = render_buf_;
     if (!display_.empty()) {
         if (seq.valid) {
-            drawAimPointOverlay(display_, seq.first_point, seq.first_predict_time,
+            if (common_options_.aim) drawAimPointOverlay(display_, seq.first_point, seq.first_predict_time,
                                 tree_, *camera_proj_);
             // 与瞄准点对应的云台位姿下 cam 系 (0,1,0) 点投影（紫）/ 当前位姿（绿）
-            drawGimbalYAxisOverlays(display_, seq, tree_, required_pose_tree_, *camera_proj_, ctx);
+            if (common_options_.gimbal) drawGimbalYAxisOverlays(display_, seq, tree_, required_pose_tree_, *camera_proj_, ctx);
         }
     }
 }
@@ -230,7 +230,8 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, tcs::RobotContro
     // 成员缓冲复用：尺寸/类型不变时 create 不重新分配，仅 copyTo 拷贝像素
     render_buf_.create(result.frame.size(), result.frame.type());
     result.frame.copyTo(render_buf_);
-    armor_vis_.render(render_buf_, vis, tree_, *camera_proj_);
+    armor_vis_.render(render_buf_, vis, tree_, *camera_proj_, armor_options_,
+                      RobotConfig::instance().armor.modelName);
 
     // XY 平面窗口每帧刷新（窗口未开启时内部直接返回；仅可视化线程调用）
     armor_vis_.renderXY(vis);
