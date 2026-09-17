@@ -1,7 +1,8 @@
+// Infantry 0726: input [B,3,H,W], output [B,21,N]; colors 0..3, classes 4..12, xy 13..20.
 // ArmorInfer.h — 装甲板检测推理封装（预处理/推理使用公共 InferCore，解码为 Armor 特有）
 //
-// 模型：输入 (bs, 3, H, W)，输出 (bs, num_anchors, 22)；输入分辨率由机器配置文件
-// （config/robots/*.yaml）的 armor.inference.resolution 提供（当前模型 640×640 → 25200 anchors，
+// 0526：输入 (bs, 3, H, W)，输出 (bs, num_anchors, 22)；输入分辨率由机器配置文件
+// （config/robots/*.yaml）的 armor.inference.models.<model>.resolution 提供（当前模型 640×640 → 25200 anchors，
 // 512×512 → 16128，320×320 → 6300；anchor 数随分辨率变化，后处理按输出形状动态读取）：
 //   col 0-7    4 个关键点 xy（左上/左下/右下/右上）
 //   col 8      obj 置信度（需 sigmoid）
@@ -56,14 +57,17 @@ class ArmorPreprocessor {
 public:
     /// @param input_width/input_height  模型输入分辨率（像素，须与模型输入一致）
     /// @param num_threads               内部 TaskPool 线程数, 0 = 自动
-    ArmorPreprocessor(int input_width, int input_height, int num_threads = 0);
+    ArmorPreprocessor(int input_width, int input_height, int num_threads = 0,
+                      const std::string& model_name = "0526");
 
-    /// 批量预处理：将原始图像 resize 到 input_width × input_height
+    /// 0526: resize; 0726: centered letterbox (padding=124).
     void preprocess(const std::vector<const cv::Mat*>& imgs,
                     std::vector<cv::Mat*>& out);
 
 private:
-    Infer::Preprocessor impl_;
+    int width_, height_;
+    std::string model_name_;
+    TaskPool pool_;
 };
 
 // ==========================================================================
@@ -109,16 +113,17 @@ private:
 
 /// 单图推理输出视图：指向 PipelineData 自持的输出缓冲（行优先 f32）
 struct BatchOutput {
-    const float* data;   // 输出数据（num_anchors × OUTPUT_DIM）
-    int rows;            // 张量 shape[1]（armor 为 num_anchors）
-    int cols;            // 张量 shape[2]（= OUTPUT_DIM）
+    const float* data;   // 输出数据（保持原始张量布局）
+    int rows;            // shape[1]: 0526=num_anchors, 0726=21
+    int cols;            // shape[2]: 0526=22, 0726=num_anchors
 };
 
 class ArmorPostprocessor {
 public:
     /// @param input_width/input_height  模型输入分辨率（后处理坐标缩放基准）
     /// @param num_threads               线程池线程数，0 = 自动
-    ArmorPostprocessor(int input_width, int input_height, int num_threads = 0);
+    ArmorPostprocessor(int input_width, int input_height, int num_threads = 0,
+                       const std::string& model_name = "0526");
 
     /// 处理单个推理输出（每图一个独立输出缓冲）
     /// @param detect_color 0=仅红, 1=仅蓝, 2=双色
@@ -130,6 +135,10 @@ public:
                                     float conf_threshold,
                                     float nms_threshold);
 
+    std::vector<Object> postprocess0726(const float* data, int rows, int cols,
+                                      int orig_w, int orig_h, int detect_color,
+                                      float conf_threshold, float nms_threshold);
+
     /// 批量并行后处理（多线程）
     void postprocessBatch(const std::vector<BatchOutput>& outputs,
                           const std::vector<int>& orig_ws,
@@ -140,6 +149,7 @@ public:
                           std::vector<std::vector<Object>>& out);
 
 private:
+    std::string model_name_;
     int input_width_;
     int input_height_;
     TaskPool pool_;

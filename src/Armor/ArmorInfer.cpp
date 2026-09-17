@@ -5,19 +5,56 @@
 #include <cstring>
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 using namespace ArmorDetect;
+
+namespace {
+void validateModelName(const std::string& name) {
+    if (name != "0526" && name != "0726")
+        throw std::invalid_argument("Unsupported Armor model: " + name);
+}
+// Identical rounding and padding for image preprocessing and inverse coordinates.
+struct LetterboxTransform {
+    float scale;
+    int width, height, left, top;
+};
+LetterboxTransform letterboxTransform(int w, int h, int target_w, int target_h) {
+    const float scale = std::min(float(target_w) / w, float(target_h) / h);
+    const int width = std::min(target_w, int(std::round(w * scale)));
+    const int height = std::min(target_h, int(std::round(h * scale)));
+    if (width < 1 || height < 1)
+        throw std::runtime_error("Armor letterbox: invalid image dimensions");
+    return {scale, width, height, (target_w - width) / 2, (target_h - height) / 2};
+}
+} // namespace
 
 // ==========================================================================
 // ArmorPreprocessor 实现（公共 InferCore 预处理）
 // ==========================================================================
 
-ArmorPreprocessor::ArmorPreprocessor(int input_width, int input_height, int num_threads)
-    : impl_(input_width, input_height, num_threads) {}
+ArmorPreprocessor::ArmorPreprocessor(int input_width, int input_height, int num_threads,
+                                     const std::string& model_name)
+    : width_(input_width), height_(input_height),
+      model_name_(model_name), pool_(num_threads) {
+    validateModelName(model_name_);
+}
 
 void ArmorPreprocessor::preprocess(const std::vector<const cv::Mat*>& imgs,
                                      std::vector<cv::Mat*>& out) {
-    impl_.preprocess(imgs, out);
+    pool_.run_parallel(int(imgs.size()), [&](int i) {
+        if (model_name_ == "0526") {
+            cv::resize(*imgs[i], *out[i], cv::Size(width_, height_));
+            return;
+        }
+        if (imgs[i]->empty()) throw std::runtime_error("Armor: empty input image");
+        const auto t = letterboxTransform(imgs[i]->cols, imgs[i]->rows, width_, height_);
+        cv::Mat resized;
+        cv::resize(*imgs[i], resized, cv::Size(t.width, t.height), 0, 0, cv::INTER_LINEAR);
+        cv::copyMakeBorder(resized, *out[i], t.top, height_ - t.height - t.top,
+                          t.left, width_ - t.width - t.left,
+                          cv::BORDER_CONSTANT, cv::Scalar(124, 124, 124));
+    });
 }
 
 // ==========================================================================
@@ -55,8 +92,12 @@ std::vector<InferenceOutput> ArmorInfer::runInference(
 // ArmorPostprocessor 实现
 // ==========================================================================
 
-ArmorPostprocessor::ArmorPostprocessor(int input_width, int input_height, int num_threads)
-    : input_width_(input_width), input_height_(input_height), pool_(num_threads) {}
+ArmorPostprocessor::ArmorPostprocessor(int input_width, int input_height, int num_threads,
+                                       const std::string& model_name)
+    : model_name_(model_name), input_width_(input_width), input_height_(input_height),
+      pool_(num_threads) {
+    validateModelName(model_name_);
+}
 
 void ArmorPostprocessor::postprocessBatch(
     const std::vector<BatchOutput>& outputs,
@@ -84,6 +125,9 @@ std::vector<Object> ArmorPostprocessor::postprocess(
     int detect_color,
     float conf_threshold,
     float nms_threshold) {
+    if (model_name_ == "0726")
+        return postprocess0726(data, rows, cols, orig_w, orig_h, detect_color,
+                             conf_threshold, nms_threshold);
     std::vector<Object> detections;
     if (!data)
         return detections;
@@ -204,4 +248,68 @@ std::vector<Object> ArmorPostprocessor::postprocess(
     }
 
     return detections;
+}
+
+// Infantry 0726: per-image [21,N] view of [B,21,N], already-sigmoid color/class scores followed by xy points.
+std::vector<Object> ArmorPostprocessor::postprocess0726(
+    const float* data, int rows, int cols, int orig_w, int orig_h,
+    int detect_color, float conf_threshold, float nms_threshold) {
+    const int expected_anchors = (input_width_ / 8) * (input_height_ / 8)
+                               + (input_width_ / 16) * (input_height_ / 16)
+                               + (input_width_ / 32) * (input_height_ / 32);
+    if (!data || rows != 21 || cols != expected_anchors || orig_w <= 0 || orig_h <= 0) {
+        std::cerr << "[ERROR] Armor 0726: expected per-image [21," << expected_anchors
+                  << "] and a valid source image, got [" << rows << "," << cols << "]" << std::endl;
+        return {};
+    }
+    const auto t = letterboxTransform(orig_w, orig_h, input_width_, input_height_);
+    std::vector<Object> candidates;
+    std::vector<cv::Rect> boxes;
+    std::vector<float> scores;
+    for (int i = 0; i < cols; ++i) {
+        auto value = [&](int channel) { return data[channel * cols + i]; };
+        bool finite = true;
+        for (int c = 0; c < 21; ++c) finite = finite && std::isfinite(value(c));
+        if (!finite) continue;
+        int label = 0, color = 0;
+        for (int c = 1; c < 9; ++c)
+            if (value(4 + c) > value(4 + label)) label = c;
+        const float score = value(4 + label);
+        if (score < conf_threshold) continue;
+        for (int c = 1; c < 4; ++c)
+            if (value(c) > value(color)) color = c;
+        if (color >= 2) continue; // White/purple are intentionally unsupported.
+        const int internal_color = 1 - color; // model blue=0/red=1 -> Object blue=1/red=0
+        if (detect_color != 2 && internal_color != detect_color) continue;
+        Object obj{};
+        obj.label = label;
+        obj.color = internal_color;
+        obj.prob = score;
+        std::vector<cv::Point2f> points;
+        bool valid = true;
+        for (int k = 0; k < 4; ++k) {
+            const float x = (value(13 + 2*k) - t.left) / t.scale;
+            const float y = (value(14 + 2*k) - t.top) / t.scale;
+            if (x < 0 || x > orig_w || y < 0 || y > orig_h) valid = false;
+            obj.landmarks[2*k] = x;
+            obj.landmarks[2*k+1] = y;
+            points.emplace_back(x, y);
+        }
+        if (!valid) continue;
+        obj.length = cv::norm(points[0] - points[3]);
+        obj.width = cv::norm(points[0] - points[1]);
+        if (obj.length <= 0 || obj.width <= 0 || std::abs(cv::contourArea(points)) < 1e-3) continue;
+        obj.ratio = obj.length / obj.width;
+        const cv::Rect box = cv::boundingRect(points);
+        obj.rect = box;
+        candidates.push_back(obj);
+        boxes.push_back(box);
+        scores.push_back(score);
+    }
+    std::vector<int> indices;
+    cv::dnn::NMSBoxes(boxes, scores, conf_threshold, nms_threshold, indices);
+    std::vector<Object> result;
+    result.reserve(indices.size());
+    for (int index : indices) result.push_back(candidates[index]);
+    return result;
 }

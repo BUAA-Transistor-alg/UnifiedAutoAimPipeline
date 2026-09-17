@@ -207,13 +207,23 @@ common:
 # ════════════════════════════════════════════════════════════
 armor:
   inference:
-    model_path: "Model/Armor/0526_dynamic.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
+    model: "0526"  # 选择 0526 或 0726；切换后重启主程序和推理进程
     device: "GPU"                          # 推理设备（CPU / GPU / ...）
-    max_batch: 1                           # 推理最大批量（动态 batch 1..max_batch；值越大编译/预热越多，须 ≤ 模型可支持上限）
     shm_key: 23301                         # 共享内存 Key（与 armor_infer_process 通信，两进程须一致）
-    resolution:                            # YOLO 推理输入分辨率（像素），须与模型输入一致
-      width: 640                           # 输入图像宽（像素）
-      height: 640                          # 输入图像高（像素）
+    models:
+      "0526":
+        model_path: "Model/Armor/0526_dynamic.onnx"  # 模型路径（相对项目根目录；以 / 开头则为绝对路径）
+        max_batch: 1                           # 推理最大批量（动态 batch 1..max_batch；值越大编译/预热越多，须 ≤ 模型可支持上限）
+        resolution:                            # YOLO 推理输入分辨率（像素），须与模型输入一致
+          width: 640                           # 输入图像宽（像素）
+          height: 640                          # 输入图像高（像素）
+      "0726":
+        # width/height 为32的正整数倍；当前共享内存要求 width*height <= 640*640
+        model_path: "Model/Armor/0726_dynamic_hw.onnx"
+        max_batch: 4  # 动态 batch；实际批量由 armor.pipeline.inference_batch 决定（当前容量最多4）
+        resolution:
+          width: 640
+          height: 480
   observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 OutpostESEKF / 最新物体位姿保持（秒）
 
   # ── 目标选取滞回参数（armor.target_selection）──

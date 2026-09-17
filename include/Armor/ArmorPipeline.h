@@ -228,8 +228,8 @@ private:
     /// 阶段1上下文：预处理
     struct Stage1Ctx {
         ArmorDetect::ArmorPreprocessor preprocessor;
-        explicit Stage1Ctx(int input_width, int input_height)
-            : preprocessor(input_width, input_height) {}
+        explicit Stage1Ctx(int input_width, int input_height, const std::string& model_name)
+            : preprocessor(input_width, input_height, 0, model_name) {}
     } s1_;
 
     /// 阶段2上下文：推理（推理器在独立进程 armor_infer_process 中，

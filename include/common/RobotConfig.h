@@ -348,7 +348,8 @@ public:
 
     // Armor 流水线独占参数
     struct ArmorParams {
-        std::string modelPath;              // 推理模型路径
+        std::string modelName = "0526";     // 0526 / 0726
+        std::string modelPath;              // 所选模型的推理路径
         std::string device;                 // 推理设备
         int inputWidth;                     // YOLO 推理输入宽度（像素，须与模型输入一致）
         int inputHeight;                    // YOLO 推理输入高度（像素，须与模型输入一致）

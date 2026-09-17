@@ -110,7 +110,8 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
     , min_delay_seconds_(min_delay_seconds)
     , stage5_stick_priority_m_(RobotConfig::instance().armor.targetSelection.stage5StickPriorityM)
     , s1_(RobotConfig::instance().armor.inputWidth,
-          RobotConfig::instance().armor.inputHeight)
+          RobotConfig::instance().armor.inputHeight,
+          RobotConfig::instance().armor.modelName)
     , s4_(camera)
     , s5_(camera, RobotConfig::instance().armor)
 {
@@ -123,7 +124,7 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
     s2_.client = std::make_unique<Infer::InferShmClient>(cfg.armor.shmKey,
                                                          cfg.common.inferForceRestartTimeoutSec);
     s3_.postprocessor = std::make_unique<ArmorDetect::ArmorPostprocessor>(
-        cfg.armor.inputWidth, cfg.armor.inputHeight);
+        cfg.armor.inputWidth, cfg.armor.inputHeight, 0, cfg.armor.modelName);
 
     // 模型路径（仅用于打印 banner；推理器构造见 createInfer，由 main 调用）
     std::string model_path = (!cfg.armor.modelPath.empty() && cfg.armor.modelPath[0] == '/')
@@ -133,6 +134,7 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
     std::cout << "========================================" << std::endl;
     std::cout << "Armor Pipeline (5 stages)" << std::endl;
     std::cout << "----------------------------------------" << std::endl;
+    std::cout << "    Model name: " << cfg.armor.modelName << std::endl;
     std::cout << "    Model: " << model_path << std::endl;
     std::cout << "    Device: " << cfg.armor.device << std::endl;
     std::cout << "    Input resolution: " << cfg.armor.inputWidth << "x" << cfg.armor.inputHeight << std::endl;
@@ -348,7 +350,7 @@ void ArmorPipeline::processStage4(DataDeque& data)
         cat.all_image_points.push_back(image_points);
 
         auto& loacl_points_3d = 
-            ((obj.label == 1) || (obj.label == 8)) ? 
+            ((obj.label == 1) || (obj.label == 8)) ?
             ArmorModel::BIG_ARMOR_POINTS_3D_LOCAL : 
             ArmorModel::SMALL_ARMOR_POINTS_3D_LOCAL;
 

@@ -7,6 +7,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "common/PathResolver.h"
+#include "common/Infer/InferShm.h"
 
 namespace {
 
@@ -588,11 +589,20 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (!op || !op.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'armor' 配置段");
     const YAML::Node& oinf = op["inference"];
     if (!oinf || !oinf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'armor.inference' 配置段");
-    cfg.armor.modelPath = requireScalar<std::string>(oinf, "model_path", "armor.inference");
+    // Older configuration files without a selector keep the 0526 contract.
+    cfg.armor.modelName = oinf["model"]
+        ? requireScalar<std::string>(oinf, "model", "armor.inference") : "0526";
+    if (cfg.armor.modelName != "0526" && cfg.armor.modelName != "0726")
+        throw std::runtime_error("RobotConfig: armor.inference.model must be 0526 or 0726");
+    const YAML::Node model_cfg = oinf["model"]
+        ? oinf["models"][cfg.armor.modelName] : oinf;
+    if (!model_cfg || !model_cfg.IsMap())
+        throw std::runtime_error("RobotConfig: missing armor.inference.models." + cfg.armor.modelName);
+    cfg.armor.modelPath = requireScalar<std::string>(model_cfg, "model_path", "armor.inference selected model");
     cfg.armor.device    = requireScalar<std::string>(oinf, "device", "armor.inference");
 
     // ── armor.inference.resolution（YOLO 推理输入分辨率）──
-    const YAML::Node& ores = oinf["resolution"];
+    const YAML::Node& ores = model_cfg["resolution"];
     if (!ores || !ores.IsMap())
         throw std::runtime_error("RobotConfig: 缺少 'armor.inference.resolution' 配置段");
     cfg.armor.inputWidth  = requireScalar<int>(ores, "width", "armor.inference.resolution");
@@ -600,9 +610,17 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (cfg.armor.inputWidth <= 0 || cfg.armor.inputHeight <= 0) {
         throw std::runtime_error("RobotConfig: armor.inference.resolution 宽高必须为正整数");
     }
-    cfg.armor.maxBatch = requireScalar<int>(oinf, "max_batch", "armor.inference");
+    cfg.armor.maxBatch = requireScalar<int>(model_cfg, "max_batch", "armor.inference selected model");
     if (cfg.armor.maxBatch < 1) {
         throw std::runtime_error("RobotConfig: armor.inference.max_batch 必须 >= 1");
+    }
+    if (cfg.armor.modelName == "0726") {
+        if (cfg.armor.inputWidth % 32 != 0 || cfg.armor.inputHeight % 32 != 0)
+            throw std::runtime_error("RobotConfig: 0726 width/height must be positive multiples of 32");
+        // Reserve enough space for the shared-memory transport's maximum batch.
+        const auto input_bytes = 1LL * cfg.armor.inputWidth * cfg.armor.inputHeight * 3 * InferShm::MAX_IMAGES;
+        if (input_bytes > static_cast<long long>(InferShm::MAX_INPUT_BYTES))
+            throw std::runtime_error("RobotConfig: 0726 resolution exceeds shared-memory input capacity (W*H <= 640*640)");
     }
     cfg.armor.shmKey   = requireScalar<int>(oinf, "shm_key", "armor.inference");
     cfg.armor.observationLostTimeoutSec = requireScalar<double>(op, "observation_lost_timeout", "armor");
