@@ -207,8 +207,8 @@ common:
 # ════════════════════════════════════════════════════════════
 armor:
   inference:
-    model: "0726"  # 选择 0526 或 0726；切换后重启主程序和推理进程
-    device: "CPU"                          # 推理设备（CPU / GPU / ...）
+    model: "0526"  # 选择 0526 或 0726；切换后重启主程序和推理进程
+    device: "GPU"                          # 推理设备（CPU / GPU / ...）
     shm_key: 23301                         # 共享内存 Key（与 armor_infer_process 通信，两进程须一致）
     models:
       "0526":
@@ -220,7 +220,7 @@ armor:
       "0726":
         # width/height 为32的正整数倍；当前共享内存要求 width*height <= 640*640
         model_path: "Model/Armor/0726_dynamic.onnx"
-        max_batch: 4  # 动态 batch；实际批量由 armor.pipeline.inference_batch 决定（当前容量最多4）
+        max_batch: 1  # 动态 batch；实际批量由 armor.pipeline.inference_batch 决定（当前容量最多4）
         resolution:
           width: 640
           height: 640
