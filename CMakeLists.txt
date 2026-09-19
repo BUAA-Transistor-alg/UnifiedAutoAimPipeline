@@ -1,3 +1,4 @@
+# CMakeLists.txt — 构建统一自瞄主程序与推理进程。
 cmake_minimum_required(VERSION 3.10)
 project(UnifiedAutoAim LANGUAGES CXX)
 
@@ -102,6 +103,8 @@ set(COMMON_SOURCES
     src/common/Ballistic/BallisticSolver.cpp
     src/common/Ballistic/GimbalSolver.cpp
     src/common/Ballistic/PredictedBallisticSolver.cpp
+    src/common/Ballistic/Rk4BallisticIntegrator.cpp
+    src/common/Ballistic/NewtonPredictedBallisticSolver.cpp
     src/common/Ballistic/SequencePredictor.cpp
     src/common/camera/Camera.cpp
     src/common/Input/CameraInputMode.cpp

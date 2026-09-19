@@ -1,4 +1,5 @@
-// SequencePredictor.cpp — 预测序列通用类实现
+// SequencePredictor.cpp — 生成瞄准与云台参考序列，负责候选选板和插值。
+// 中低速 Armor 使用联合 Newton；高速 Armor 的 fast_predictor 和 PowerRune 保留原解算。
 #include "common/Ballistic/SequencePredictor.h"
 
 #include "common/TransformTree/TfTreeSync.h"
@@ -133,10 +134,23 @@ SequencePredictor::SequencePredictor()
     const size_t T = pool_.size();
     gimbals_.reserve(T);
     solvers_.reserve(T);
+    newton_solvers_.reserve(T);
     for (size_t i = 0; i < T; ++i) {
         gimbals_.push_back(std::make_shared<GimbalSolver>());
         solvers_.emplace_back(gimbals_.back());
+        newton_solvers_.emplace_back(gimbals_.back());
     }
+}
+
+// ============ 中低速候选解算入口 ============
+std::vector<PredictedBallisticSolver::Result> SequencePredictor::solveNormalCandidates(
+    const Predictor& predictor, double extra_predict_time, float yaw_big, size_t worker) const {
+    if (predictor.source.kind == PredictorSource::Kind::ARMOR) {
+        // 实测切换：注释下一行并恢复相邻旧调用；旧解算器实现完整保留。
+        return newton_solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big);
+        // return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big);
+    }
+    return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big);
 }
 
 SequencePredictor::Item SequencePredictor::lerpItem(const Item& lo, const Item& hi, double t)
@@ -558,8 +572,9 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         }
         // solve() 返回预测函数列表中全部目标点的解算结果（不再内部选目标）；
         // 实际目标选择在下方顺序循环完成。
-        candidates_all[(size_t)idx] = solvers_[(size_t)(wid % T)].solve(
-            predictor.function, extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big);
+        candidates_all[(size_t)idx] = solveNormalCandidates(
+            predictor, extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big,
+            (size_t)(wid % T));
     });
 
     // ── 2. 顺序目标（瞄准点）选择（按时间顺序逐点传递粘滞）──
@@ -573,6 +588,20 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     // ——该指标优先于其它指标（含慢目标粘滞）。
     // fast_target 帧：目标已由上面的对齐瞄准解算直接给出（合成索引），不做逐点目标
     // 选择，也不启用慢目标粘滞。
+    // ============ Newton 结果校验（仅中低速 Armor） ============
+    // 失败候选不得参与距离 / 夹角比较；删除后仍用 target_index 标识原装甲板。
+    // 此保护不更改高速 fast_predictor 或 PowerRune 的既有行为。
+    const bool normal_armor =
+        predictor.source.kind == PredictorSource::Kind::ARMOR && !fast_target;
+    if (normal_armor) {
+        for (auto& candidates : candidates_all) {
+            candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
+                [](const PredictedBallisticSolver::Result& c) {
+                    // Newton 已统一校验角度、时间和预测点；这里仅消费成功标志。
+                    return !c.success;
+                }), candidates.end());
+        }
+    }
     const bool angle_filter_enabled = armor_omega && !fast_target;
     std::vector<PredictedBallisticSolver::Result> solved((size_t)U);
     int sticky_index = aim_stick_enabled ? state_.last_first_target_index : -1;
@@ -605,6 +634,14 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         }
     }
 
+    // 首版保守处理：任一选中的精确点不可用，整帧无效。不能只检查序列首点，
+    // 否则后段 Newton 失败可能被插值继承的 success 掩盖后送入 MPC。
+    if (normal_armor && std::any_of(solved.begin(), solved.end(),
+                                   [](const auto& r) { return !r.success; })) {
+        state_.last_first_target_index = -1;
+        return Result{};
+    }
+
     // ── 2. 组装返回点序列（实际计算点 + 插值/外推/复制点）──
     std::vector<Item> items((size_t)TOTAL);
     auto makeActual = [&](const PredictedBallisticSolver::Result& r) {
@@ -621,7 +658,15 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         return item;
     };
     for (int u = 0; u < U; ++u) {
-        items[(size_t)solve_idx[(size_t)u]] = makeActual(solved[(size_t)u]);
+        Item item = makeActual(solved[(size_t)u]);
+        if (normal_armor && u > 0) {
+            // 先展开精确点的 yaw 再插值，避免 +pi / -pi 两侧的近邻角被连成整圈跳变。
+            const Item& previous = items[(size_t)solve_idx[(size_t)u - 1]];
+            item.yaw = previous.yaw + std::remainder(item.yaw - previous.yaw, 2.0 * M_PI);
+            item.gimbal_yaw = previous.gimbal_yaw +
+                std::remainder(item.gimbal_yaw - previous.gimbal_yaw, 2.0 * M_PI);
+        }
+        items[(size_t)solve_idx[(size_t)u]] = item;
     }
 
     // ── 3. 原划分序列段间填充插值/外推/复制点 ──

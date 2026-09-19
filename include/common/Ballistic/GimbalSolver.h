@@ -1,8 +1,12 @@
-// GimbalSolver.h — 云台角度解算器
+// GimbalSolver.h — 云台角度解算器与只读枪口几何接口。
+// 保留原 yaw / pitch 搜索，并为联合 Newton 解算提供世界系初始状态及角度导数。
 #ifndef GIMBAL_SOLVER_H
 #define GIMBAL_SOLVER_H
 
+#include <limits>
 #include <memory>
+
+#include <Eigen/Core>
 
 #include <opencv2/opencv.hpp>
 
@@ -32,6 +36,38 @@
 // - solveAim：打包解算 yaw + pitch，任意一步失效即返回 success = false。
 class GimbalSolver {
 public:
+    // ============ 发射几何快照与初始状态（世界系） ============
+    // 一次求解期间保持不变；yaw_position 为有效 yaw 中心在 chassis 系中的位置。
+    // BIG_SMALL 下固定快照的大 yaw，待求 yaw 仍为 yaw_big + yaw_small。
+    struct LaunchGeometry {
+        Eigen::Vector3d chassis_position = Eigen::Vector3d::Zero();
+        Eigen::Matrix3d chassis_rotation = Eigen::Matrix3d::Identity();
+        Eigen::Vector3d yaw_position = Eigen::Vector3d::Zero();
+        Eigen::Vector3d pitch_position = Eigen::Vector3d::Zero();
+        Eigen::Vector3d muzzle_offset = Eigen::Vector3d::Zero(); // headPos + muzzlePos
+        double current_yaw = 0.0;
+        double current_pitch = 0.0;
+        double bullet_velocity = 0.0;
+        double pitch_min = 0.0;
+        double pitch_max = 0.0;
+        double stop_z = 0.0;
+    };
+
+    struct LaunchState {
+        Eigen::Vector3d position = Eigen::Vector3d::Zero();  // 枪口位置（m）
+        Eigen::Vector3d velocity = Eigen::Vector3d::Zero();  // 弹丸初速度（m/s）
+        // 第 0 / 1 列分别为对 yaw / pitch（rad）的偏导，包含枪口偏心影响。
+        Eigen::Matrix<double, 3, 2> position_jacobian = Eigen::Matrix<double, 3, 2>::Zero();
+        Eigen::Matrix<double, 3, 2> velocity_jacobian = Eigen::Matrix<double, 3, 2>::Zero();
+    };
+
+    // 只读内部树；BIG_SMALL 且 yawBig 有限时使用给定大 yaw，其余情况使用当前树状态。
+    LaunchGeometry captureLaunchGeometry(
+        float yawBig = std::numeric_limits<float>::quiet_NaN()) const;
+    // 只计算候选发射姿态，不修改坐标树，可对同一快照并行调用。
+    static LaunchState evaluateLaunchState(const LaunchGeometry& geometry,
+                                          double yaw, double pitch);
+
     // 打包解算结果
     struct AimResult {
         bool   success = false;   // 是否解算成功
@@ -69,6 +105,7 @@ public:
     // 默认弹丸初速（m/s），可在运行时覆盖
     void setBulletVelocity(double v) { bullet_velocity_ = v; }
     double bulletVelocity() const { return bullet_velocity_; }
+    double distanceThreshold() const { return distance_threshold_; }
 
     // 运行时调整 pitch 搜索范围 / 步长（弧度），默认来自 RobotConfig::gimbal
     void setPitchRange(float min, float max) {

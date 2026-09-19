@@ -1,4 +1,5 @@
-// GimbalSolver.cpp — 云台角度解算器实现
+// GimbalSolver.cpp — 保留原角度搜索，提供枪口几何快照、世界系初始状态及解析角度导数。
+// 新几何接口只读坐标树，供联合 Newton 弹道解算使用，不改变原有解算流程。
 #include "common/Ballistic/GimbalSolver.h"
 
 #include <algorithm>
@@ -9,6 +10,7 @@
 
 #include "common/RobotConfig.h"
 
+// ============ 配置与独立坐标树初始化 ============
 GimbalSolver::GimbalSolver() : tree_(std::make_shared<RobotTfTree>()) {
     // 偏移 / 弹丸 / 搜索参数均来自 RobotConfig（机器配置文件）
     const RobotConfig& cfg = RobotConfig::instance();
@@ -21,6 +23,66 @@ GimbalSolver::GimbalSolver() : tree_(std::make_shared<RobotTfTree>()) {
     pitch_min_          = cfg.common.gimbal.pitchMin;
     pitch_max_          = cfg.common.gimbal.pitchMax;
     pitch_step_         = cfg.common.gimbal.pitchSearchStep;
+}
+
+// ============ 只读发射几何快照（单 yaw / 大小 yaw） ============
+GimbalSolver::LaunchGeometry GimbalSolver::captureLaunchGeometry(float yawBig) const {
+    const EvalContext ctx = tree_->isBigSmallYaw() && std::isfinite(yawBig)
+        ? buildContext(yawBig) : buildContext();
+    LaunchGeometry geometry;
+    for (int i = 0; i < 3; ++i) {
+        geometry.chassis_position[i] = ctx.chassisPos[i];
+        geometry.yaw_position[i] = ctx.yawPos[i];
+        geometry.pitch_position[i] = ctx.pitchPos[i];
+        geometry.muzzle_offset[i] = ctx.u[i];
+        for (int j = 0; j < 3; ++j) {
+            geometry.chassis_rotation(i, j) = ctx.Rc.at<float>(i, j);
+        }
+    }
+    geometry.current_yaw = ctx.totalYaw;
+    // 坐标树 Euler 顺序为 yaw / pitch / roll，pitch 关节绕 x 轴转动。
+    if (auto n = tree_->manager().getNode(RobotTfTree::PITCH)) {
+        geometry.current_pitch = n->getEuler()[1];
+    }
+    geometry.bullet_velocity = bullet_velocity_;
+    geometry.pitch_min = pitch_min_;
+    geometry.pitch_max = pitch_max_;
+    geometry.stop_z = ctx.stopZ;
+    return geometry;
+}
+
+// ============ 候选枪口位置、初速度与一阶角度导数 ============
+GimbalSolver::LaunchState GimbalSolver::evaluateLaunchState(const LaunchGeometry& geometry,
+                                                           double yaw, double pitch) {
+    const double cy = std::cos(yaw), sy = std::sin(yaw);
+    const double cp = std::cos(pitch), sp = std::sin(pitch);
+    Eigen::Matrix3d Rz, Rx, dRz, dRx;
+    Rz << cy, -sy, 0.0,
+          sy,  cy, 0.0,
+         0.0, 0.0, 1.0;
+    Rx << 1.0, 0.0, 0.0,
+          0.0,  cp, -sp,
+          0.0,  sp,  cp;
+    dRz << -sy, -cy, 0.0,
+            cy, -sy, 0.0,
+           0.0, 0.0, 0.0;
+    dRx << 0.0, 0.0, 0.0,
+           0.0, -sp, -cp,
+           0.0,  cp, -sp;
+
+    // p = chassis + Rc * [yawPos + Rz * (pitchPos + Rx * muzzleOffset)]。
+    // pitchPos 随 yaw 转动，但不随 pitch 转动；pitch 导数只作用于枪口偏移。
+    const Eigen::Matrix3d& Rc = geometry.chassis_rotation;
+    const Eigen::Vector3d muzzle_in_yaw = geometry.pitch_position + Rx * geometry.muzzle_offset;
+    const Eigen::Vector3d direction_in_yaw = Rx * Eigen::Vector3d::UnitY();
+    LaunchState state;
+    state.position = geometry.chassis_position + Rc * (geometry.yaw_position + Rz * muzzle_in_yaw);
+    state.velocity = geometry.bullet_velocity * Rc * Rz * direction_in_yaw;
+    state.position_jacobian.col(0) = Rc * dRz * muzzle_in_yaw;
+    state.position_jacobian.col(1) = Rc * Rz * dRx * geometry.muzzle_offset;
+    state.velocity_jacobian.col(0) = geometry.bullet_velocity * Rc * dRz * direction_in_yaw;
+    state.velocity_jacobian.col(1) = geometry.bullet_velocity * Rc * Rz * dRx * Eigen::Vector3d::UnitY();
+    return state;
 }
 
 void GimbalSolver::setChassisPosition(float x, float y, float z) {

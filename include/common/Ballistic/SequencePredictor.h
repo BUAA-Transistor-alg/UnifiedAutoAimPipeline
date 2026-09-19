@@ -1,6 +1,7 @@
-// SequencePredictor.h — 预测序列通用类（预测云台控制序列 + 瞄准点序列）
+// SequencePredictor.h — 预测序列通用类（预测云台控制序列 + 瞄准点序列）。
+// 中低速 Armor 的精确点由 Newton 解算；高速 Armor / PowerRune 保留原弹道路径。
 //
-// 基于 PredictedBallisticSolver：对目标预测函数生成预测云台控制序列与对应的
+// 复用新旧解算器的统一结果：对目标预测函数生成预测云台控制序列与对应的
 // 瞄准点序列，并把最新结果返回给调用方：
 //   - GimbalOutput    使用预测云台控制序列（yaw/pitch，已含底盘修正与 yaw/pitch 偏置），
 //                     自行计算 fire 序列并截取后发送；
@@ -91,6 +92,7 @@
 #include "common/TaskPool.h"
 #include "common/Ballistic/GimbalSolver.h"
 #include "common/Ballistic/PredictedBallisticSolver.h"
+#include "common/Ballistic/NewtonPredictedBallisticSolver.h"
 
 class SequencePredictor {
 public:
@@ -292,7 +294,13 @@ public:
 private:
     // 为每个工作线程准备一个独立的 GimbalSolver（内部 TaskPool 互不竞争）
     std::vector<std::shared_ptr<GimbalSolver>> gimbals_;
-    std::vector<PredictedBallisticSolver> solvers_;
+    std::vector<PredictedBallisticSolver> solvers_;  // 高速 Armor / PowerRune 保留旧算法
+    std::vector<NewtonPredictedBallisticSolver> newton_solvers_;
+
+    // 普通路径唯一切换点：中低速 Armor 使用 Newton，PowerRune 使用原解算器。
+    // 实测对照直接注释实现中的新调用并恢复相邻旧调用，无运行时开关。
+    std::vector<PredictedBallisticSolver::Result> solveNormalCandidates(
+        const Predictor& predictor, double extra_predict_time, float yaw_big, size_t worker) const;
     TaskPool pool_;                 // 默认构造（min(硬件核数/2, 4) 线程）
     std::atomic<int> next_gimbal_{0};   // thread_local 绑定：worker 首次执行时领取编号
 
