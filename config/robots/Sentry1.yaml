@@ -456,3 +456,11 @@ power_rune:
     inference_batch: 4     # 阶段2 推理最大批量（动态批量 1..inference_batch；
                            #   须 ≤ inference.max_batch，且 ≤ 共享内存容量 4）
     postprocess_batch: 4   # 阶段3 后处理最大批量
+
+  # ── RollPredictor 拟合参数（power_rune.roll_predictor）──
+  # loose_fit = true : SMALL 模型同时最小二乘拟合斜率（不再固定 π/3）；
+  #                       BIG 模型放宽参数范围：a ∈ [0.1, 1.045]、ω ∈ [1.826, 2.058]。
+  # loose_fit = false: 保持原有逻辑：SMALL 固定斜率 π/3，
+  #                       BIG 模型 a ∈ [0.780, 1.045]、ω ∈ [1.884, 2.000]。
+  roll_predictor:
+    loose_fit: false

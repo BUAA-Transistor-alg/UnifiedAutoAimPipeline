@@ -3,6 +3,7 @@
 
 #include <deque>
 #include <chrono>
+#include <cmath>
 #include <vector>
 #include <utility>
 #include <functional>
@@ -17,8 +18,10 @@
  * 输入：欧拉角中的 roll 分量（范围 [-π, π]），内部自动做相位连续化 (unwrap)。
  * 支持两种拟合模型，自动选择 MSE 更小者：
  *   - "big"   : r(t) = sign * (-a/omega * cos(omega*(t+o_t)) + (2.090 - a)*(t+o_t))
- *   - "small" : r(t) = sign * pi/3 * (t + o_t)
- * 其中 t=0 对应当前时刻，a、omega、o_t 为拟合参数，sign = ±1 由角速度方向决定。
+ *   - "small" : r(t) = sign * k * (t + o_t)，k 默认为 π/3，可通过
+ *               setLooseFit(true) 使其一并在最小二乘中拟合
+ * 其中 t=0 对应当前时刻，a、omega、o_t（以及 small 的 k）为拟合参数，
+ * sign = ±1 由角速度方向决定。
  *
  * 使用方式：
  *   1. 每帧调用 update(roll_raw, timestamp) 输入观测 roll 和时间戳
@@ -120,9 +123,14 @@ public:
         float o_t   = 0.0f;
     };
 
-    /// small 模型参数: r(t) = sign * pi/3 * (t + o_t)
+    /// SMALL 模型固定斜率的 float 表达（π/3），与旧 predict 实现完全一致
+    static constexpr float kSmallSlopeFixed = static_cast<float>(M_PI) / 3.0f;
+
+    /// small 模型参数: r(t) = sign * k * (t + o_t)
+    /// k（slope）默认固定为 π/3；开启 loose_fit 后由最小二乘拟合得到。
     struct SmallParams {
-        float o_t = 0.0f;
+        float o_t   = 0.0f;
+        float slope = kSmallSlopeFixed;
     };
 
     /**
@@ -139,6 +147,23 @@ public:
      * @brief 设置旋转方向（正转 +1，反转 -1）
      */
     void setDirection(int direction) { direction_ = direction > 0 ? 1 : -1; }
+
+    /**
+     * @brief 设置宽松拟合开关（来自 config power_rune.roll_predictor.loose_fit）。
+     *
+     *   true : SMALL 模型同时最小二乘拟合斜率（不再固定 π/3）；
+     *          BIG 模型放宽参数范围：a ∈ [0.1, 1.045]、ω ∈ [1.826, 2.058]；
+     *   false: 保持原有逻辑：SMALL 固定斜率 π/3，
+     *          BIG 模型 a ∈ [0.780, 1.045]、ω ∈ [1.884, 2.000]。
+     *
+     * 应在开始喂数据前设置一次；运行中切换会立即影响下一次 performFit。
+     */
+    void setLooseFit(bool enabled) { loose_fit_ = enabled; }
+
+    /**
+     * @brief 获取宽松拟合开关
+     */
+    bool getLooseFit() const { return loose_fit_; }
 
     /**
      * @brief 获取当前旋转方向
@@ -194,6 +219,10 @@ private:
 
     // 当前使用的拟合方法
     FitMethod fit_method_ = FitMethod::BIG;
+
+    // 宽松拟合开关（config power_rune.roll_predictor.loose_fit）：
+    // true 时 SMALL 拟合斜率、BIG 放宽参数范围；false 时保持原有逻辑。
+    bool loose_fit_ = false;
 
     // 相位连续化 (unwrap) 状态（仿照 YAxisFilter 的 jump_a_ 机制）
     float last_signed_roll_    = 0.0f;

@@ -52,6 +52,10 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
     const RobotConfig& cfg = RobotConfig::instance();
     const RobotConfig::PipelineParams& pipe = cfg.powerRune.pipeline;
 
+    // RollPredictor 拟合开关取自 config power_rune.roll_predictor.loose_fit：
+    // true 时 SMALL 一并拟合斜率、BIG 放宽参数范围；false 时保持原有逻辑。
+    s5_.roll_predictor.setLooseFit(cfg.powerRune.rollPredictor.looseFit);
+
     conf_threshold_ = cfg.powerRune.confThreshold;
     s3_.postprocessor = std::make_unique<PowerRune::PowerRunePostprocessor>(
         cfg.powerRune.manualNms,
@@ -82,6 +86,8 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
     std::cout << std::endl;
     std::cout << "    Manual NMS: " << (cfg.powerRune.manualNms ? "true" : "false") << std::endl;
     std::cout << "    Confidence threshold: " << conf_threshold_ << std::endl;
+    std::cout << "    RollPredictor loose fit: "
+              << (cfg.powerRune.rollPredictor.looseFit ? "true" : "false") << std::endl;
     std::cout << "    Min delay: " << min_delay_seconds_ << "s" << std::endl;
     std::cout << "========================================" << std::endl;
 

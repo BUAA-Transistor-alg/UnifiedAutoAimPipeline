@@ -791,6 +791,13 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (!prpipe || !prpipe.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'power_rune.pipeline' 配置段");
     parsePipelineParams(prpipe, "power_rune.pipeline", cfg.powerRune.maxBatch, cfg.powerRune.pipeline);
 
+    // ── power_rune.roll_predictor（RollPredictor 拟合开关）──
+    const YAML::Node& prrp = pr["roll_predictor"];
+    if (!prrp || !prrp.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'power_rune.roll_predictor' 配置段");
+    cfg.powerRune.rollPredictor.looseFit =
+        requireScalar<bool>(prrp, "loose_fit", "power_rune.roll_predictor");
+
     return cfg;
 }
 

@@ -131,9 +131,9 @@ float RollPredictor::predict_roll(float delta_t) const
     }
 
     if (fit_method_ == FitMethod::SMALL) {
-        // 线性模型: r = pi/3 * (t + o_t_small)
+        // 线性模型: r = k * (t + o_t)（k 默认 π/3，loose_fit 开启时为拟合斜率）
         float tau = delta_t + small_params_.o_t;
-        return (static_cast<float>(M_PI) / 3.0f * tau + correction_bias_) * static_cast<float>(direction_);
+        return (small_params_.slope * tau + correction_bias_) * static_cast<float>(direction_);
     }
 
     // 标准模型: r_signed = -a/ω * cos(ω*(t+o_t)) + (2.090 - a)*(t+o_t)
@@ -187,18 +187,19 @@ std::unique_ptr<std::function<std::pair<cv::Vec3f, cv::Mat>(float)>> RollPredict
     bool  valid = fit_valid_;
     FitMethod method = fit_method_;
     float ot_small  = small_params_.o_t;
+    float slope_small = small_params_.slope;
     float bias      = correction_bias_;
     cv::Vec3f pos   = posi_;
     cv::Mat   y_axis_R = y_axis_R_.clone();  // 深度复制旋转矩阵
 
-    auto func = [a, omega, ot, dir, valid, method, ot_small, bias, pos, y_axis_R](float delta_t) -> std::pair<cv::Vec3f, cv::Mat> {
+    auto func = [a, omega, ot, dir, valid, method, ot_small, slope_small, bias, pos, y_axis_R](float delta_t) -> std::pair<cv::Vec3f, cv::Mat> {
         if (!valid) {
             return {cv::Vec3f(0.0f, 0.0f, 0.0f), cv::Mat::eye(3, 3, CV_32FC1)};
         }
         float predicted_roll;
         if (method == FitMethod::SMALL) {
             float tau = delta_t + ot_small;
-            predicted_roll = (static_cast<float>(M_PI) / 3.0f * tau + bias) * static_cast<float>(dir);
+            predicted_roll = (slope_small * tau + bias) * static_cast<float>(dir);
         } else {
             // 与 predict_roll 完全一致的逻辑
             float tau = delta_t + ot;
@@ -304,10 +305,19 @@ void RollPredictor::performFit()
     }
 
     // 计算 o_t 范围 + SMALL 预计算
-    constexpr double OMEGA_MIN   = 1.884;
-    constexpr double SLOPE_MIN   = 1.310;
-    constexpr double SLOPE_MAX   = 1.045;
-    constexpr double PERIOD_MARGIN = M_PI / OMEGA_MIN;
+    //
+    // BIG 模型取值范围：loose_fit_ = true 时放宽（见 config
+    // power_rune.roll_predictor.loose_fit），false 时保持原有范围。
+    const double A_MAX     = 1.045;
+    const double A_MIN     = loose_fit_ ? 0.1   : 0.780;
+    const double OMEGA_MIN = loose_fit_ ? 1.826 : 1.884;
+    const double OMEGA_MAX = loose_fit_ ? 2.058 : 2.000;
+    // BIG 模型线性项斜率为 s = 2.090 - a，用 a 的上下界推导 o_t 的搜索范围：
+    //   o = r / s - t，s 越大 o 越小，故 o 的下界用 s 的上界（对应 A_MIN），
+    //   o 的上界用 s 的下界（对应 A_MAX）。
+    const double SLOPE_MIN = 2.090 - A_MIN;
+    const double SLOPE_MAX = 2.090 - A_MAX;
+    const double PERIOD_MARGIN = M_PI / OMEGA_MIN;
 
     double ot_lower = std::numeric_limits<double>::max();
     double ot_upper = std::numeric_limits<double>::lowest();
@@ -324,22 +334,51 @@ void RollPredictor::performFit()
     ot_lower -= PERIOD_MARGIN;
     ot_upper += PERIOD_MARGIN;
 
-    constexpr double OMEGA_MAX  = 2.000;
     constexpr double OMEGA_STEP = 0.005;
     constexpr double OT_STEP    = 0.05;
-    constexpr double A_MIN      = 0.780;
-    constexpr double A_MAX      = 1.045;
 
     // ============================================================
     // 2. SMALL 模型（总是计算，代价极低）
     // ============================================================
-    double small_o_t = (3.0 / M_PI) * (small_sum_r / static_cast<double>(N))
-                     - (small_sum_t / static_cast<double>(N));
+    const double small_mean_t = small_sum_t / static_cast<double>(N);
+    const double small_mean_r = small_sum_r / static_cast<double>(N);
+    const double PI_OVER_3    = M_PI / 3.0;
+
+    // 斜率固定 π/3 时的闭式解（loose_fit_ = false，或退化时回退使用）
+    auto small_ot_fixed_slope = [&]() {
+        return (3.0 / M_PI) * small_mean_r - small_mean_t;
+    };
+
+    double small_slope = PI_OVER_3;
+    double small_o_t   = 0.0;
+    if (loose_fit_) {
+        // 同时拟合斜率 k 与截距 c：r = k*t + c = k*(t + c/k)，故 o_t = c/k。
+        double sxx = 0.0, sxy = 0.0;
+        for (size_t i = 0; i < N; ++i) {
+            const double dt = t_values[i] - small_mean_t;
+            sxx += dt * dt;
+            sxy += dt * (r_values[i] - small_mean_r);
+        }
+        if (sxx > 1e-12) {
+            const double k = sxy / sxx;   // 最小二乘拟合斜率
+            if (std::abs(k) > 1e-6) {
+                const double c = small_mean_r - k * small_mean_t;  // 拟合截距
+                small_slope = k;
+                small_o_t   = c / k;
+            } else {
+                // 斜率退化到 0 附近：回退到固定斜率解，避免 o_t 爆炸
+                small_o_t = small_ot_fixed_slope();
+            }
+        } else {
+            small_o_t = small_ot_fixed_slope();
+        }
+    } else {
+        small_o_t = small_ot_fixed_slope();
+    }
 
     double small_sum_sq = 0.0;
-    const double PI_OVER_3 = M_PI / 3.0;
     for (size_t i = 0; i < N; ++i) {
-        const double r_pred = PI_OVER_3 * (t_values[i] + small_o_t);
+        const double r_pred = small_slope * (t_values[i] + small_o_t);
         const double err = r_values[i] - r_pred;
         small_sum_sq += err * err;
     }
@@ -565,9 +604,12 @@ void RollPredictor::performFit()
     // 4. 模型选择
     // ============================================================
     if (!big_found || small_rmse < big_refined_rmse) {
-        fit_method_       = FitMethod::SMALL;
-        small_params_.o_t = static_cast<float>(small_o_t);
-        fit_valid_        = true;
+        fit_method_         = FitMethod::SMALL;
+        // 非宽松时写回固定的 π/3（float 表达，与旧实现一致）
+        small_params_.slope = loose_fit_ ? static_cast<float>(small_slope)
+                                            : kSmallSlopeFixed;
+        small_params_.o_t   = static_cast<float>(small_o_t);
+        fit_valid_          = true;
     } else {
         fit_method_      = FitMethod::BIG;
         big_params_.a    = static_cast<float>(big_final_a);
@@ -586,7 +628,8 @@ void RollPredictor::performFit()
     for (size_t i = N - n; i < N; ++i) {
         double pred;
         if (fit_method_ == FitMethod::SMALL) {
-            pred = PI_OVER_3 * (t_values[i] + small_params_.o_t);
+            // 与 predict_roll 使用同一份参数（float 舍入后的 o_t），保证偏置一致
+            pred = small_slope * (t_values[i] + small_params_.o_t);
         } else {
             const double tau = t_values[i] + big_params_.o_t;
             pred = -big_params_.a / big_params_.omega * std::cos(big_params_.omega * tau)

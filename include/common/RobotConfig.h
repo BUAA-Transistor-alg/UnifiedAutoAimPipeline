@@ -453,6 +453,17 @@ public:
         int         maxBatch;       // 推理最大批量
         int         shmKey;         // 共享内存 Key（推理进程通信，见 InferShm.h）
         PipelineParams pipeline;    // 缓冲队列长度 + 可批处理阶段批量
+
+        // RollPredictor（阶段5）拟合参数（config: power_rune.roll_predictor）
+        // 控制 RollPredictor 的模型拟合是否启用“宽松”参数：
+        //   true : SMALL 模型同时最小二乘拟合斜率（不再固定 π/3）；
+        //          BIG 模型放宽参数范围：a ∈ [0.1, 1.045]、ω ∈ [1.826, 2.058]；
+        //   false: 保持原有逻辑：SMALL 固定斜率 π/3，
+        //          BIG 模型 a ∈ [0.780, 1.045]、ω ∈ [1.884, 2.000]。
+        struct RollPredictorParams {
+            bool looseFit;   // config: loose_fit
+        };
+        RollPredictorParams rollPredictor;
     };
 
     // 共用参数（两个流水线共享）
