@@ -289,19 +289,30 @@ NewtonPredictedBallisticSolver::TargetSolution NewtonPredictedBallisticSolver::s
 
 // ============ 全候选入口（不在解算器内部选板） ============
 std::vector<NewtonPredictedBallisticSolver::Result> NewtonPredictedBallisticSolver::solve(
-    const Predictor& predictor, double extra_predict_time, float yawBig) const {
+    const Predictor& predictor, double extra_predict_time, float yawBig,
+    const std::vector<int>& masked_indices) const {
     if (!gimbal_) return {};
-    return solveWithGeometry(predictor, extra_predict_time, gimbal_->captureLaunchGeometry(yawBig));
+    return solveWithGeometry(predictor, extra_predict_time, gimbal_->captureLaunchGeometry(yawBig),
+                             masked_indices);
 }
 
 std::vector<NewtonPredictedBallisticSolver::Result>
 NewtonPredictedBallisticSolver::solveWithGeometry(
-    const Predictor& predictor, double extra_predict_time, const LaunchGeometry& geometry) const {
+    const Predictor& predictor, double extra_predict_time, const LaunchGeometry& geometry,
+    const std::vector<int>& masked_indices) const {
     if (!validInput(predictor, extra_predict_time, geometry)) return {};
     const auto now = predictor(0.0);
     std::vector<Result> results;
     results.reserve(now.second.size());
     for (size_t i = 0; i < now.second.size(); ++i) {
+        // 屏蔽点：不做 Newton 迭代（也不采样 predictor 各时刻），占位保持下标对齐
+        if (PredictedBallisticSolver::isMaskedIndex(masked_indices, static_cast<int>(i))) {
+            Result placeholder;
+            placeholder.target_index = static_cast<int>(i);
+            placeholder.masked = true;
+            results.push_back(placeholder);
+            continue;
+        }
         results.push_back(solveTargetImpl(predictor, static_cast<int>(i), extra_predict_time, geometry).result);
     }
     return results;

@@ -48,6 +48,30 @@ std::vector<cv::Vec3f> TargetPositionCalculator::calculate(
     return results;
 }
 
+std::vector<int> TargetPositionCalculator::allRotationCounts()
+{
+    std::vector<int> counts(kBladeCount);
+    for (int i = 0; i < kBladeCount; ++i) counts[static_cast<size_t>(i)] = i;
+    return counts;
+}
+
+std::vector<int> TargetPositionCalculator::missingRotationCounts(
+    const std::vector<int>& present_counts)
+{
+    // 下标 = 旋转计数本身：0..kBladeCount-1 中未在 present_counts 出现过的即为
+    // 本帧不存在的靶点（已激活/未识别），对应预测列表中的同一下标 → 直接作掩码。
+    std::vector<bool> present(kBladeCount, false);
+    for (int c : present_counts) {
+        if (c >= 0 && c < kBladeCount) present[static_cast<size_t>(c)] = true;
+    }
+    std::vector<int> missing;
+    missing.reserve(kBladeCount);
+    for (int i = 0; i < kBladeCount; ++i) {
+        if (!present[static_cast<size_t>(i)]) missing.push_back(i);
+    }
+    return missing;
+}
+
 TargetPositionCalculator::TargetPosFuncPtr TargetPositionCalculator::compose(
     PredictorFuncPtr predictor,
     const std::vector<int>& rotation_counts)

@@ -19,7 +19,8 @@
 // 返回列表中的每个目标点独立求解并返回全部结果；实际目标选择由本类 predict()
 // 完成——依据来源标注自动选择目标选择策略（Armor → NEAREST、PowerRune →
 // LOWEST_Z），并在每个实际计算点的求解结果之间按该策略选出该点使用的目标
-// （masked_indices 中索引对应的瞄准点不参与选择）。慢目标判定（施密特触发器）
+// （masked_indices 中索引对应的瞄准点不参与选择：解算阶段即跳过、以占位符返回）。
+// 慢目标判定（施密特触发器）
 // 同样在 predict() 内完成（依据 Predictor::target_omega 及其可用标志
 // omega_valid），不再由 Armor 流水线下发。predict() 维护自身跨帧状态 State
 // （慢目标锁存 + 上一帧瞄准点粘滞索引 + 快目标锁存）：target_predictor 来源切换
@@ -139,7 +140,11 @@ public:
                                                           // 产生该预测器快照的那一帧的时间戳（dt 零点）
         // 目标屏蔽索引列表：位于本列表中的索引（对应当前预测函数返回列表中
         // 瞄准点的下标，即 PredictedBallisticSolver::Result::target_index）对应
-        // 的瞄准点不参与目标选择。须保证屏蔽后至少还有一个瞄准点未被屏蔽：
+        // 的瞄准点不参与目标选择，且在解算阶段就交给解算器跳过（solve 的
+        // masked_indices 参数）：这些点不做弹道解算，仅以占位符
+        // （Result::masked = true、success = false）保持下标对齐——选点行为与
+        // 逐点解算后再过滤完全一致，只是省去被屏蔽点的解算开销。
+        // 须保证屏蔽后至少还有一个瞄准点未被屏蔽：
         // 若预测函数返回的全部瞄准点都被屏蔽（全被屏蔽，无点可选），
         // predict() 自动转为调用 invalidate() 并返回无效结果（等同无可用预测器，
         // 输出模式进入保持模式）。
@@ -299,6 +304,8 @@ private:
 
     // 普通路径唯一切换点：中低速 Armor 使用 Newton，PowerRune 使用原解算器。
     // 实测对照直接注释实现中的新调用并恢复相邻旧调用，无运行时开关。
+    // predictor.masked_indices 随调用转发给解算器：被屏蔽的瞄准点不做弹道解算，
+    // 以占位符返回（见 PredictedBallisticSolver::Result::masked）。
     std::vector<PredictedBallisticSolver::Result> solveNormalCandidates(
         const Predictor& predictor, double extra_predict_time, float yaw_big, size_t worker) const;
     TaskPool pool_;                 // 默认构造（min(硬件核数/2, 4) 线程）

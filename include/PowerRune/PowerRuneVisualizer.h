@@ -62,6 +62,9 @@ struct PowerRuneVisualizationData {
     // ---- 目标位置可视化点(由TargetPositionCalculator计算) ----
     std::vector<cv::Vec3f> filtered_target_points;   // 滤波位姿下的目标位置世界坐标(黄色)
     std::vector<cv::Vec3f> predictor_target_points;  // 预测位姿下的目标位置世界坐标(天蓝)
+    // predictor_target_points 中需要跳过的下标（= 本帧不存在的靶点掩码，与预测
+    // 列表下标一致）：靶点预测恒输出全部 5 个靶点，仅存在的靶点应绘制。
+    std::vector<int> predictor_masked_indices;
 };
 
 /**

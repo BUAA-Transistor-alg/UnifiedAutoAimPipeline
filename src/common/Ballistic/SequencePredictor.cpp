@@ -60,11 +60,13 @@ PredictedBallisticSolver::Result selectTargetResult(
             : (double)cv::norm(muzzle_origin - c.predicted_point); // muzzle 距离
     };
 
-    // 候选（未被屏蔽）下标集合
+    // 候选（未被屏蔽）下标集合：屏蔽点在做弹道解算时已跳过并以占位符返回
+    // （Result::masked = true），此处再按掩码判定兜底（两种判据任一命中即排除）。
     std::vector<int> pool;
     pool.reserve(candidates.size());
     for (int i = 0; i < (int)candidates.size(); ++i) {
-        if (predictor.isIndexMasked(candidates[(size_t)i].target_index)) continue;
+        const PredictedBallisticSolver::Result& c = candidates[(size_t)i];
+        if (c.masked || predictor.isIndexMasked(c.target_index)) continue;
         pool.push_back(i);
     }
     // 需求3：优先排除 |中心瞄准夹角| > π/2 的瞄准点（仅当调用方给出夹角时）
@@ -144,14 +146,19 @@ SequencePredictor::SequencePredictor()
 }
 
 // ============ 中低速候选解算入口 ============
+// 屏蔽索引（predictor.masked_indices）随求解器一起传入：这些瞄准点在解算器内部
+// 直接跳过弹道解算，仅以占位符（Result::masked = true）返回，保持下标对齐。
 std::vector<PredictedBallisticSolver::Result> SequencePredictor::solveNormalCandidates(
     const Predictor& predictor, double extra_predict_time, float yaw_big, size_t worker) const {
     if (predictor.source.kind == PredictorSource::Kind::ARMOR) {
         // 实测切换：注释下一行并恢复相邻旧调用；旧解算器实现完整保留。
-        return newton_solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big);
-        // return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big);
+        return newton_solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big,
+                                             predictor.masked_indices);
+        // return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big,
+        //                               predictor.masked_indices);
     }
-    return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big);
+    return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big,
+                                  predictor.masked_indices);
 }
 
 SequencePredictor::Item SequencePredictor::lerpItem(const Item& lo, const Item& hi, double t)
@@ -323,7 +330,9 @@ int SequencePredictor::selectFastAimPlate(
     for (int ci = 0; ci < (int)candidates.size(); ++ci) {
         const PredictedBallisticSolver::Result& c = candidates[(size_t)ci];
         const int j = c.target_index;
-        if (j < 0 || predictor.isIndexMasked(j)) continue;   // 屏蔽板不作为瞄准对象
+        // 屏蔽板不作为瞄准对象：解算器对它们只返回占位符（c.masked），
+        // 掩码判定（isIndexMasked）为第二道兜底。
+        if (j < 0 || c.masked || predictor.isIndexMasked(j)) continue;
         // 该板在**自己的总预测时间**上的实际中心瞄准夹角（用原预测器算实际瞄准点位置）
         const PredictedBallisticSolver::PredictorResult pr = predictor.function(c.predict_time);
         if (j >= (int)pr.second.size()) continue;
@@ -366,10 +375,12 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
                                            const std::chrono::steady_clock::time_point& timestamp)
 {
     // ── 目标屏蔽检查：predictor.masked_indices 中索引对应的瞄准点不参与目标
-    // 选择；但须保证屏蔽后至少还有一个瞄准点可选——若预测函数当前返回的全部
+    // 选择（解算阶段同样跳过，见 solveNormalCandidates / fast 分支的转发）；
+    // 但须保证屏蔽后至少还有一个瞄准点可选——若预测函数当前返回的全部
     // 瞄准点都被屏蔽（全被屏蔽），本帧预测器等同不可用：自动转为调用
     // invalidate()（重置自身跨帧状态与来源记录）并返回无效结果，与 main 在
     // "无可用预测器"时直接 invalidate() 的行为一致（输出模式进入保持模式）。
+    // 本检查只用预测函数求一次点表（无弹道解算），避免"全部点成为占位符"的白跑。
     if (!predictor.masked_indices.empty()) {
         const std::vector<cv::Point3f> aims_now = predictor.function(0.0).second;
         bool any_aim_left = false;
@@ -557,7 +568,8 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
             //   因此提前量里已包含中心平动）
             const std::vector<PredictedBallisticSolver::Result> fast_cands =
                 solvers_[(size_t)(wid % T)].solve(
-                    fast_predictor, extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big);
+                    fast_predictor, extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big,
+                    predictor.masked_indices);   // 屏蔽板：包装预测器下标不变，同样跳过解算
             // 各板在自己的总预测时间上的实际中心瞄准夹角 → 选板
             // （异号正在靠近枪线，或 |夹角| 已在容差内刚过枪线也打得到）
             const int ci = selectFastAimPlate(fast_cands, predictor, yaw_world_origin,
@@ -591,6 +603,7 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     // 选择，也不启用慢目标粘滞。
     // ============ Newton 结果校验（仅中低速 Armor） ============
     // 失败候选不得参与距离 / 夹角比较；删除后仍用 target_index 标识原装甲板。
+    // 屏蔽占位符（Result::masked，success 恒为 false）也在此一并移除。
     // 此保护不更改高速 fast_predictor 或 PowerRune 的既有行为。
     const bool normal_armor =
         predictor.source.kind == PredictorSource::Kind::ARMOR && !fast_target;

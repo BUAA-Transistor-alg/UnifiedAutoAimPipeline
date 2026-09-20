@@ -1,6 +1,7 @@
 // NewtonPredictedBallisticSolver.h — 中低速 Armor 的联合拦截解算器。
 // 将 yaw、pitch、飞行时间作为未知量，利用 RK4 灵敏度构造 Jacobian 并做阻尼 Newton
-// 迭代；输出兼容旧弹道结果。只解算候选点，不选板、不重复补偿延迟、不修改预测器。
+// 迭代；输出兼容旧弹道结果。只解算候选点（屏蔽索引跳过并占位），不选板、不重复
+// 补偿延迟、不修改预测器。
 #ifndef NEWTON_PREDICTED_BALLISTIC_SOLVER_H
 #define NEWTON_PREDICTED_BALLISTIC_SOLVER_H
 
@@ -57,10 +58,15 @@ public:
 
     // extra_predict_time 已含快照年龄、额外延迟和序列点偏移；本类只再加飞行时间。
     // yawBig 固定为此序列点的大 yaw 关节角，Newton 调整飞行时间时不改变枪口快照。
+    // masked_indices（可选）：屏蔽的瞄准点索引（预测函数返回列表下标），其中的点
+    // **不做 Newton 解算**，仅返回占位符（Result::masked = true，见
+    // PredictedBallisticSolver::Result），保持返回向量与目标点列表下标对齐。
     std::vector<Result> solve(const Predictor& predictor, double extra_predict_time,
-                             float yawBig = std::numeric_limits<float>::quiet_NaN()) const;
+                             float yawBig = std::numeric_limits<float>::quiet_NaN(),
+                             const std::vector<int>& masked_indices = {}) const;
     std::vector<Result> solveWithGeometry(const Predictor& predictor, double extra_predict_time,
-                                         const LaunchGeometry& geometry) const;
+                                         const LaunchGeometry& geometry,
+                                         const std::vector<int>& masked_indices = {}) const;
 
     // 单目标详细入口：失败原因 / 迭代次数供测试和诊断使用，无共享可变状态。
     TargetSolution solveTarget(const Predictor& predictor, int target_index,

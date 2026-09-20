@@ -1,4 +1,5 @@
 #include "PowerRune/PowerRuneVisualizer.h"
+#include <algorithm>
 #include <iostream>
 #include <limits>
 
@@ -254,9 +255,15 @@ void PowerRuneVisualizer::render(Mat& image,
             cv::circle(image, img_pt, 10, Scalar(0, 255, 255), -1);
         }
     }
-    // 预测位姿下的目标位置（天蓝色圆点，半径10）
-    for (const auto& pt : data.predictor_target_points) {
-        cv::Point2f img_pt = worldToImage(pt, tf_tree, camera_proj);
+    // 预测位姿下的目标位置（天蓝色圆点，半径10）：被屏蔽的靶点（本帧不存在）
+    // 不绘制——预测列表恒含全部 5 个靶点，屏蔽索引与列表下标一一对应
+    for (size_t i = 0; i < data.predictor_target_points.size(); ++i) {
+        if (std::find(data.predictor_masked_indices.begin(),
+                      data.predictor_masked_indices.end(), static_cast<int>(i)) !=
+            data.predictor_masked_indices.end()) {
+            continue;
+        }
+        cv::Point2f img_pt = worldToImage(data.predictor_target_points[i], tf_tree, camera_proj);
         if (img_pt.x >= 0) {
             cv::circle(image, img_pt, 10, Scalar(255, 255, 0), -1);
         }

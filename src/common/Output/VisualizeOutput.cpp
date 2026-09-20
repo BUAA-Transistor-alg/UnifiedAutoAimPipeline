@@ -277,13 +277,16 @@ void VisualizeOutput::renderPowerRune(const PipelineResult& result, tcs::RobotCo
     if (result.predictor_valid) {
         // 靶点预测函数由流水线组装进 result.predictor（Predictor::function，
         // 统一签名 (double) -> (预测车体中心, 预测目标点列表)，取 second 为靶点
-        // 列表）；可视化数据仍用 Vec3f，逐个转换
+        // 列表）；可视化数据仍用 Vec3f，逐个转换。
+        // 能量机关恒预测全部 5 个靶点，result.predictor.masked_indices 中为本帧
+        // 不存在的靶点下标，随可视化数据下发以便只绘制存在的靶点。
         const auto pts = result.predictor.function(0.3).second;
         vis.predictor_target_points.clear();
         vis.predictor_target_points.reserve(pts.size());
         for (const auto& pt : pts) {
             vis.predictor_target_points.emplace_back(pt.x, pt.y, pt.z);
         }
+        vis.predictor_masked_indices = result.predictor.masked_indices;
     }
 
     // 成员缓冲复用：尺寸/类型不变时 create 不重新分配，仅 copyTo 拷贝像素

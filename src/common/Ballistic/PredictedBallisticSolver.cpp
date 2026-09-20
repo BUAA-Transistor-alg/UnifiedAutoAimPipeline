@@ -7,13 +7,22 @@
 
 #include "common/RobotConfig.h"
 
+// 目标索引是否位于屏蔽列表中（与 SequencePredictor::Predictor::isIndexMasked 同一语义）
+bool PredictedBallisticSolver::isMaskedIndex(const std::vector<int>& masked_indices, int index) {
+    for (int m : masked_indices) {
+        if (m == index) return true;
+    }
+    return false;
+}
+
 PredictedBallisticSolver::PredictedBallisticSolver(std::shared_ptr<GimbalSolver> gimbal)
     : gimbal_(gimbal),
       max_iterations_(std::max(1, RobotConfig::instance().common.predictedBallistic.maxIterations)),
       time_error_tolerance_(RobotConfig::instance().common.predictedBallistic.timeErrorTolerance) {}
 
 std::vector<PredictedBallisticSolver::Result> PredictedBallisticSolver::solve(
-    const Predictor& predictor, double extra_predict_time, float yawBig) const {
+    const Predictor& predictor, double extra_predict_time, float yawBig,
+    const std::vector<int>& masked_indices) const {
     std::vector<Result> results;
     if (!gimbal_) return results;
 
@@ -32,7 +41,16 @@ std::vector<PredictedBallisticSolver::Result> PredictedBallisticSolver::solve(
     // 目标选择已移出本类：对预测函数返回列表中的每个目标点独立迭代求解，
     // 返回全部目标点的结果（不再按策略选一个），由调用方（SequencePredictor）
     // 在结果之间做实际目标选择。
+    // masked_indices 中的点跳过解算，仅以占位符保持下标对齐（调用方本就跳过它们）。
     for (size_t i = 0; i < centers_now.size(); ++i) {
+        // 屏蔽点：不做任何弹道计算（不调 predictor/GimbalSolver），占位返回
+        if (isMaskedIndex(masked_indices, (int)i)) {
+            Result placeholder;
+            placeholder.target_index = (int)i;
+            placeholder.masked = true;
+            results.push_back(placeholder);
+            continue;
+        }
         double flight_time = 0.0;
         double best_time_err = std::numeric_limits<double>::infinity();
         Result candidate;   // 该目标点时间误差最小的一次迭代结果

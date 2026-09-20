@@ -92,7 +92,9 @@ struct PowerRunePipelineData {
             target_predictor;
         std::chrono::steady_clock::time_point predictor_timestamp;  // 快照对应帧的时间戳（dt 零点）
         // 本帧屏蔽的目标点索引：索引对应 target_predictor 返回列表中瞄准点的下标
-        // （预留：由本流水线按需填写；tryPopFrame 组装结果 Predictor 时一并移出）
+        // （靶点预测恒输出全部 kBladeCount=5 个靶点，列表下标 = 旋转计数 0..4；
+        // 本帧不存在的靶点——不在 filtered_rotation_counts 中的计数——列于此处，
+        // 由下游 SequencePredictor 跳过其弹道解算与目标选择）。
         std::vector<int> masked_indices;
     } stage5;
 };

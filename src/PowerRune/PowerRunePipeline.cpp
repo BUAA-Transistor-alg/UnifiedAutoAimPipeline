@@ -373,11 +373,17 @@ void PowerRunePipeline::processStage5(DataDeque& data)
             d->stage5.fitted_curve, d->stage5.raw_points);
         d->stage5.predictor_lambda = s5_.roll_predictor.capturePredictor();
         if (!d->stage5.filtered_rotation_counts.empty()) {
-            // 组合成靶点预测函数：位姿预测 + rotation_counts → 目标世界坐标列表
+            // 靶点预测函数：恒预测**全部 kBladeCount 个靶点**（旋转计数 0..4 对应的
+            // 世界坐标，列表长度固定、下标 = 旋转计数），本帧不存在的靶点（不在
+            // filtered_rotation_counts 中的计数，即已激活/未识别者）写入
+            // masked_indices 交给下游屏蔽：SequencePredictor 会跳过它们的弹道解算
+            // 与目标选择（详见 Predictor::masked_indices）。
             // （单独再捕获一份，保留 predictor_lambda 供可视化位姿预测绘制）
             auto pred2 = s5_.roll_predictor.capturePredictor();
             d->stage5.target_predictor = TargetPositionCalculator::compose(
-                std::move(pred2), d->stage5.filtered_rotation_counts);
+                std::move(pred2), TargetPositionCalculator::allRotationCounts());
+            d->stage5.masked_indices = TargetPositionCalculator::missingRotationCounts(
+                d->stage5.filtered_rotation_counts);
             d->stage5.predictor_timestamp = d->initial.frame_timestamp;  // 快照的 dt 零点 = 本帧时间戳
         }
     }
@@ -523,9 +529,10 @@ PipelineResult PowerRunePipeline::tryPopFrame(const std::chrono::steady_clock::t
         //    输入，随 PipelineResult 输出）：靶点预测函数快照（从本帧 stage5
         //    移出，本流水线内部持有；输入预测时间，返回 (预测车体中心位置
         //    （能量机关取旋转中心）, 预测靶点位置列表)，组合自 RollPredictor
-        //    位姿预测 + 旋转次数）
+        //    位姿预测 + 全部靶点旋转计数，列表下标 = 旋转计数 0..4）
         //    + 来源标注（powerRune()，整体算一种来源）+ 快照时间戳（dt 零点 =
-        //    快照帧时间戳）+ 屏蔽的瞄准点索引（本帧 stage5.masked_indices）。
+        //    快照帧时间戳）+ 屏蔽的瞄准点索引（本帧不存在的靶点，来自
+        //    stage5.masked_indices；下游据此跳过解算与选点）。
         //    无可用靶点预测函数（target_predictor 为空）时 predictor_valid 保持
         //    false，main 弹道线程据此调 sequence_predictor.invalidate()。──
         if (front->stage5.target_predictor) {
