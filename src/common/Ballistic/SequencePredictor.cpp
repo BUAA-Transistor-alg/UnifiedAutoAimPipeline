@@ -19,20 +19,9 @@ int workerGimbalIndex(std::atomic<int>& next) {
     return idx;
 }
 
-// 目标选择策略（移入本类：PredictedBallisticSolver::solve 返回全部目标点结果，
-// 由 SequencePredictor 在结果之间做实际目标选择）
-enum class TargetStrategy { NEAREST, LOWEST_Z };
-
-// 依据目标预测器来源标注自动选择目标策略：PowerRune → LOWEST_Z，其余（Armor）→ NEAREST
-TargetStrategy targetStrategyForSource(const SequencePredictor::PredictorSource& source) {
-    return (source.kind == SequencePredictor::PredictorSource::Kind::POWER_RUNE)
-               ? TargetStrategy::LOWEST_Z
-               : TargetStrategy::NEAREST;
-}
-
-// 在单个实际计算点解出的全部目标点结果中，按策略选出实际使用的目标：
-//   - NEAREST：预测点距离当前 muzzle 原点最近（默认）；
-//   - LOWEST_Z：预测点 world z 最低（PowerRune 能量机关模式）。
+// 在单个实际计算点解出的全部目标点结果中选出实际使用的目标（Armor 类来源）：
+//   - NEAREST：预测点距离当前 muzzle 原点最近。
+// （PowerRune 来源不再走本函数：改用 PredictedPointSelector 决策器，见 predictImpl。）
 // predictor.masked_indices 中索引对应的瞄准点（目标）不参与选择。
 // 需求3（角速度可用的 Armor 目标且本帧非 fast_target）：center_aim_angles 非空时
 // 优先不考虑 |中心瞄准夹角| > π/2 的瞄准点——该指标优先于其它指标（含下面的慢
@@ -46,18 +35,15 @@ TargetStrategy targetStrategyForSource(const SequencePredictor::PredictorSource&
 // 结果为空（无可用目标）时返回默认无效 Result（success=false）。
 PredictedBallisticSolver::Result selectTargetResult(
     const std::vector<PredictedBallisticSolver::Result>& candidates,
-    TargetStrategy strategy, const cv::Vec3f& muzzle_origin,
+    const cv::Vec3f& muzzle_origin,
     const SequencePredictor::Predictor& predictor,
     int sticky_index, double stick_delta,
     const std::vector<double>* center_aim_angles) {
     PredictedBallisticSolver::Result best;
     if (candidates.empty()) return best;
 
-    const bool lowest_z = (strategy == TargetStrategy::LOWEST_Z);
     auto criterionOf = [&](const PredictedBallisticSolver::Result& c) {
-        return lowest_z
-            ? (double)c.predicted_point[2]                        // world z
-            : (double)cv::norm(muzzle_origin - c.predicted_point); // muzzle 距离
+        return (double)cv::norm(muzzle_origin - c.predicted_point);   // muzzle 距离
     };
 
     // 候选（未被屏蔽）下标集合：屏蔽点在做弹道解算时已跳过并以占位符返回
@@ -111,6 +97,18 @@ PredictedBallisticSolver::Result selectTargetResult(
     }
     return best;
 }
+
+// 在某个实际计算点的解算序列中取出 PowerRune 决策器选中的目标结果：
+// 仅当该索引存在且本步解算成功、非占位符时返回它，否则返回默认无效 Result
+// （该精确点无效 → 整帧可能进入保持模式）。
+PredictedBallisticSolver::Result selectByTargetIndex(
+    const std::vector<PredictedBallisticSolver::Result>& candidates, int target_index) {
+    if (target_index < 0) return {};
+    for (const PredictedBallisticSolver::Result& c : candidates) {
+        if (c.target_index == target_index && !c.masked && c.success) return c;
+    }
+    return {};
+}
 } // namespace
 
 SequencePredictor::SequencePredictor()
@@ -146,19 +144,22 @@ SequencePredictor::SequencePredictor()
 }
 
 // ============ 中低速候选解算入口 ============
-// 屏蔽索引（predictor.masked_indices）随求解器一起传入：这些瞄准点在解算器内部
-// 直接跳过弹道解算，仅以占位符（Result::masked = true）返回，保持下标对齐。
+// masked_indices 为本次解算实际使用的屏蔽列表（一般为 predictor.masked_indices；
+// PowerRune 会先解除决策器候选点的屏蔽，见 predictImpl 的 solve_masked_indices）：
+// 这些瞄准点在解算器内部直接跳过弹道解算，仅以占位符（Result::masked = true）
+// 返回，保持下标对齐。
 std::vector<PredictedBallisticSolver::Result> SequencePredictor::solveNormalCandidates(
-    const Predictor& predictor, double extra_predict_time, float yaw_big, size_t worker) const {
+    const Predictor& predictor, const std::vector<int>& masked_indices,
+    double extra_predict_time, float yaw_big, size_t worker) const {
     if (predictor.source.kind == PredictorSource::Kind::ARMOR) {
         // 实测切换：注释下一行并恢复相邻旧调用；旧解算器实现完整保留。
         return newton_solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big,
-                                             predictor.masked_indices);
+                                             masked_indices);
         // return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big,
-        //                               predictor.masked_indices);
+        //                               masked_indices);
     }
     return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big,
-                                  predictor.masked_indices);
+                                  masked_indices);
 }
 
 SequencePredictor::Item SequencePredictor::lerpItem(const Item& lo, const Item& hi, double t)
@@ -375,12 +376,18 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
                                            const std::chrono::steady_clock::time_point& timestamp)
 {
     // ── 目标屏蔽检查：predictor.masked_indices 中索引对应的瞄准点不参与目标
-    // 选择（解算阶段同样跳过，见 solveNormalCandidates / fast 分支的转发）；
-    // 但须保证屏蔽后至少还有一个瞄准点可选——若预测函数当前返回的全部
-    // 瞄准点都被屏蔽（全被屏蔽），本帧预测器等同不可用：自动转为调用
-    // invalidate()（重置自身跨帧状态与来源记录）并返回无效结果，与 main 在
-    // "无可用预测器"时直接 invalidate() 的行为一致（输出模式进入保持模式）。
-    // 本检查只用预测函数求一次点表（无弹道解算），避免"全部点成为占位符"的白跑。
+    // 选择（解算阶段同样跳过，见 solveNormalCandidates / fast 分支的转发）。
+    // 本检查只用预测函数求一次点表（无弹道解算），得到“是否全部瞄准点都被屏蔽”。
+    // 处理按来源区分：
+    //   - Armor：全被屏蔽即无点可选，本帧预测器等同不可用：立即 invalidate()
+    //     （重置自身跨帧状态与来源记录）并返回无效结果，与 main 在"无可用预测器"
+    //     时直接 invalidate() 的行为一致（输出模式进入保持模式）；
+    //   - PowerRune：**不在此提前返回**——即使全部被屏蔽也继续解算与决策
+    //     （决策器可能凭“临时丢失”粘滞仍选出点）；仅当"全部被屏蔽"且决策也返回
+    //     -1（无任何候选）时，才在决策之后 invalidate()（见"PowerRune 选点"）。
+    const bool power_rune_mode =
+        (predictor.source.kind == PredictorSource::Kind::POWER_RUNE);
+    bool all_aims_masked = false;
     if (!predictor.masked_indices.empty()) {
         const std::vector<cv::Point3f> aims_now = predictor.function(0.0).second;
         bool any_aim_left = false;
@@ -390,7 +397,8 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
                 break;
             }
         }
-        if (!any_aim_left) {
+        all_aims_masked = !any_aim_left;
+        if (all_aims_masked && !power_rune_mode) {
             invalidate();
             return Result{};
         }
@@ -400,9 +408,12 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     // State 存放慢目标施密特锁存与慢目标瞄准点滞回所需的“上一帧序列第一个值
     // 瞄准点索引”；来源切换（如 Armor 目标种类变化 / Armor → PowerRune）时自动
     // 清零（锁存与粘滞点均随总目标切换失效）。
+    // PowerRune 决策器同样在来源切换时整体重置（离开 PowerRune 后其状态不再有效；
+    // Armor 各 label 之间切换时本决策器本就不使用，一并重置无副作用）。
     if (!(active_source_ == predictor.source)) {
         state_ = State{};
         active_source_ = predictor.source;
+        power_rune_selector_.reset();
     }
 
     // ── 慢目标判定（施密特触发器，无连续帧计数；判定已从 ArmorPipeline
@@ -442,11 +453,23 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         state_.fast_latch = false;
     }
 
-    // 目标选择策略由来源自动选择（Armor → NEAREST，PowerRune → LOWEST_Z）。
     // 目标选择已移入本类：PredictedBallisticSolver::solve 返回全部目标点的解算
-    // 结果，实际目标（瞄准点）选择在下方“并行解算 + 顺序粘滞选择”两步中完成
-    // （不再设置 solver 的目标选择状态）。
-    const TargetStrategy sel = targetStrategyForSource(predictor.source);
+    // 结果。Armor 类来源在下方顺序循环中按 NEAREST + 慢目标粘滞选点；PowerRune
+    // 来源改用决策器 PredictedPointSelector（每帧一次，见下方“PowerRune 选点”）。
+
+    // ── PowerRune：解算前解除决策器候选点的屏蔽（保守补算）──
+    // 决策器候选 = 上次状态更新前的 OBSERVED ∪ TEMPORARILY_LOST 点。这些点即使
+    // 本帧被 mask 也要参与弹道解算：已观测点可能本步被 mask 转为临时丢失并被粘滞
+    // 选中；临时丢失点可能被继续选中——若不解算，它们在本步序列里只是占位符，
+    // 选中后没有可用结果。Armor 类来源恒用原始 mask，不做此预处理。
+    std::vector<int> solve_masked_indices = predictor.masked_indices;
+    if (power_rune_mode) {
+        for (int idx : power_rune_selector_.preUpdateCandidateIndices()) {
+            solve_masked_indices.erase(
+                std::remove(solve_masked_indices.begin(), solve_masked_indices.end(), idx),
+                solve_masked_indices.end());
+        }
+    }
 
     // 快照生成到本次消费之间的延迟：额外预测时间叠加该延迟，补偿 dt 零点（快照帧）
     // 与当前时刻的差值
@@ -584,13 +607,16 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
             return;
         }
         // solve() 返回预测函数列表中全部目标点的解算结果（不再内部选目标）；
-        // 实际目标选择在下方顺序循环完成。
+        // 实际目标选择在下方顺序循环完成（PowerRune 见“PowerRune 选点”）。
         candidates_all[(size_t)idx] = solveNormalCandidates(
-            predictor, extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big,
+            predictor, solve_masked_indices,
+            extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big,
             (size_t)(wid % T));
     });
 
     // ── 2. 顺序目标（瞄准点）选择（按时间顺序逐点传递粘滞）──
+    // 仅 Armor 类来源走本段；PowerRune 已在上面“PowerRune 选点”用决策器选出统一
+    // 索引，循环内直接按索引用结果。
     // 粘滞链（仅 aim_stick_enabled 时生效）：本帧第一个实际计算点（= 序列第一个
     // 值）粘上一帧序列第一个值选中的瞄准点索引（state_.last_first_target_index；
     // 无上一帧/来源切换后为 -1 → 直接选最优）；本帧后续实际计算点粘本帧前一个
@@ -604,7 +630,8 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     // ============ Newton 结果校验（仅中低速 Armor） ============
     // 失败候选不得参与距离 / 夹角比较；删除后仍用 target_index 标识原装甲板。
     // 屏蔽占位符（Result::masked，success 恒为 false）也在此一并移除。
-    // 此保护不更改高速 fast_predictor 或 PowerRune 的既有行为。
+    // 此保护不更改高速 fast_predictor 与 PowerRune 的既有行为（PowerRune 不清理，
+    // 由决策器选点后按索引取结果）。
     const bool normal_armor =
         predictor.source.kind == PredictorSource::Kind::ARMOR && !fast_target;
     if (normal_armor) {
@@ -622,7 +649,36 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     if (fast_target) {
         for (int u = 0; u < U; ++u) solved[(size_t)u] = fast_solved[(size_t)u];
     }
+
+    // ── PowerRune 选点：每帧调用决策器一次 ──
+    // 与 Armor 的逐点选择不同：用**第一个精确解算点**（下标 0 = 序列首点，时间上
+    // 最接近当前时刻）的候选序列作为位置/可用性依据，更新每点状态机并选出本帧
+    // 使用的靶点；本帧全部精确解点统一使用该索引（整段序列瞄准同一块靶）。
+    // 决策器内部维护跨帧状态（粘滞目标 + 每点状态机）；其临时丢失候选已在解算前
+    // 解除屏蔽（solve_masked_indices），故此处能取到可用解算结果。
+    // 注意：即使全部瞄准点都被屏蔽也不在此前提前返回（见函数开头的屏蔽检查），
+    // 决策器仍可能凭“临时丢失”粘滞选出候选；无可用候选 → -1 → 每个精确点都无
+    // 结果 → 本帧无效（输出保持，但状态机继续运行）。
+    int power_rune_target = -1;
+    if (power_rune_mode && !candidates_all.empty()) {
+        power_rune_target = power_rune_selector_.select(
+            predictor.masked_indices, candidates_all.front(), timestamp);
+    }
+    // PowerRune 特例：“全部瞄准点都被屏蔽”且决策也返回 -1（无任何候选）时，本帧
+    // 预测器等同不可用（无真实目标、也无临时丢失粘滞）→ invalidate()（重置状态机
+    // 与粘滞目标）并返回无效结果。仅决策返回 -1 而仍有未屏蔽点时不 invalidate，
+    // 否则观测建立计时会被每帧清零而永远无法完成。
+    if (power_rune_mode && all_aims_masked && power_rune_target < 0) {
+        invalidate();
+        return Result{};
+    }
+
     for (int u = 0; u < U && !fast_target; ++u) {
+        if (power_rune_mode) {
+            // PowerRune：全帧统一使用决策器选出的靶点
+            solved[(size_t)u] = selectByTargetIndex(candidates_all[(size_t)u], power_rune_target);
+            continue;
+        }
         std::vector<double> angles;
         const std::vector<double>* angles_ptr = nullptr;
         if (angle_filter_enabled && !candidates_all[(size_t)u].empty()) {
@@ -637,7 +693,7 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
             angles_ptr = &angles;
         }
         solved[(size_t)u] = selectTargetResult(
-            candidates_all[(size_t)u], sel, muzzle_origin, predictor,
+            candidates_all[(size_t)u], muzzle_origin, predictor,
             aim_stick_enabled ? sticky_index : -1,
             aim_stick_enabled ? aim_stick_delta : 0.0,
             angles_ptr);
@@ -797,10 +853,11 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
 
 void SequencePredictor::invalidate()
 {
-    // 预测器不可用：自身跨帧状态与当前来源记录一并重置；
-    // 下次 predict() 将视为新来源并重新初始化状态
+    // 预测器不可用（无目标）：自身跨帧状态、当前来源记录与 PowerRune 决策器一并
+    // 重置；下次 predict() 将视为新来源并重新初始化状态
     state_ = State{};
     active_source_ = PredictorSource{};
+    power_rune_selector_.reset();
 }
 
 // fast_target 帧的火控点“有目标在枪线上”判定（需求5，匀速旋转模型）。

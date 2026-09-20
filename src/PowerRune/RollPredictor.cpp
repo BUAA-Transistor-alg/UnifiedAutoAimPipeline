@@ -6,12 +6,23 @@
 #include <mutex>
 #include <ceres/ceres.h>
 
-RollPredictor::RollPredictor(float max_time_window, int min_data_points, float queue_time_threshold, int correction_window, float grid_search_interval)
-    : max_time_window_(max_time_window)
-    , queue_time_threshold_(std::min(queue_time_threshold, max_time_window))
-    , min_data_points_(min_data_points)
-    , correction_window_(std::max(1, std::min(correction_window, min_data_points)))
-    , grid_search_interval_(grid_search_interval)
+RollPredictor::RollPredictor(const Params& params)
+    : max_time_window_(params.max_time_window)
+    , queue_time_threshold_(std::min(params.queue_time_threshold, params.max_time_window))
+    , min_data_points_(params.min_data_points)
+    , big_range_strict_(params.strict)
+    , big_range_loose_(params.loose)
+    , loose_fit_(params.loose_fit)
+    , big_linear_coefficient_(params.big_linear_coefficient)
+    , big_omega_step_(params.big_omega_step)
+    , big_ot_step_(params.big_ot_step)
+    , small_slope_fixed_(params.small_slope_fixed)
+    , unwrap_threshold_rad_(params.unwrap_threshold_rad)
+    , correction_window_(std::max(1, std::min(params.correction_window, params.min_data_points)))
+    , grid_search_interval_(params.grid_search_interval)
+    , visualization_samples_(params.visualization_samples)
+    , ceres_max_iterations_(params.ceres_max_iterations)
+    , ceres_function_tolerance_(params.ceres_function_tolerance)
 {
     resetState();
 }
@@ -57,11 +68,11 @@ void RollPredictor::update(float roll_raw,
     if (!first_update_) {
         // 检测跨 ±π 边界跳变：roll 从负半周期跳到正半周期 → 逆跳
         //                       roll 从正半周期跳到负半周期 → 正跳
-        if (last_signed_roll_ < -static_cast<float>(M_PI) / 2.0f &&
-            signed_roll > static_cast<float>(M_PI) / 2.0f) {
+        if (last_signed_roll_ < -unwrap_threshold_rad_ &&
+            signed_roll > unwrap_threshold_rad_) {
             jump_count_ -= 1;
-        } else if (last_signed_roll_ > static_cast<float>(M_PI) / 2.0f &&
-                   signed_roll < -static_cast<float>(M_PI) / 2.0f) {
+        } else if (last_signed_roll_ > unwrap_threshold_rad_ &&
+                   signed_roll < -unwrap_threshold_rad_) {
             jump_count_ += 1;
         }
     } else {
@@ -136,12 +147,13 @@ float RollPredictor::predict_roll(float delta_t) const
         return (small_params_.slope * tau + correction_bias_) * static_cast<float>(direction_);
     }
 
-    // 标准模型: r_signed = -a/ω * cos(ω*(t+o_t)) + (2.090 - a)*(t+o_t)
+    // 标准模型: r_signed = -a/ω * cos(ω*(t+o_t)) + (c - a)*(t+o_t)
     // 实际输出乘以 direction_ 恢复符号
     // delta_t 可为任意实数值（正值=未来，负值=过去）
     float tau = delta_t + big_params_.o_t;
     float cos_term = -big_params_.a / big_params_.omega * std::cos(big_params_.omega * tau);
-    float linear_term = (2.090f - big_params_.a) * tau;
+    float linear_term =
+        (static_cast<float>(big_linear_coefficient_) - big_params_.a) * tau;
     return (cos_term + linear_term + correction_bias_) * static_cast<float>(direction_);
 }
 
@@ -191,8 +203,9 @@ std::unique_ptr<std::function<std::pair<cv::Vec3f, cv::Mat>(float)>> RollPredict
     float bias      = correction_bias_;
     cv::Vec3f pos   = posi_;
     cv::Mat   y_axis_R = y_axis_R_.clone();  // 深度复制旋转矩阵
+    const float lin = static_cast<float>(big_linear_coefficient_);  // BIG 线性项系数
 
-    auto func = [a, omega, ot, dir, valid, method, ot_small, slope_small, bias, pos, y_axis_R](float delta_t) -> std::pair<cv::Vec3f, cv::Mat> {
+    auto func = [a, omega, ot, dir, valid, method, ot_small, slope_small, bias, pos, y_axis_R, lin](float delta_t) -> std::pair<cv::Vec3f, cv::Mat> {
         if (!valid) {
             return {cv::Vec3f(0.0f, 0.0f, 0.0f), cv::Mat::eye(3, 3, CV_32FC1)};
         }
@@ -204,7 +217,7 @@ std::unique_ptr<std::function<std::pair<cv::Vec3f, cv::Mat>(float)>> RollPredict
             // 与 predict_roll 完全一致的逻辑
             float tau = delta_t + ot;
             float cos_term    = -a / omega * std::cos(omega * tau);
-            float linear_term = (2.090f - a) * tau;
+            float linear_term = (lin - a) * tau;
             predicted_roll = (cos_term + linear_term + bias) * static_cast<float>(dir);
         }
 
@@ -252,19 +265,21 @@ void RollPredictor::getVisualizationPoints(
 }
 
 // Ceres 残差计算仿函数（AutoDiff 自动求导）
-// 模型: r_pred = -a/ω * cos(ω*(t+o_t)) + (2.090 - a)*(t+o_t)
+// 模型: r_pred = -a/ω * cos(ω*(t+o_t)) + (c - a)*(t+o_t)   （c = big_linear_coefficient）
 // 残差: res = r_obs - r_pred
 struct RollResidual {
     double t;
     double r_obs;
+    double linear_coeff;   // BIG 模型线性项系数（配置 big_linear_coefficient）
 
-    RollResidual(double ti, double ri) : t(ti), r_obs(ri) {}
+    RollResidual(double ti, double ri, double coeff)
+        : t(ti), r_obs(ri), linear_coeff(coeff) {}
 
     template <typename T>
     bool operator()(const T* const a, const T* const omega, const T* const ot, T* residual) const {
         T tau         = T(t) + ot[0];
         T cos_term    = -a[0] / omega[0] * ceres::cos(omega[0] * tau);
-        T linear_term = (T(2.090) - a[0]) * tau;
+        T linear_term = (T(linear_coeff) - a[0]) * tau;
         residual[0]   = r_obs - (cos_term + linear_term);
         return true;
     }
@@ -306,17 +321,19 @@ void RollPredictor::performFit()
 
     // 计算 o_t 范围 + SMALL 预计算
     //
-    // BIG 模型取值范围：loose_fit_ = true 时放宽（见 config
-    // power_rune.roll_predictor.loose_fit），false 时保持原有范围。
-    const double A_MAX     = 1.045;
-    const double A_MIN     = loose_fit_ ? 0.1   : 0.780;
-    const double OMEGA_MIN = loose_fit_ ? 1.826 : 1.884;
-    const double OMEGA_MAX = loose_fit_ ? 2.058 : 2.000;
-    // BIG 模型线性项斜率为 s = 2.090 - a，用 a 的上下界推导 o_t 的搜索范围：
+    // BIG 模型取值范围：loose_fit_ = true 时用 Params::loose 一组，
+    // false 时用 Params::strict 一组（均来自 config power_rune.roll_predictor）。
+    const Params::BigRange& big_range = activeBigRange();
+    const double A_MAX     = big_range.a_max;
+    const double A_MIN     = big_range.a_min;
+    const double OMEGA_MIN = big_range.omega_min;
+    const double OMEGA_MAX = big_range.omega_max;
+    // BIG 模型线性项斜率为 s = c - a（c = big_linear_coefficient_），用 a 的上下界
+    // 推导 o_t 的搜索范围：
     //   o = r / s - t，s 越大 o 越小，故 o 的下界用 s 的上界（对应 A_MIN），
     //   o 的上界用 s 的下界（对应 A_MAX）。
-    const double SLOPE_MIN = 2.090 - A_MIN;
-    const double SLOPE_MAX = 2.090 - A_MAX;
+    const double SLOPE_MIN = big_linear_coefficient_ - A_MIN;
+    const double SLOPE_MAX = big_linear_coefficient_ - A_MAX;
     const double PERIOD_MARGIN = M_PI / OMEGA_MIN;
 
     double ot_lower = std::numeric_limits<double>::max();
@@ -334,22 +351,22 @@ void RollPredictor::performFit()
     ot_lower -= PERIOD_MARGIN;
     ot_upper += PERIOD_MARGIN;
 
-    constexpr double OMEGA_STEP = 0.005;
-    constexpr double OT_STEP    = 0.05;
+    // 网格搜索步长（配置）
+    const double OMEGA_STEP = big_omega_step_;
+    const double OT_STEP    = big_ot_step_;
 
     // ============================================================
     // 2. SMALL 模型（总是计算，代价极低）
     // ============================================================
     const double small_mean_t = small_sum_t / static_cast<double>(N);
     const double small_mean_r = small_sum_r / static_cast<double>(N);
-    const double PI_OVER_3    = M_PI / 3.0;
 
-    // 斜率固定 π/3 时的闭式解（loose_fit_ = false，或退化时回退使用）
+    // 斜率固定 small_slope_fixed_ 时的闭式解（loose_fit_ = false，或退化时回退使用）
     auto small_ot_fixed_slope = [&]() {
-        return (3.0 / M_PI) * small_mean_r - small_mean_t;
+        return (1.0 / small_slope_fixed_) * small_mean_r - small_mean_t;
     };
 
-    double small_slope = PI_OVER_3;
+    double small_slope = small_slope_fixed_;
     double small_o_t   = 0.0;
     if (loose_fit_) {
         // 同时拟合斜率 k 与截距 c：r = k*t + c = k*(t + c/k)，故 o_t = c/k。
@@ -430,7 +447,7 @@ void RollPredictor::performFit()
             for (size_t i = 0; i < N; ++i) {
                 const double tau = t_values[i] + ot;
                 const double fi  = -std::cos(omega * tau) / omega - tau;
-                const double yi  = r_values[i] - 2.090 * tau;
+                const double yi  = r_values[i] - big_linear_coefficient_ * tau;
                 sum_fy += fi * yi;
                 sum_ff += fi * fi;
             }
@@ -444,7 +461,7 @@ void RollPredictor::performFit()
             for (size_t i = 0; i < N; ++i) {
                 const double tau = t_values[i] + ot;
                 const double r_pred = -a / omega * std::cos(omega * tau)
-                                    + (2.090 - a) * tau;
+                                    + (big_linear_coefficient_ - a) * tau;
                 const double err = r_values[i] - r_pred;
                 sum_sq += err * err;
             }
@@ -488,7 +505,7 @@ void RollPredictor::performFit()
             for (size_t i = 0; i < N; ++i) {
                 problem.AddResidualBlock(
                     new ceres::AutoDiffCostFunction<RollResidual, 1, 1, 1, 1>(
-                        new RollResidual(t_values[i], r_values[i])),
+                        new RollResidual(t_values[i], r_values[i], big_linear_coefficient_)),
                     nullptr, &a_ref, &omega_ref, &ot_ref);
             }
             problem.SetParameterLowerBound(&a_ref, 0, A_MIN);
@@ -501,8 +518,8 @@ void RollPredictor::performFit()
             ceres::Solver::Options options;
             options.linear_solver_type          = ceres::DENSE_QR;
             options.minimizer_progress_to_stdout = false;
-            options.max_num_iterations          = 50;
-            options.function_tolerance          = 1e-6;
+            options.max_num_iterations          = ceres_max_iterations_;
+            options.function_tolerance          = ceres_function_tolerance_;
 
             ceres::Solver::Summary summary;
             ceres::Solve(options, &problem, &summary);
@@ -523,7 +540,7 @@ void RollPredictor::performFit()
                 const double tau = t_values[i] + big_final_ot;
                 const double r_pred = -big_final_a / big_final_omega
                                     * std::cos(big_final_omega * tau)
-                                    + (2.090 - big_final_a) * tau;
+                                    + (big_linear_coefficient_ - big_final_a) * tau;
                 const double err = r_values[i] - r_pred;
                 sum_sq += err * err;
             }
@@ -555,7 +572,7 @@ void RollPredictor::performFit()
         for (size_t i = 0; i < N; ++i) {
             problem.AddResidualBlock(
                 new ceres::AutoDiffCostFunction<RollResidual, 1, 1, 1, 1>(
-                    new RollResidual(t_values[i], r_values[i])),
+                    new RollResidual(t_values[i], r_values[i], big_linear_coefficient_)),
                 nullptr, &a_ref, &omega_ref, &ot_ref);
         }
         // a / omega 保持全局范围限位；o_t 不给约束（无界）
@@ -568,8 +585,8 @@ void RollPredictor::performFit()
         ceres::Solver::Options options;
         options.linear_solver_type          = ceres::DENSE_QR;
         options.minimizer_progress_to_stdout = false;
-        options.max_num_iterations          = 50;
-        options.function_tolerance          = 1e-6;
+        options.max_num_iterations          = ceres_max_iterations_;
+        options.function_tolerance          = ceres_function_tolerance_;
 
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);
@@ -592,7 +609,7 @@ void RollPredictor::performFit()
             const double tau = t_values[i] + big_final_ot;
             const double r_pred = -big_final_a / big_final_omega
                                 * std::cos(big_final_omega * tau)
-                                + (2.090 - big_final_a) * tau;
+                                + (big_linear_coefficient_ - big_final_a) * tau;
             const double err = r_values[i] - r_pred;
             sum_sq += err * err;
         }
@@ -607,7 +624,7 @@ void RollPredictor::performFit()
         fit_method_         = FitMethod::SMALL;
         // 非宽松时写回固定的 π/3（float 表达，与旧实现一致）
         small_params_.slope = loose_fit_ ? static_cast<float>(small_slope)
-                                            : kSmallSlopeFixed;
+                                            : static_cast<float>(small_slope_fixed_);
         small_params_.o_t   = static_cast<float>(small_o_t);
         fit_valid_          = true;
     } else {
@@ -633,7 +650,7 @@ void RollPredictor::performFit()
         } else {
             const double tau = t_values[i] + big_params_.o_t;
             pred = -big_params_.a / big_params_.omega * std::cos(big_params_.omega * tau)
-                 + (2.090 - big_params_.a) * tau;
+                 + (big_linear_coefficient_ - big_params_.a) * tau;
         }
         biases.push_back(r_values[i] - pred);
     }

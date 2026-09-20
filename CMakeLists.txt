@@ -135,6 +135,7 @@ set(POWER_RUNE_SOURCES
     src/PowerRune/YAxisFilter.cpp
     src/PowerRune/RollPredictor.cpp
     src/PowerRune/TargetPositionCalculator.cpp
+    src/PowerRune/PredictedPointSelector.cpp
     src/PowerRune/PowerRunePoseSolver.cpp
     src/PowerRune/PowerRuneInfer.cpp
     src/PowerRune/PowerRuneVisualizer.cpp

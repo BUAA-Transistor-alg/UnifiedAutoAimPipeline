@@ -326,10 +326,79 @@ power_rune:
                            #   须 ≤ inference.max_batch，且 ≤ 共享内存容量 4）
     postprocess_batch: 4   # 阶段3 后处理最大批量
 
-  # ── RollPredictor 拟合参数（power_rune.roll_predictor）──
-  # loose_fit = true : SMALL 模型同时最小二乘拟合斜率（不再固定 π/3）；
-  #                       BIG 模型放宽参数范围：a ∈ [0.1, 1.045]、ω ∈ [1.826, 2.058]。
-  # loose_fit = false: 保持原有逻辑：SMALL 固定斜率 π/3，
-  #                       BIG 模型 a ∈ [0.780, 1.045]、ω ∈ [1.884, 2.000]。
+  # ── 第一级滤波 YAxisFilter（power_rune.y_axis_filter）──
+  # 全部参数在此配置，代码内无默认值（缺失/非法则启动报错）。
+  #   alpha_*          ：轴倾斜 / 绕轴自旋 / 位置 / 角速度 与正则化增益；
+  #   jump_angle_threshold_rad ：预测与观测姿态绕 Y 轴最小夹角超过该值（或本帧非连续）
+  #                              即触发特殊预测（±2π/5 整数倍偏移搜索，旧式为 π/5）；
+  #   special_search_range / special_search_range_with_predictor ：
+  #                      特殊预测偏移系数 a 的搜索半范围（基准分别为正常预测姿态 /
+  #                      RollPredictor 预测姿态）；
+  #   anomaly_abs_limit ：输入/状态分量绝对值上限（NaN/±inf 同样视为异常）；
+  #   pos_xy_radius_m / pos_z_half_range_m ：位置坐标限位（相对当帧底盘 world 位置，
+  #                      0 = 关闭限位）。
+  y_axis_filter:
+    alpha_slow: 0.05                 # 轴倾斜（垂直方向）增益
+    alpha_fast: 1.0                  # 绕轴自旋（平行方向）增益
+    alpha_pos: 0.05                  # 位置更新增益
+    alpha_omega: 0.05                # 角速度更新增益
+    alpha_reg: 1.0                   # 正则化增益（0 = 禁用）
+    jump_angle_threshold_rad: 0.6283185307179586   # 跳变判定阈值（弧度，π/5）
+    special_search_range: 1                         # 正常预测基准下的偏移搜索半范围
+    special_search_range_with_predictor: 2          # RollPredictor 预测基准下的半范围
+    anomaly_abs_limit: 1000000.0     # 异常值绝对值上限
+    pos_xy_radius_m: 16.0            # xy 限位圆半径（米，0 = 关闭）
+    pos_z_half_range_m: 5.0          # z 相对底盘高度的半范围（米，0 = 关闭）
+
+  # ── 第二级拟合预测 RollPredictor（power_rune.roll_predictor）──
+  # 模型：BIG   r(t) = sign·(-a/ω·cos(ω(t+o_t)) + (big_linear_coefficient - a)(t+o_t))
+  #       SMALL r(t) = sign·k(t+o_t)
+  #   loose_fit = true : SMALL 一并最小二乘拟合斜率（不再固定 small_slope_fixed）；
+  #                      BIG 使用 loose 一组参数范围；
+  #   loose_fit = false: SMALL 固定斜率 small_slope_fixed；BIG 使用 strict 一组范围。
+  # 全部参数在此配置，代码内无默认值。
   roll_predictor:
     loose_fit: false
+    max_time_window_s: 5.0          # 队列中数据的最长保留时间（秒）
+    min_data_points: 20             # 进行拟合所需的最小数据点数
+    queue_time_threshold_s: 1.0     # 队列时间跨度最小阈值（秒）
+    correction_window: 5            # 修正偏置所用的最新数据点数
+    grid_search_interval_s: 0.5     # 两次完整网格搜索的最小间隔（秒，≤0 = 每帧搜索）
+    visualization_samples: 200      # 可视化拟合曲线采样点数（仅影响绘图）
+    ceres_max_iterations: 50        # Ceres 精化最大迭代次数
+    ceres_function_tolerance: 1.0e-6 # Ceres 收敛的残差变化容差
+    big_linear_coefficient: 2.090   # BIG 模型线性项系数（旧实现中的 2.090）
+    big_omega_step: 0.005           # BIG 网格搜索 ω 步长
+    big_ot_step: 0.05               # BIG 网格搜索 o_t 步长
+    small_slope_fixed: 1.0471975511965976    # SMALL 固定斜率（π/3，loose_fit=false 时使用）
+    unwrap_threshold_rad: 1.5707963267948966 # 相位连续化跨 ±π 判定的半周期阈值（弧度，π/2）
+    strict:                         # loose_fit = false 时使用
+      a_min: 0.780
+      a_max: 1.045
+      omega_min: 1.884
+      omega_max: 2.000
+    loose:                          # loose_fit = true 时使用
+      a_min: 0.1
+      a_max: 1.045
+      omega_min: 1.826
+      omega_max: 2.058
+
+  # ── 级联阈值（power_rune.cascade）──
+  # 连接两级滤波/预测与上游位姿观测的阈值（原先硬编码在流水线内）。
+  cascade:
+    continuity_threshold_s: 0.1     # 帧间 dt 小于该值视为连续帧
+    roll_rmse_gate: 0.3             # RollPredictor 预测矩阵可用于特殊预测的 RMSE 门限
+    reset_timeout_s: 3.0            # 连续无有效观测超过该秒数则重置两级滤波/预测器
+
+  # ── 预测点选取决策器（power_rune.target_selection）──
+  # 靶点预测恒输出全部 5 个靶点（列表下标 = 旋转计数），本帧不存在的靶点被 mask。
+  # PredictedPointSelector 为每个靶点维护状态机：
+  #   未被观测 --(未被 mask)--> 观测建立中 --(连续 establish_duration_s)--> 已观测到
+  #   已观测到 --(被 mask)--> 临时丢失 --(连续 lost_timeout_s 被 mask)--> 未被观测；
+  #   临时丢失重新变为未被 mask 时直接回到已观测到（不重新计时）。
+  #   特殊规则：未被 mask 的已观测点达到 2 个及以上时，被 mask 的临时丢失点立即
+  #   回到未被观测。候选 = 已观测到 ∪ 临时丢失；优先粘滞上一次选中的目标，否则取
+  #   候选中预测高度最低者。
+  target_selection:
+    establish_duration_s: 0.1   # a：由“观测建立中”转为“已观测到”所需连续未被 mask 的秒数
+    lost_timeout_s: 0.3         # b：由“临时丢失”转回“未被观测”所需连续被 mask 的秒数

@@ -5,40 +5,41 @@
 
 namespace {
 
-// 异常值判定：NaN、±inf、或绝对值超过上限（1e6）
-bool isAnomalous(float v)
+// 异常值判定：NaN、±inf、或绝对值超过上限（limit 来自配置）
+bool isAnomalous(float v, float limit)
 {
-    return std::isnan(v) || std::isinf(v) || std::fabs(v) > YAxisFilter::kAnomalyAbsLimit;
+    return std::isnan(v) || std::isinf(v) || std::fabs(v) > limit;
 }
 
 // 位置是否含异常分量
-bool positionAnomalous(const cv::Vec3f& p)
+bool positionAnomalous(const cv::Vec3f& p, float limit)
 {
     for (int i = 0; i < 3; ++i) {
-        if (isAnomalous(p[i])) return true;
+        if (isAnomalous(p[i], limit)) return true;
     }
     return false;
 }
 
 // 旋转矩阵是否异常（空矩阵 / 尺寸或类型不符 / 含异常元素都视为异常）
-bool rotationAnomalous(const cv::Mat& R)
+bool rotationAnomalous(const cv::Mat& R, float limit)
 {
     if (R.empty() || R.rows != 3 || R.cols != 3 || R.type() != CV_32F) return true;
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
-            if (isAnomalous(R.at<float>(i, j))) return true;
+            if (isAnomalous(R.at<float>(i, j), limit)) return true;
         }
     }
     return false;
 }
 
 // 滤波输出状态是否异常（滤波位置 / 角速度 / 姿态四元数）
-bool stateAnomalous(const cv::Vec3f& p_est, const Eigen::Quaternionf& q_est, float omega_est)
+bool stateAnomalous(const cv::Vec3f& p_est, const Eigen::Quaternionf& q_est, float omega_est,
+                    float limit)
 {
-    if (positionAnomalous(p_est)) return true;
-    if (isAnomalous(omega_est)) return true;
+    if (positionAnomalous(p_est, limit)) return true;
+    if (isAnomalous(omega_est, limit)) return true;
     for (int i = 0; i < 4; ++i) {
-        if (isAnomalous(q_est.coeffs()[i])) return true;
+        if (isAnomalous(q_est.coeffs()[i], limit)) return true;
     }
     return false;
 }
@@ -68,9 +69,15 @@ cv::Mat YAxisFilter::quaternionToMat(const Eigen::Quaternionf& q)
     return R;
 }
 
-// 构造函数
-YAxisFilter::YAxisFilter(float alpha_slow, float alpha_fast, float alpha_pos, float alpha_omega, float alpha_reg)
-    : alpha_slow_(alpha_slow), alpha_fast_(alpha_fast), alpha_pos_(alpha_pos), alpha_omega_(alpha_omega), alpha_reg_(alpha_reg)
+// 构造函数（全部参数来自配置，见 YAxisFilter::Params）
+YAxisFilter::YAxisFilter(const Params& params)
+    : alpha_slow_(params.alpha_slow), alpha_fast_(params.alpha_fast),
+      alpha_pos_(params.alpha_pos), alpha_omega_(params.alpha_omega),
+      alpha_reg_(params.alpha_reg),
+      jump_angle_threshold_rad_(params.jump_angle_threshold_rad),
+      special_search_range_(params.special_search_range),
+      special_search_range_with_predictor_(params.special_search_range_with_predictor),
+      anomaly_abs_limit_(params.anomaly_abs_limit)
 {
     resetState();
 }
@@ -247,7 +254,7 @@ std::pair<Eigen::Quaternionf, int> YAxisFilter::specialPrediction(
 
 // 核心更新（带角速度预测-校正与五边形对称跳变检测，自动初始化）
 // 返回 UpdateResult：
-//  - INPUT_INVALID_SKIPPED：输入含异常值（NaN/inf/绝对值>kAnomalyAbsLimit），
+//  - INPUT_INVALID_SKIPPED：输入含异常值（NaN/inf/绝对值>anomaly_abs_limit），
 //    本帧被跳过（等同该帧未识别到物体），内部状态保持不变；
 //  - OUTPUT_INVALID_RESET ：更新后输出状态出现异常值，已立即自动重置，
 //    调用方不应把本帧输出送入下一级滤波。
@@ -258,8 +265,9 @@ YAxisFilter::UpdateResult YAxisFilter::update(
     const cv::Mat& roll_predictor_R)
 {
     // ====== 输入异常检测：观测位置 / 旋转含 NaN、±inf 或绝对值超过
-    //       kAnomalyAbsLimit 的分量时，跳过本输入（等同该帧未识别到物体）======
-    if (positionAnomalous(obs_pos) || rotationAnomalous(obs_rot)) {
+    //       anomaly_abs_limit 的分量时，跳过本输入（等同该帧未识别到物体）======
+    if (positionAnomalous(obs_pos, anomaly_abs_limit_) ||
+        rotationAnomalous(obs_rot, anomaly_abs_limit_)) {
         return UpdateResult::INPUT_INVALID_SKIPPED;
     }
 
@@ -271,7 +279,7 @@ YAxisFilter::UpdateResult YAxisFilter::update(
         inited_ = true;
         last_timestamp_ = frame_timestamp;
         // 初始化后同样做一次输出异常检测（防御退化输入，如全零旋转矩阵）
-        if (stateAnomalous(p_est_, q_est_, omega_est_)) {
+        if (stateAnomalous(p_est_, q_est_, omega_est_, anomaly_abs_limit_)) {
             resetState();
             return UpdateResult::OUTPUT_INVALID_RESET;
         }
@@ -346,15 +354,15 @@ YAxisFilter::UpdateResult YAxisFilter::update(
         Eigen::Matrix3f R3_mat = q_R3.toRotationMatrix();
         float min_angle = minAngleDuringRotation(R1, R2_mat, R3_mat);
 
-        if ((min_angle > static_cast<float>(M_PI) / 5.0f) || (!is_continuous)) {
+        if ((min_angle > jump_angle_threshold_rad_) || (!is_continuous)) {
             // 特殊预测：确定基准旋转和 a 搜索范围，尝试 ±2π/5 偏移选最接近 R3 的候选
             Eigen::Quaternionf q_base;
-            int a_range = 1;
+            int a_range = special_search_range_;
             // 优先使用 RollPredictor 的预测旋转矩阵（使用前同样做异常检测，
             // 异常时退化为正常预测 R2），否则退化为正常预测 R2
             if ((!is_continuous) && (!roll_predictor_R.empty()) &&
-                (!rotationAnomalous(roll_predictor_R))) {
-                a_range = 2;
+                (!rotationAnomalous(roll_predictor_R, anomaly_abs_limit_))) {
+                a_range = special_search_range_with_predictor_;
                 q_base = disapplyJumpCorrection(matToQuaternion(roll_predictor_R));
             } else {
                 q_base = rotateAroundLocalY(q_R1, omega_est_ * dt);
@@ -442,9 +450,9 @@ YAxisFilter::UpdateResult YAxisFilter::update(
     p_est_ = clampPositionToLimits(p_est_);
 
     // ====== 输出异常检测：更新后状态（滤波位置 / 姿态 / 角速度）出现 NaN、±inf
-    //       或绝对值超过 kAnomalyAbsLimit 的分量时，立即自动重置，保证异常值
+    //       或绝对值超过 anomaly_abs_limit 的分量时，立即自动重置，保证异常值
     //       不会继续污染状态，也不会经本帧输出流入下一级滤波 ======
-    if (stateAnomalous(p_est_, q_est_, omega_est_)) {
+    if (stateAnomalous(p_est_, q_est_, omega_est_, anomaly_abs_limit_)) {
         resetState();
         return UpdateResult::OUTPUT_INVALID_RESET;
     }

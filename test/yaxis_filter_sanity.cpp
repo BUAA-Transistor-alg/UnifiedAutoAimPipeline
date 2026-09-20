@@ -20,8 +20,20 @@ static int failures = 0;
 int main()
 {
     using namespace std::chrono;
-    // ---- 构造：alpha_pos=1 便于一步到位观察坐标限位 ----
-    YAxisFilter f(0.05f, 1.0f, 1.0f, 0.05f, 0.0f);
+    // 全部参数显式给出（滤波器不再有默认值）：
+    //   alpha_pos=1 便于一步到位观察坐标限位；alpha_reg=0 关闭正则化。
+    //   跳变阈值取 π/5、搜索半范围与异常上限等按实际配置取值。
+    YAxisFilter::Params params{};
+    params.alpha_slow  = 0.05f;
+    params.alpha_fast  = 1.0f;
+    params.alpha_pos   = 1.0f;
+    params.alpha_omega = 0.05f;
+    params.alpha_reg   = 0.0f;
+    params.jump_angle_threshold_rad = static_cast<float>(M_PI) / 5.0f;
+    params.special_search_range = 1;
+    params.special_search_range_with_predictor = 2;
+    params.anomaly_abs_limit = 1e6f;
+    YAxisFilter f(params);
     cv::Vec3f center(1.0f, 2.0f, 0.5f);   // 模拟 chassis 在 world 系下的位置
     f.setPositionLimits(center, 16.0f, 5.0f);
 
@@ -93,7 +105,7 @@ int main()
     }
 
     // 8. disablePositionLimits 后不再钳制
-    YAxisFilter g(0.05f, 1.0f, 1.0f, 0.05f, 0.0f);   // alpha_pos=1
+    YAxisFilter g(params);   // alpha_pos=1
     g.setPositionLimits(center, 16.0f, 5.0f);
     auto tt = Clock::now();
     g.update(cv::Vec3f(0.f, 0.f, 0.f), I3(), tt, true);

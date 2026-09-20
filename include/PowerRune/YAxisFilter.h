@@ -22,7 +22,7 @@
  * 自动执行特殊预测：在正常预测基础上尝试 ±2π/5 偏移，选择最接近观测的候选姿态。
  *
  * 异常值防护（见 update() 返回值 UpdateResult）：
- *  - 输入含 NaN / ±inf / 绝对值超过 kAnomalyAbsLimit 的异常值时，跳过该输入
+ *  - 输入含 NaN / ±inf / 绝对值超过 anomaly_abs_limit 的异常值时，跳过该输入
  *    （等同该帧未识别到物体），内部状态保持不变；
  *  - 更新后输出状态出现异常值时立即自动重置，异常值不会流出到下一级滤波。
  * 可选位置坐标限位（setPositionLimits）：把滤波位置 xy 限制在以 chassis 系原点在
@@ -31,33 +31,46 @@
 class YAxisFilter
 {
 public:
-    /// 异常值判定阈值：任何输入/状态分量的绝对值超过该值即视为异常（NaN/±inf 同理）
-    static constexpr float kAnomalyAbsLimit = 1e6f;
-
     /**
      * @brief update() 的更新结果状态
      */
     enum class UpdateResult {
         NORMAL,                 ///< 本帧正常处理：状态已推进
-        INPUT_INVALID_SKIPPED,  ///< 输入含异常值（NaN/inf/绝对值>kAnomalyAbsLimit），
+        INPUT_INVALID_SKIPPED,  ///< 输入含异常值（NaN/inf/绝对值>anomaly_abs_limit），
                                 ///< 本帧被跳过（等同该帧未识别到物体），内部状态保持不变
         OUTPUT_INVALID_RESET    ///< 更新后输出状态出现异常值，已立即自动重置
                                 ///< （状态回到未初始化；调用方不应把本帧输出送入下一级滤波）
     };
 
     /**
-     * @brief 构造函数
-     * @param alpha_slow   轴倾斜（垂直方向）的增益，推荐 0.01~0.05，越小越平滑
-     * @param alpha_fast   绕轴自旋（平行方向）的增益，推荐 1.0，实现快速响应
-     * @param alpha_pos    位置更新增益，推荐 0.01~0.05，越小越平滑
-     * @param alpha_omega  角速度更新的增益，推荐 0.01~0.1，越小越平滑
-     * @param alpha_reg    正则化增益，促使局部Y轴平行于全局XY平面，0 表示禁用
+     * @brief 全部可调参数（取自 config power_rune.y_axis_filter）。
+     *
+     * 本结构**不提供默认值**：所有字段必须由调用方完整填写（RobotConfig 已保证配置项
+     * 存在且合法）。滤波器内部不再保留任何硬编码的默认参数。
+     *
+     * ⚠ 新增/删除字段时必须同步更新 PowerRunePipeline 的 makeYAxisFilterParams()。
      */
-    YAxisFilter(float alpha_slow  = 0.05f,
-                float alpha_fast  = 1.0f,
-                float alpha_pos   = 0.05f,
-                float alpha_omega = 0.05f,
-                float alpha_reg   = 1.0f);
+    struct Params {
+        float alpha_slow;   // 轴倾斜（垂直方向）的增益，推荐 0.01~0.05，越小越平滑
+        float alpha_fast;   // 绕轴自旋（平行方向）的增益，推荐 1.0，实现快速响应
+        float alpha_pos;    // 位置更新增益，推荐 0.01~0.05，越小越平滑
+        float alpha_omega;  // 角速度更新的增益，推荐 0.01~0.1，越小越平滑
+        float alpha_reg;    // 正则化增益，促使局部Y轴平行于全局XY平面，0 表示禁用
+        // 跳变判定阈值（弧度）：预测姿态与正常更新姿态之间绕 Y 轴的最小夹角超过该值
+        // （或本帧非连续）时触发特殊预测（±2π/5 整数倍偏移搜索）。
+        float jump_angle_threshold_rad;
+        // 特殊预测的偏移系数 a 搜索半范围：a ∈ {-range, ..., +range}。
+        // 基准为“正常预测姿态”与“RollPredictor 预测姿态”时各用一份。
+        int   special_search_range;
+        int   special_search_range_with_predictor;
+        // 异常值判定阈值：任何输入/状态分量的绝对值超过该值即视为异常（NaN/±inf 同理）
+        float anomaly_abs_limit;
+    };
+
+    /**
+     * @brief 构造函数（参数全部来自配置，无默认值）
+     */
+    explicit YAxisFilter(const Params& params);
 
     /**
      * @brief 配置位置坐标限位（相对 chassis 系原点在 world 系下的坐标）：
@@ -82,7 +95,7 @@ public:
      *        输入观测值和时间戳，内部自动计算时间步长 dt。
      *
      * 异常值处理：
-     *  - 输入异常（观测位置/旋转含 NaN、±inf 或绝对值超过 kAnomalyAbsLimit 的分量）时，
+     *  - 输入异常（观测位置/旋转含 NaN、±inf 或绝对值超过 anomaly_abs_limit 的分量）时，
      *    本帧被跳过（返回 INPUT_INVALID_SKIPPED，等同该帧未识别到物体），内部状态保持不变；
      *  - 更新完成后若发现输出状态（滤波位置/姿态/角速度）出现异常值，立即自动重置
      *    滤波器并返回 OUTPUT_INVALID_RESET，调用方不应把本帧输出送入下一级滤波。
@@ -226,12 +239,17 @@ private:
     float     xy_radius_      = 0.0f;  // xy 限位圆半径（米）
     float     z_half_range_   = 0.0f;  // z 相对 pos_center_.z 的半范围（米）
 
-    // 增益参数
+    // 增益参数（构造时从 Params 读入）
     float alpha_slow_;
     float alpha_fast_;
     float alpha_pos_;
     float alpha_omega_;
     float alpha_reg_;
+    // 特殊预测 / 异常判定的阈值（构造时从 Params 读入）
+    float jump_angle_threshold_rad_;           // 触发特殊预测的最小夹角（弧度）
+    int   special_search_range_;               // 正常预测基准下的偏移搜索半范围
+    int   special_search_range_with_predictor_;  // RollPredictor 预测基准下的半范围
+    float anomaly_abs_limit_;                  // 异常值绝对值上限
 };
 
 #endif // Y_AXIS_FILTER_H

@@ -454,16 +454,71 @@ public:
         int         shmKey;         // 共享内存 Key（推理进程通信，见 InferShm.h）
         PipelineParams pipeline;    // 缓冲队列长度 + 可批处理阶段批量
 
-        // RollPredictor（阶段5）拟合参数（config: power_rune.roll_predictor）
-        // 控制 RollPredictor 的模型拟合是否启用“宽松”参数：
-        //   true : SMALL 模型同时最小二乘拟合斜率（不再固定 π/3）；
-        //          BIG 模型放宽参数范围：a ∈ [0.1, 1.045]、ω ∈ [1.826, 2.058]；
-        //   false: 保持原有逻辑：SMALL 固定斜率 π/3，
-        //          BIG 模型 a ∈ [0.780, 1.045]、ω ∈ [1.884, 2.000]。
+        // ── 第一级滤波 YAxisFilter（config: power_rune.y_axis_filter）──
+        // 全部可调参数都由配置提供：类内不保留任何默认值（构造必须传 Params）。
+        struct YAxisFilterParams {
+            double alphaSlow;  // 轴倾斜（垂直方向）增益，推荐 0.01~0.05
+            double alphaFast;  // 绕轴自旋（平行方向）增益，推荐 1.0
+            double alphaPos;   // 位置更新增益，推荐 0.01~0.05
+            double alphaOmega; // 角速度更新增益，推荐 0.01~0.1
+            double alphaReg;   // 正则化增益（0 = 禁用）
+            double jumpAngleThresholdRad;            // 跳变判定阈值（弧度）
+            int    specialSearchRange;               // 特殊预测偏移搜索半范围（正常预测基准）
+            int    specialSearchRangeWithPredictor;  // 以 RollPredictor 预测矩阵为基准时的搜索半范围
+            double anomalyAbsLimit;                  // 异常值绝对值上限（NaN/±inf 同理视为异常）
+            double posXyRadiusM;                     // 位置限位 xy 圆半径（米，>0 启用）
+            double posZHalfRangeM;                   // 位置限位 z 半范围（米，>0 启用）
+        };
+        YAxisFilterParams yAxisFilter;
+
+        // ── 第二级拟合预测 RollPredictor（config: power_rune.roll_predictor）──
+        // 模型：BIG = r(t) = sign·(-a/ω·cos(ω(t+o_t)) + (c_lin - a)(t+o_t))，
+        //       SMALL = sign·k(t+o_t)。
+        // loose_fit = true 时 SMALL 一并最小二乘拟合斜率（不再固定 small_slope_fixed），
+        // BIG 改用 loose 一组参数范围；false 时用 strict 一组。两套范围都写在本段。
+        struct BigRangeParams {
+            double aMin;      // config: a_min
+            double aMax;      // config: a_max
+            double omegaMin;  // config: omega_min
+            double omegaMax;  // config: omega_max
+        };
         struct RollPredictorParams {
-            bool looseFit;   // config: loose_fit
+            bool   looseFit;            // config: loose_fit
+            double maxTimeWindowSec;    // 队列最长保留时间（秒）
+            int    minDataPoints;       // 拟合所需最小数据点数
+            double queueTimeThresholdSec;  // 队列时间跨度最小阈值（秒）
+            int    correctionWindow;    // 修正偏置所用的最新数据点数
+            double gridSearchIntervalSec;  // 两次完整网格搜索的最小间隔（秒，≤0 每帧搜索）
+            int    visualizationSamples;   // 可视化拟合曲线的采样点数（仅影响绘图）
+            int    ceresMaxIterations;     // Ceres 精化最大迭代次数
+            double ceresFunctionTolerance; // Ceres 收敛的残差变化容差
+            double bigLinearCoefficient;   // BIG 模型线性项系数（旧式中的 2.090）
+            double bigOmegaStep;        // BIG 网格搜索 ω 步长
+            double bigOtStep;           // BIG 网格搜索 o_t 步长
+            double smallSlopeFixed;     // SMALL 固定斜率（不拟合时使用，旧式为 π/3）
+            double unwrapThresholdRad;  // 相位连续化跨 ±π 跳变判定的半周期阈值（弧度）
+            BigRangeParams strict;      // loose_fit = false 时使用
+            BigRangeParams loose;       // loose_fit = true 时使用
         };
         RollPredictorParams rollPredictor;
+
+        // ── 级联阈值（config: power_rune.cascade）──
+        // 连接两级滤波/预测与上一级位姿的阈值，原先硬编码在流水线内。
+        struct CascadeParams {
+            double continuityThresholdSec;  // 帧间 dt 小于该值视为连续帧
+            double rollRmseGate;            // RollPredictor 预测矩阵可用于特殊预测的 RMSE 门限
+            double resetTimeoutSec;         // 连续无有效观测超过该秒数则重置两级滤波/预测器
+        };
+        CascadeParams cascade;
+
+        // 预测点选取决策器（PredictedPointSelector，config: power_rune.target_selection）
+        // 为每个靶点维护“未被观测 → 观测建立中 → 已观测到 → 临时丢失 → 未被观测”
+        // 状态机；两个计时状态的阈值均在此配置。
+        struct TargetSelectionParams {
+            double establishDurationSec;  // a：ESTABLISHING → OBSERVED 需连续未被 mask 的秒数
+            double lostTimeoutSec;        // b：TEMPORARILY_LOST → UNOBSERVED 需连续被 mask 的秒数
+        };
+        TargetSelectionParams targetSelection;
     };
 
     // 共用参数（两个流水线共享）

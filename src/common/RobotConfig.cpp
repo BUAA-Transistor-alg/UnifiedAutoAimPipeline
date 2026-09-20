@@ -791,12 +791,133 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (!prpipe || !prpipe.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'power_rune.pipeline' 配置段");
     parsePipelineParams(prpipe, "power_rune.pipeline", cfg.powerRune.maxBatch, cfg.powerRune.pipeline);
 
-    // ── power_rune.roll_predictor（RollPredictor 拟合开关）──
+    // ── power_rune.y_axis_filter（第一级滤波 YAxisFilter 全部参数）──
+    const YAML::Node& pryl = pr["y_axis_filter"];
+    if (!pryl || !pryl.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'power_rune.y_axis_filter' 配置段");
+    {
+        RobotConfig::PowerRuneParams::YAxisFilterParams& y = cfg.powerRune.yAxisFilter;
+        const std::string S = "power_rune.y_axis_filter";
+        y.alphaSlow  = requireScalar<double>(pryl, "alpha_slow", S);
+        y.alphaFast  = requireScalar<double>(pryl, "alpha_fast", S);
+        y.alphaPos   = requireScalar<double>(pryl, "alpha_pos", S);
+        y.alphaOmega = requireScalar<double>(pryl, "alpha_omega", S);
+        y.alphaReg   = requireScalar<double>(pryl, "alpha_reg", S);
+        y.jumpAngleThresholdRad =
+            requireScalar<double>(pryl, "jump_angle_threshold_rad", S);
+        y.specialSearchRange = requireScalar<int>(pryl, "special_search_range", S);
+        y.specialSearchRangeWithPredictor =
+            requireScalar<int>(pryl, "special_search_range_with_predictor", S);
+        y.anomalyAbsLimit = requireScalar<double>(pryl, "anomaly_abs_limit", S);
+        y.posXyRadiusM    = requireScalar<double>(pryl, "pos_xy_radius_m", S);
+        y.posZHalfRangeM  = requireScalar<double>(pryl, "pos_z_half_range_m", S);
+        if (y.alphaSlow < 0.0 || y.alphaFast < 0.0 || y.alphaPos < 0.0 ||
+            y.alphaOmega < 0.0 || y.alphaReg < 0.0 ||
+            y.jumpAngleThresholdRad <= 0.0 || y.anomalyAbsLimit <= 0.0 ||
+            y.specialSearchRange < 0 || y.specialSearchRangeWithPredictor < 0 ||
+            y.posXyRadiusM < 0.0 || y.posZHalfRangeM < 0.0) {
+            throw std::runtime_error("RobotConfig: power_rune.y_axis_filter 取值非法："
+                                     "增益/半径必须 >= 0，jump_angle_threshold_rad 与 "
+                                     "anomaly_abs_limit 必须 > 0，搜索半范围必须 >= 0");
+        }
+    }
+
+    // ── power_rune.roll_predictor（第二级拟合预测 RollPredictor 全部参数）──
     const YAML::Node& prrp = pr["roll_predictor"];
     if (!prrp || !prrp.IsMap())
         throw std::runtime_error("RobotConfig: 缺少 'power_rune.roll_predictor' 配置段");
-    cfg.powerRune.rollPredictor.looseFit =
-        requireScalar<bool>(prrp, "loose_fit", "power_rune.roll_predictor");
+    {
+        RobotConfig::PowerRuneParams::RollPredictorParams& r = cfg.powerRune.rollPredictor;
+        const std::string S = "power_rune.roll_predictor";
+        r.looseFit = requireScalar<bool>(prrp, "loose_fit", S);
+        r.maxTimeWindowSec = requireScalar<double>(prrp, "max_time_window_s", S);
+        r.minDataPoints    = requireScalar<int>(prrp, "min_data_points", S);
+        r.queueTimeThresholdSec =
+            requireScalar<double>(prrp, "queue_time_threshold_s", S);
+        r.correctionWindow = requireScalar<int>(prrp, "correction_window", S);
+        r.gridSearchIntervalSec =
+            requireScalar<double>(prrp, "grid_search_interval_s", S);
+        r.visualizationSamples = requireScalar<int>(prrp, "visualization_samples", S);
+        r.ceresMaxIterations = requireScalar<int>(prrp, "ceres_max_iterations", S);
+        r.ceresFunctionTolerance =
+            requireScalar<double>(prrp, "ceres_function_tolerance", S);
+        r.bigLinearCoefficient = requireScalar<double>(prrp, "big_linear_coefficient", S);
+        r.bigOmegaStep  = requireScalar<double>(prrp, "big_omega_step", S);
+        r.bigOtStep     = requireScalar<double>(prrp, "big_ot_step", S);
+        r.smallSlopeFixed = requireScalar<double>(prrp, "small_slope_fixed", S);
+        r.unwrapThresholdRad = requireScalar<double>(prrp, "unwrap_threshold_rad", S);
+
+        // BIG 两组参数范围（strict / loose）：各自一个子映射
+        auto parseBigRange = [&](const char* key,
+                                 RobotConfig::PowerRuneParams::BigRangeParams& out) {
+            const YAML::Node& n = prrp[key];
+            if (!n || !n.IsMap())
+                throw std::runtime_error("RobotConfig: 缺少 'power_rune.roll_predictor." +
+                                         std::string(key) + "' 配置段");
+            const std::string s = S + "." + key;
+            out.aMin     = requireScalar<double>(n, "a_min", s);
+            out.aMax     = requireScalar<double>(n, "a_max", s);
+            out.omegaMin = requireScalar<double>(n, "omega_min", s);
+            out.omegaMax = requireScalar<double>(n, "omega_max", s);
+            if (out.aMin > out.aMax || out.omegaMin > out.omegaMax ||
+                out.omegaMin <= 0.0) {
+                throw std::runtime_error("RobotConfig: power_rune.roll_predictor." +
+                                         std::string(key) +
+                                         " 取值非法：须满足 a_min <= a_max、"
+                                         "0 < omega_min <= omega_max");
+            }
+        };
+        parseBigRange("strict", r.strict);
+        parseBigRange("loose", r.loose);
+
+        if (r.maxTimeWindowSec <= 0.0 || r.minDataPoints < 1 ||
+            r.queueTimeThresholdSec <= 0.0 || r.correctionWindow < 1 ||
+            r.visualizationSamples < 2 ||
+            r.ceresMaxIterations < 1 || r.ceresFunctionTolerance <= 0.0 ||
+            r.bigLinearCoefficient == 0.0 || r.bigOmegaStep <= 0.0 ||
+            r.bigOtStep <= 0.0 || r.smallSlopeFixed == 0.0 ||
+            r.unwrapThresholdRad <= 0.0) {
+            throw std::runtime_error("RobotConfig: power_rune.roll_predictor 取值非法："
+                                     "max_time_window_s/queue_time_threshold_s/"
+                                     "big_omega_step/big_ot_step/unwrap_threshold_rad/"
+                                     "ceres_function_tolerance 必须 > 0，"
+                                     "min_data_points/correction_window/ceres_max_iterations "
+                                     "必须 >= 1，visualization_samples 必须 >= 2，"
+                                     "big_linear_coefficient/small_slope_fixed 必须非 0");
+        }
+    }
+
+    // ── power_rune.cascade（两级滤波/预测与位姿输入的级联阈值）──
+    const YAML::Node& prcs = pr["cascade"];
+    if (!prcs || !prcs.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'power_rune.cascade' 配置段");
+    cfg.powerRune.cascade.continuityThresholdSec =
+        requireScalar<double>(prcs, "continuity_threshold_s", "power_rune.cascade");
+    cfg.powerRune.cascade.rollRmseGate =
+        requireScalar<double>(prcs, "roll_rmse_gate", "power_rune.cascade");
+    cfg.powerRune.cascade.resetTimeoutSec =
+        requireScalar<double>(prcs, "reset_timeout_s", "power_rune.cascade");
+    if (cfg.powerRune.cascade.continuityThresholdSec < 0.0 ||
+        cfg.powerRune.cascade.rollRmseGate < 0.0 ||
+        cfg.powerRune.cascade.resetTimeoutSec < 0.0) {
+        throw std::runtime_error("RobotConfig: power_rune.cascade 取值非法："
+                                 "continuity_threshold_s / roll_rmse_gate / "
+                                 "reset_timeout_s 必须 >= 0");
+    }
+
+    // ── power_rune.target_selection（PredictedPointSelector 状态机阈值）──
+    const YAML::Node& prts = pr["target_selection"];
+    if (!prts || !prts.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'power_rune.target_selection' 配置段");
+    cfg.powerRune.targetSelection.establishDurationSec =
+        requireScalar<double>(prts, "establish_duration_s", "power_rune.target_selection");
+    cfg.powerRune.targetSelection.lostTimeoutSec =
+        requireScalar<double>(prts, "lost_timeout_s", "power_rune.target_selection");
+    if (cfg.powerRune.targetSelection.establishDurationSec < 0.0 ||
+        cfg.powerRune.targetSelection.lostTimeoutSec < 0.0) {
+        throw std::runtime_error("RobotConfig: power_rune.target_selection 取值非法："
+                                 "establish_duration_s / lost_timeout_s 必须 >= 0");
+    }
 
     return cfg;
 }

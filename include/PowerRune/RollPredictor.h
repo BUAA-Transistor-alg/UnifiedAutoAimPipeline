@@ -17,11 +17,13 @@
  *
  * 输入：欧拉角中的 roll 分量（范围 [-π, π]），内部自动做相位连续化 (unwrap)。
  * 支持两种拟合模型，自动选择 MSE 更小者：
- *   - "big"   : r(t) = sign * (-a/omega * cos(omega*(t+o_t)) + (2.090 - a)*(t+o_t))
- *   - "small" : r(t) = sign * k * (t + o_t)，k 默认为 π/3，可通过
- *               setLooseFit(true) 使其一并在最小二乘中拟合
+ *   - "big"   : r(t) = sign * (-a/omega * cos(omega*(t+o_t))
+ *                              + (big_linear_coefficient - a)*(t+o_t))
+ *   - "small" : r(t) = sign * k * (t + o_t)，k 固定为配置的 small_slope_fixed，
+ *               开启 loose_fit 后一并在最小二乘中拟合
  * 其中 t=0 对应当前时刻，a、omega、o_t（以及 small 的 k）为拟合参数，
- * sign = ±1 由角速度方向决定。
+ * sign = ±1 由角速度方向决定。全部常数/范围/步长均来自 Params（config
+ * power_rune.roll_predictor），类内不保留默认值。
  *
  * 使用方式：
  *   1. 每帧调用 update(roll_raw, timestamp) 输入观测 roll 和时间戳
@@ -35,15 +37,48 @@ public:
     enum class FitMethod { BIG, SMALL };
 
     /**
-     * @brief 构造函数
-     * @param max_time_window  队列中数据的最长保留时间（秒）
-     * @param min_data_points  进行拟合所需的最小数据点数
-     * @param correction_window 修正偏置计算所用的最新数据点数（不超过 min_data_points）
-     * @param grid_search_interval 两次完整网格搜索之间的最小间隔（秒），≤0 表示每帧都做网格搜索
+     * @brief 全部可调参数（取自 config power_rune.roll_predictor）。
+     *
+     * 本结构**不提供默认值**：所有字段必须由调用方完整填写（RobotConfig 已保证配置项
+     * 存在且合法）。预测器内部不再保留任何硬编码的默认参数。
+     *
+     * ⚠ 新增/删除字段时必须同步更新 PowerRunePipeline 的 makeRollPredictorParams()
+     *   （逐字段赋值，聚合顺序不敏感但字段遗漏不会被编译器发现）。
      */
-    RollPredictor(float max_time_window = 5.0f, int min_data_points = 20,
-                  float queue_time_threshold = 1.0f, int correction_window = 5,
-                  float grid_search_interval = 0.5f);
+    struct Params {
+        // true : SMALL 模型同时最小二乘拟合斜率（不再固定 small_slope_fixed）；
+        //        BIG 使用 loose 一组参数范围；
+        // false: SMALL 固定斜率 small_slope_fixed；BIG 使用 strict 一组参数范围。
+        bool   loose_fit;
+        float  max_time_window;        // 队列中数据的最长保留时间（秒）
+        int    min_data_points;        // 进行拟合所需的最小数据点数
+        float  queue_time_threshold;   // 队列时间跨度最小阈值（秒）
+        int    correction_window;      // 修正偏置计算所用的最新数据点数
+        float  grid_search_interval;   // 两次完整网格搜索之间的最小间隔（秒），≤0 每帧搜索
+        int    visualization_samples;  // 可视化拟合曲线的采样点数（仅影响绘图）
+        int    ceres_max_iterations;   // Ceres 精化（网格搜索最优/热启动）最大迭代次数
+        double ceres_function_tolerance;  // Ceres 收敛的残差变化容差
+        double big_linear_coefficient; // BIG 模型线性项系数（旧实现中的 2.090）
+        double big_omega_step;         // BIG 网格搜索 ω 步长
+        double big_ot_step;            // BIG 网格搜索 o_t 步长
+        double small_slope_fixed;      // SMALL 固定斜率（loose_fit = false 时使用，旧式 π/3）
+        float  unwrap_threshold_rad;   // 相位连续化跨 ±π 跳变判定的半周期阈值（弧度）
+
+        /// BIG 模型参数范围（a ∈ [a_min, a_max]、ω ∈ [omega_min, omega_max]）
+        struct BigRange {
+            double a_min;
+            double a_max;
+            double omega_min;
+            double omega_max;
+        };
+        BigRange strict;   // loose_fit = false 时使用
+        BigRange loose;    // loose_fit = true 时使用
+    };
+
+    /**
+     * @brief 构造函数（参数全部来自配置，无默认值）
+     */
+    explicit RollPredictor(const Params& params);
 
     /**
      * @brief 输入观测 roll 值和时间戳，内部做 unwrap 连续化、维护队列、执行拟合。
@@ -123,14 +158,12 @@ public:
         float o_t   = 0.0f;
     };
 
-    /// SMALL 模型固定斜率的 float 表达（π/3），与旧 predict 实现完全一致
-    static constexpr float kSmallSlopeFixed = static_cast<float>(M_PI) / 3.0f;
-
-    /// small 模型参数: r(t) = sign * k * (t + o_t)
-    /// k（slope）默认固定为 π/3；开启 loose_fit 后由最小二乘拟合得到。
+    /// SMALL 模型参数: r(t) = sign * k * (t + o_t)
+    /// k（slope）在 loose_fit 关闭时固定为 small_slope_fixed（配置，旧式为 π/3），
+    /// 开启后由最小二乘拟合得到。
     struct SmallParams {
-        float o_t   = 0.0f;
-        float slope = kSmallSlopeFixed;
+        float o_t;
+        float slope;
     };
 
     /**
@@ -151,12 +184,13 @@ public:
     /**
      * @brief 设置宽松拟合开关（来自 config power_rune.roll_predictor.loose_fit）。
      *
-     *   true : SMALL 模型同时最小二乘拟合斜率（不再固定 π/3）；
-     *          BIG 模型放宽参数范围：a ∈ [0.1, 1.045]、ω ∈ [1.826, 2.058]；
-     *   false: 保持原有逻辑：SMALL 固定斜率 π/3，
-     *          BIG 模型 a ∈ [0.780, 1.045]、ω ∈ [1.884, 2.000]。
+     *   true : SMALL 模型同时最小二乘拟合斜率（不再固定 small_slope_fixed）；
+     *          BIG 模型使用 Params::loose 一组参数范围；
+     *   false: SMALL 固定斜率 small_slope_fixed；
+     *          BIG 模型使用 Params::strict 一组参数范围。
      *
-     * 应在开始喂数据前设置一次；运行中切换会立即影响下一次 performFit。
+     * 供运行中切换使用（构造时已按 Params::loose_fit 设好）；切换后立即影响下一次
+     * performFit 与 predict，因此两套范围常驻成员。
      */
     void setLooseFit(bool enabled) { loose_fit_ = enabled; }
 
@@ -193,12 +227,15 @@ public:
      *
      * @param fitted_curve  输出：拟合曲线点列
      * @param raw_points    输出：原始观测点列
-     * @param num_samples   拟合曲线的采样点数
+     * @param num_samples   拟合曲线的采样点数（调用方传配置值，见 visualizationSamples()）
      */
     void getVisualizationPoints(
         std::vector<std::pair<float, float>>& fitted_curve,
         std::vector<std::pair<float, float>>& raw_points,
-        int num_samples = 200) const;
+        int num_samples) const;
+
+    /// 可视化拟合曲线采样点数（config power_rune.roll_predictor.visualization_samples）
+    int visualizationSamples() const { return visualization_samples_; }
 
 private:
     struct DataPoint
@@ -212,6 +249,15 @@ private:
     float queue_time_threshold_;  // 队列时间跨度最小阈值，≤ max_time_window_
     int min_data_points_;
 
+    // BIG 模型两组参数范围（都常驻，按 loose_fit_ 选用；见 Params::strict/loose）
+    Params::BigRange big_range_strict_;
+    Params::BigRange big_range_loose_;
+
+    /// 当前生效的 BIG 参数范围（按 loose_fit_ 选择）
+    const Params::BigRange& activeBigRange() const {
+        return loose_fit_ ? big_range_loose_ : big_range_strict_;
+    }
+
     // 拟合参数
     BigParams  big_params_;
     SmallParams small_params_;
@@ -221,8 +267,18 @@ private:
     FitMethod fit_method_ = FitMethod::BIG;
 
     // 宽松拟合开关（config power_rune.roll_predictor.loose_fit）：
-    // true 时 SMALL 拟合斜率、BIG 放宽参数范围；false 时保持原有逻辑。
-    bool loose_fit_ = false;
+    // true 时 SMALL 拟合斜率、BIG 使用 loose 范围；false 时使用 strict 范围。
+    // 由构造函数按 Params::loose_fit 设置（可经 setLooseFit 运行中切换）。
+    bool loose_fit_;
+
+    // BIG 模型常数与网格搜索步长（构造时从 Params 读入）
+    double big_linear_coefficient_;   // 旧实现中的 2.090
+    double big_omega_step_;
+    double big_ot_step_;
+    // SMALL 固定斜率（loose_fit = false 时使用，旧式 π/3）
+    double small_slope_fixed_;
+    // 相位连续化跨 ±π 跳变判定的半周期阈值（弧度）
+    float unwrap_threshold_rad_;
 
     // 相位连续化 (unwrap) 状态（仿照 YAxisFilter 的 jump_a_ 机制）
     float last_signed_roll_    = 0.0f;
@@ -234,7 +290,7 @@ private:
     int direction_ = 1;
 
     // 修正偏置
-    int   correction_window_ = 3;       // 用于计算偏置的最新数据点数
+    int   correction_window_;      // 用于计算偏置的最新数据点数（构造时从 Params 读入）
     float correction_bias_   = 0.0f;
 
     // 上次更新时间戳（用于 updateWithoutData / performFit 计算时间差 以及 可视化 t=0 参考点）
@@ -243,6 +299,9 @@ private:
     // 网格搜索间隔控制
     float grid_search_interval_;                                      // 两次完整网格搜索的最小间隔（秒）
     std::chrono::steady_clock::time_point last_grid_search_timestamp_; // 上次网格搜索时间
+    int   visualization_samples_;   // 可视化曲线采样点数（构造时从 Params 读入）
+    int   ceres_max_iterations_;    // Ceres 最大迭代次数（构造时从 Params 读入）
+    double ceres_function_tolerance_;  // Ceres 收敛容差（构造时从 Params 读入）
 
     // 自旋轴朝向旋转矩阵
     cv::Mat y_axis_R_;

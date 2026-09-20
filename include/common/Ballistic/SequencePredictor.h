@@ -17,14 +17,16 @@
 // 见 Predictor）。
 // PredictedBallisticSolver::solve 已不再参与目标（瞄准点）选择：它对预测函数
 // 返回列表中的每个目标点独立求解并返回全部结果；实际目标选择由本类 predict()
-// 完成——依据来源标注自动选择目标选择策略（Armor → NEAREST、PowerRune →
-// LOWEST_Z），并在每个实际计算点的求解结果之间按该策略选出该点使用的目标
-// （masked_indices 中索引对应的瞄准点不参与选择：解算阶段即跳过、以占位符返回）。
+// 完成——Armor 类目标依据来源标注选取离 muzzle 最近者（NEAREST），PowerRune
+// 目标交给预测点选取决策器 PowerRune/PredictedPointSelector（每点状态机 +
+// 粘滞上一次目标，不再简单取高度最低点），并在每个实际计算点的求解结果之间选出
+// 该点使用的目标（masked_indices 中索引对应的瞄准点不参与选择：解算阶段即跳过、
+// 以占位符返回）。
 // 慢目标判定（施密特触发器）
 // 同样在 predict() 内完成（依据 Predictor::target_omega 及其可用标志
 // omega_valid），不再由 Armor 流水线下发。predict() 维护自身跨帧状态 State
 // （慢目标锁存 + 上一帧瞄准点粘滞索引 + 快目标锁存）：target_predictor 来源切换
-// 或 invalidate() 时重置。
+// 或 invalidate() 时重置（PowerRune 决策器同样在来源切换与 invalidate() 时重置）。
 //
 // ── 中心瞄准夹角 / 慢目标 / 快目标（Armor 类目标，角速度可用时）──
 // 中心瞄准夹角（需求1，见 centerAimAngle）：对每个预测瞄准点，方向向量 =
@@ -34,8 +36,8 @@
 // 中心瞄准向量逆时针为正，(-π, π]）。夹角 = 0 表示该板位于 yaw 轴旋转中心与目标
 // 中心连线上（近侧、正对射手），夹角对时间的导数 = 目标角速度 ω。
 //   - 非 fast_target：目标选择优先排除 |中心瞄准夹角| > π/2 的瞄准点（该指标
-//     优先于其它指标，含慢目标粘滞）：先只在剩余瞄准点中按原策略（NEAREST /
-//     LOWEST_Z + 慢目标粘滞）选，一个都不剩时才退回全部瞄准点；
+//     优先于其它指标，含慢目标粘滞）：先只在剩余瞄准点中按原策略（NEAREST +
+//     慢目标粘滞）选，一个都不剩时才退回全部瞄准点；
 //   - fast_target（第二对施密特阈值 armor.target_selection.fast_angular_velocity_
 //     lower/upper，均高于慢目标上阈值；|ω| > upper 置位、< lower 复位、之间保持）：
 //     高速自旋目标的装甲板相位预测误差大，因此不再瞄准“板本身”，而是瞄准**对齐位置**：
@@ -94,6 +96,7 @@
 #include "common/Ballistic/GimbalSolver.h"
 #include "common/Ballistic/PredictedBallisticSolver.h"
 #include "common/Ballistic/NewtonPredictedBallisticSolver.h"
+#include "PowerRune/PredictedPointSelector.h"
 
 class SequencePredictor {
 public:
@@ -107,8 +110,8 @@ public:
     static constexpr int kFastAimTargetIndex = -2;
 
     // 目标预测器来源标注：标识 predict() 所用 target_predictor 的目标来源。
-    // 用作 predict() 内部目标选择策略（NEAREST/LOWEST_Z）与自身跨帧状态
-    // （State）重置的判断依据：
+    // 用作 predict() 内部目标选择（Armor → NEAREST；PowerRune → 决策器
+    // PredictedPointSelector）与自身跨帧状态（State / 决策器）重置的判断依据：
     //   - Armor 流水线：每种物体（类别 label 0~8，见 ArmorInfer.h 类别映射）
     //     各自算一种来源 —— armor_label 不同即来源不同；
     //   - PowerRune 流水线：整体算一种来源。
@@ -242,9 +245,11 @@ public:
     ///
     /// 目标（瞄准点）选择已从 PredictedBallisticSolver 移入本类：solve() 返回
     /// 预测函数列表中全部目标点的结果，predict() 在每个实际计算点的结果之间
-    /// 按 predictor.source 自动选择的策略（Armor → NEAREST，PowerRune →
-    /// LOWEST_Z）选出该点实际使用的目标（predictor.masked_indices 中索引对应
-    /// 的瞄准点不参与选择），并在来源切换时重置自身跨帧状态 State。
+    /// 选出该点实际使用的目标（predictor.masked_indices 中索引对应的瞄准点不参与
+    /// 选择），并在来源切换时重置自身跨帧状态 State 与 PowerRune 决策器。
+    /// 选择规则按来源区分：Armor 类取离 muzzle 最近者（NEAREST）；PowerRune 交给
+    /// PredictedPointSelector（状态机候选 + 粘滞上一次目标，否则取高度最低者），
+    /// 且其“临时丢失”候选会在弹道解算前解除屏蔽（见 preUpdateCandidateIndices）。
     /// 全被屏蔽（屏蔽后无任何瞄准点可选）时自动转为调用 invalidate() 并返回
     /// 无效结果。
     ///
@@ -304,10 +309,13 @@ private:
 
     // 普通路径唯一切换点：中低速 Armor 使用 Newton，PowerRune 使用原解算器。
     // 实测对照直接注释实现中的新调用并恢复相邻旧调用，无运行时开关。
-    // predictor.masked_indices 随调用转发给解算器：被屏蔽的瞄准点不做弹道解算，
+    // masked_indices 为本次解算实际使用的屏蔽列表（一般为 predictor.masked_indices；
+    // PowerRune 会先按 PredictedPointSelector::preUpdateCandidateIndices 解除
+    // “已观测到/临时丢失”点的屏蔽，见 predictImpl）：被屏蔽的瞄准点不做弹道解算，
     // 以占位符返回（见 PredictedBallisticSolver::Result::masked）。
     std::vector<PredictedBallisticSolver::Result> solveNormalCandidates(
-        const Predictor& predictor, double extra_predict_time, float yaw_big, size_t worker) const;
+        const Predictor& predictor, const std::vector<int>& masked_indices,
+        double extra_predict_time, float yaw_big, size_t worker) const;
     TaskPool pool_;                 // 默认构造（min(硬件核数/2, 4) 线程）
     std::atomic<int> next_gimbal_{0};   // thread_local 绑定：worker 首次执行时领取编号
 
@@ -363,6 +371,11 @@ private:
     };
     State state_;
     PredictorSource active_source_;   // 当前 state_ 对应的来源（无有效预测时为 NONE）
+
+    // PowerRune 预测点（靶点）选取决策器：仅当来源为 POWER_RUNE 时使用，跨帧维护
+    // 每点状态机与“上一次选中的靶点”。来源切换（含离开 PowerRune）或 invalidate()
+    // 时整体 reset()；详见 PowerRune/PredictedPointSelector.h。
+    PredictedPointSelector power_rune_selector_;
 
     // 上一轮解算所用的逐点大 yaw 关节角序列（仅 BIG_SMALL；MPC 预测序列不可用时的退路）
     std::vector<float> last_yaw_big_seq_;

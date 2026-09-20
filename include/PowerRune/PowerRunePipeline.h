@@ -214,11 +214,23 @@ private:
     } s4_;
 
     /// 阶段5上下文：滤波 + 预测
+    /// 两级滤波/预测（YAxisFilter / RollPredictor）与级联阈值的全部参数都来自
+    /// config power_rune（y_axis_filter / roll_predictor / cascade），类内无默认值。
     struct Stage5Ctx {
         YAxisFilter   y_axis_filter;
         RollPredictor roll_predictor;
         std::chrono::steady_clock::time_point last_valid_timestamp;
         std::chrono::steady_clock::time_point last_frame_timestamp;  // 用于计算帧间 dt，每帧更新
+
+        // ── 级联阈值（config power_rune.cascade；原先硬编码在本流水线内）──
+        float continuity_threshold_s;    // 帧间 dt 小于该值视为连续帧
+        float roll_rmse_gate;            // RollPredictor 预测矩阵可用于特殊预测的 RMSE 门限
+        float reset_timeout_s;           // 连续无有效观测超过该秒数则重置两级滤波/预测器
+        // ── 第一级滤波位置限位（config power_rune.y_axis_filter）──
+        float filter_pos_xy_radius_m;    // xy 限位圆半径（米）
+        float filter_pos_z_half_range_m; // z 相对底盘高度的半范围（米）
+
+        explicit Stage5Ctx(const RobotConfig& cfg);
     } s5_;
 
     // ==================== PipelineStage 实例 ====================

@@ -7,11 +7,48 @@
 
 namespace {
 
-// 第一级滤波（y_axis_filter）位置坐标限位参数（相对本帧底盘在 world 系下的位置）：
-//   xy：限在以底盘 world xy 为圆心的半径 kFilterPosXyRadiusM 圆内；
-//   z ：限在底盘 world z ± kFilterPosZHalfRangeM 内。
-constexpr float kFilterPosXyRadiusM   = 16.0f;  // xy 限位圆半径（米）
-constexpr float kFilterPosZHalfRangeM = 5.0f;   // z 相对底盘高度的半范围（米）
+// 第一级滤波（y_axis_filter）位置坐标限位参数与级联阈值原先为本文件内的硬编码常量，
+// 现已全部提取到 config power_rune.y_axis_filter / power_rune.cascade。
+// 下面两个 builder 逐个字段赋值（而非依赖聚合初始化顺序），避免新增参数时错位。
+
+YAxisFilter::Params makeYAxisFilterParams(const RobotConfig& cfg) {
+    const RobotConfig::PowerRuneParams::YAxisFilterParams& c = cfg.powerRune.yAxisFilter;
+    YAxisFilter::Params p{};
+    p.alpha_slow  = static_cast<float>(c.alphaSlow);
+    p.alpha_fast  = static_cast<float>(c.alphaFast);
+    p.alpha_pos   = static_cast<float>(c.alphaPos);
+    p.alpha_omega = static_cast<float>(c.alphaOmega);
+    p.alpha_reg   = static_cast<float>(c.alphaReg);
+    p.jump_angle_threshold_rad = static_cast<float>(c.jumpAngleThresholdRad);
+    p.special_search_range     = c.specialSearchRange;
+    p.special_search_range_with_predictor = c.specialSearchRangeWithPredictor;
+    p.anomaly_abs_limit        = static_cast<float>(c.anomalyAbsLimit);
+    return p;
+}
+
+RollPredictor::Params makeRollPredictorParams(const RobotConfig& cfg) {
+    const RobotConfig::PowerRuneParams::RollPredictorParams& c = cfg.powerRune.rollPredictor;
+    RollPredictor::Params p{};
+    p.loose_fit             = c.looseFit;
+    p.max_time_window       = static_cast<float>(c.maxTimeWindowSec);
+    p.min_data_points       = c.minDataPoints;
+    p.queue_time_threshold  = static_cast<float>(c.queueTimeThresholdSec);
+    p.correction_window     = c.correctionWindow;
+    p.grid_search_interval  = static_cast<float>(c.gridSearchIntervalSec);
+    p.visualization_samples = c.visualizationSamples;
+    p.ceres_max_iterations  = c.ceresMaxIterations;
+    p.ceres_function_tolerance = c.ceresFunctionTolerance;
+    p.big_linear_coefficient = c.bigLinearCoefficient;
+    p.big_omega_step        = c.bigOmegaStep;
+    p.big_ot_step           = c.bigOtStep;
+    p.small_slope_fixed     = c.smallSlopeFixed;
+    p.unwrap_threshold_rad  = static_cast<float>(c.unwrapThresholdRad);
+    p.strict = RollPredictor::Params::BigRange{
+        c.strict.aMin, c.strict.aMax, c.strict.omegaMin, c.strict.omegaMax};
+    p.loose  = RollPredictor::Params::BigRange{
+        c.loose.aMin, c.loose.aMax, c.loose.omegaMin, c.loose.omegaMax};
+    return p;
+}
 
 }  // namespace
 
@@ -40,6 +77,19 @@ PowerRunePipeline::Stage4Ctx::Stage4Ctx(const RobotConfig::CameraParams& camera)
           ImageResolution{camera.width, camera.height})),
       pose_solver(camera_proj) {}
 
+// 阶段5上下文：两级滤波/预测与级联阈值的全部参数取自 config（无代码内默认值）
+PowerRunePipeline::Stage5Ctx::Stage5Ctx(const RobotConfig& cfg)
+    : y_axis_filter(makeYAxisFilterParams(cfg))
+    , roll_predictor(makeRollPredictorParams(cfg))
+    , continuity_threshold_s(
+          static_cast<float>(cfg.powerRune.cascade.continuityThresholdSec))
+    , roll_rmse_gate(static_cast<float>(cfg.powerRune.cascade.rollRmseGate))
+    , reset_timeout_s(static_cast<float>(cfg.powerRune.cascade.resetTimeoutSec))
+    , filter_pos_xy_radius_m(
+          static_cast<float>(cfg.powerRune.yAxisFilter.posXyRadiusM))
+    , filter_pos_z_half_range_m(
+          static_cast<float>(cfg.powerRune.yAxisFilter.posZHalfRangeM)) {}
+
 PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
                                      float min_delay_seconds,
                                      const RobotConfig::CameraParams& camera)
@@ -48,13 +98,10 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
     , s1_(RobotConfig::instance().powerRune.inputWidth,
           RobotConfig::instance().powerRune.inputHeight)
     , s4_(camera)
+    , s5_(RobotConfig::instance())
 {
     const RobotConfig& cfg = RobotConfig::instance();
     const RobotConfig::PipelineParams& pipe = cfg.powerRune.pipeline;
-
-    // RollPredictor 拟合开关取自 config power_rune.roll_predictor.loose_fit：
-    // true 时 SMALL 一并拟合斜率、BIG 放宽参数范围；false 时保持原有逻辑。
-    s5_.roll_predictor.setLooseFit(cfg.powerRune.rollPredictor.looseFit);
 
     conf_threshold_ = cfg.powerRune.confThreshold;
     s3_.postprocessor = std::make_unique<PowerRune::PowerRunePostprocessor>(
@@ -293,26 +340,26 @@ void PowerRunePipeline::processStage5(DataDeque& data)
     if (d->stage4.pose_valid) {
         float time_diff = std::chrono::duration<float>(
             d->initial.frame_timestamp - s5_.last_valid_timestamp).count();
-        bool is_continuous = time_diff < 0.1f; // pi/5/2.09 = 0.30063, 必须小于这个值
+        bool is_continuous = time_diff < s5_.continuity_threshold_s;
 
         // 当 RollPredictor 拟合有效 且 非连续帧时，使用 RollPredictor 的预测旋转矩阵
         cv::Mat roll_predictor_R;
         if ((!is_continuous) && s5_.roll_predictor.isValid()) {
-            if (s5_.roll_predictor.computeRMSE() < 0.3f) {
+            if (s5_.roll_predictor.computeRMSE() < s5_.roll_rmse_gate) {
                 auto predicted = s5_.roll_predictor.predict_posi_and_R(inter_frame_dt);
                 roll_predictor_R = predicted.second;
             }
         }
 
         // 以本帧底盘在 world 系下的位置为圆心，配置第一级滤波（y_axis_filter）的
-        // 位置坐标限位：xy 限在底盘 world xy 为圆心的半径 16m 圆内，z 限在底盘
-        // world z ± 5m（异常值识别与输入跳过/输出自动重置由滤波器内部完成）
+        // 位置坐标限位（半径/半范围取自 config power_rune.y_axis_filter；
+        // 异常值识别与输入跳过/输出自动重置由滤波器内部完成）
         const ExtraInputInfo& extra = d->initial.extra_info;
         s5_.y_axis_filter.setPositionLimits(
             cv::Vec3f(static_cast<float>(extra.chassis_x),
                       static_cast<float>(extra.chassis_y),
                       static_cast<float>(extra.chassis_z)),
-            kFilterPosXyRadiusM, kFilterPosZHalfRangeM);
+            s5_.filter_pos_xy_radius_m, s5_.filter_pos_z_half_range_m);
 
         filter_result = s5_.y_axis_filter.update(
             d->stage4.pr_world_posi,
@@ -353,7 +400,7 @@ void PowerRunePipeline::processStage5(DataDeque& data)
         // 物体处理（仅随时间推移平移拟合参数；超时则整体重置）
         float time_since_valid = std::chrono::duration<float>(
             d->initial.frame_timestamp - s5_.last_valid_timestamp).count();
-        if (time_since_valid > 3.0f) {
+        if (time_since_valid > s5_.reset_timeout_s) {
             s5_.y_axis_filter.reset();
             s5_.roll_predictor.reset();
         } else {
@@ -370,22 +417,24 @@ void PowerRunePipeline::processStage5(DataDeque& data)
 
     if (s5_.roll_predictor.isValid()) {
         s5_.roll_predictor.getVisualizationPoints(
-            d->stage5.fitted_curve, d->stage5.raw_points);
+            d->stage5.fitted_curve, d->stage5.raw_points,
+            s5_.roll_predictor.visualizationSamples());
         d->stage5.predictor_lambda = s5_.roll_predictor.capturePredictor();
-        if (!d->stage5.filtered_rotation_counts.empty()) {
-            // 靶点预测函数：恒预测**全部 kBladeCount 个靶点**（旋转计数 0..4 对应的
-            // 世界坐标，列表长度固定、下标 = 旋转计数），本帧不存在的靶点（不在
-            // filtered_rotation_counts 中的计数，即已激活/未识别者）写入
-            // masked_indices 交给下游屏蔽：SequencePredictor 会跳过它们的弹道解算
-            // 与目标选择（详见 Predictor::masked_indices）。
-            // （单独再捕获一份，保留 predictor_lambda 供可视化位姿预测绘制）
-            auto pred2 = s5_.roll_predictor.capturePredictor();
-            d->stage5.target_predictor = TargetPositionCalculator::compose(
-                std::move(pred2), TargetPositionCalculator::allRotationCounts());
-            d->stage5.masked_indices = TargetPositionCalculator::missingRotationCounts(
-                d->stage5.filtered_rotation_counts);
-            d->stage5.predictor_timestamp = d->initial.frame_timestamp;  // 快照的 dt 零点 = 本帧时间戳
-        }
+        // 靶点预测函数：**只要预测器可用就产出**（即使本帧没有观测到任何目标：
+        // filtered_rotation_counts 为空 → 全部 kBladeCount 个靶点都被 mask）。
+        // 预测器仍给出位姿/旋转预测，下游 SequencePredictor 的 PowerRune 决策器
+        // 据此把“临时丢失”的靶点继续作为候选（粘滞），实现短暂丢目标时不停火。
+        // 恒预测全部 kBladeCount 个靶点（旋转计数 0..4 对应的世界坐标，列表长度
+        // 固定、下标 = 旋转计数），本帧不存在的靶点（不在 filtered_rotation_counts
+        // 中的计数，即已激活/未识别者）写入 masked_indices 交给下游屏蔽（详见
+        // Predictor::masked_indices）。
+        // （单独再捕获一份，保留 predictor_lambda 供可视化位姿预测绘制）
+        auto pred2 = s5_.roll_predictor.capturePredictor();
+        d->stage5.target_predictor = TargetPositionCalculator::compose(
+            std::move(pred2), TargetPositionCalculator::allRotationCounts());
+        d->stage5.masked_indices = TargetPositionCalculator::missingRotationCounts(
+            d->stage5.filtered_rotation_counts);
+        d->stage5.predictor_timestamp = d->initial.frame_timestamp;  // 快照的 dt 零点 = 本帧时间戳
     }
 
     d->stage5.angular_velocity = s5_.y_axis_filter.getAngularVelocity();

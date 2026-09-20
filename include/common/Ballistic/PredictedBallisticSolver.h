@@ -31,8 +31,8 @@
 // solve() 返回预测函数列表中全部目标点的结果（每个目标点一个 Result），
 // 不在内部做目标（瞄准点）选择：从这些结果中挑哪个作为实际使用目标由调用方
 // （SequencePredictor）完成。SequencePredictor 对每个实际计算点调用 solve()，
-// 并依据目标预测器来源（Armor→NEAREST / PowerRune→LOWEST_Z）在其返回的
-// 全部结果中选取该点实际使用的目标。
+// 并依据目标预测器来源（Armor→NEAREST；PowerRune→PredictedPointSelector 决策器）
+// 在其返回的全部结果中选取该点实际使用的目标。
 //
 // solve() 可选接收 masked_indices（屏蔽的瞄准点索引）：其中的目标点**不做任何
 // 弹道解算**，结果以占位符（Result::masked = true、success = false，其余字段保持
