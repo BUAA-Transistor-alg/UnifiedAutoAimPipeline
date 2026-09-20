@@ -1,15 +1,24 @@
-# python/ — Record 模式数据分析脚本
+# python/ — 工程 Python 辅助脚本
 
 ## 文件
 
 - `analyze_record.py` — 解析 Record 模式录制的视频 + frame_info txt，
   对比棋盘格 PnP 欧拉角 yaw 与录制的 imu_euler_yaw，绘制同一张图上的两条曲线
   及误差曲线（结果图默认保存为 `<record_dir>/checkerboard_imu_yaw_comparison.png`）。
+- `export_onnx.py` — 把训练好的 YOLO-pose 权重 `.pt` 导出为 ONNX
+  （移植自 `Power_Rune_Train/export_onnx.py`）。**不接收任何命令行参数**：
+  要处理的模型由脚本顶部的常量 `MODEL_DIR` / `MODEL_NAME` 固定，手动改一行即可切换。
+  默认处理 `Model/PowerRune/power_rune_finetune2`，读 `power_rune_finetune2.pt`、
+  写同名的 `power_rune_finetune2.onnx`（不会覆盖 C++ 实际读取的 `power_rune.onnx`）。
+  导出参数与原脚本一致：`dynamic + simplify + opset 11`、不带 NMS。
+- `modify_0526_dynamic.py` / `modify_0726_dynamic.py` — 把静态 Armor ONNX
+  改造为动态 batch / 输入分辨率模型。
 - `path_resolver.py` — `include/common/PathResolver.h` 的 Python 翻译版
-  （独立文件，`analyze_record.py` 通过它定位项目根目录与机器配置文件
-  config/robots/<active_config>.yaml，选择规则见 config/selector.yaml）。
+  （独立文件；`analyze_record.py` / `export_onnx.py` / `launch_all.py` 通过它定位
+  项目根目录与机器配置文件 config/robots/<active_config>.yaml，
+  选择规则见 config/selector.yaml）。
 
-## 用法
+## 用法（analyze_record.py）
 
 ```bash
 # <record_dir> 为 Record 模式会话目录（record_YYYYmmdd_HHMMSS，内含 video_*.mkv 与 frame_info_*.txt）
@@ -45,3 +54,14 @@ python3 python/analyze_record.py <record_dir> --show --output /path/to/out.png
 - `imu_euler_yaw`（frame_info 第 5 列）先解缠绕，再整体平移一个常数，
   使「视频成功解析的点」上两条曲线的平均值相等，然后绘制。
 - 误差曲线 = 平移后 imu yaw − 棋盘格 yaw。
+
+## 用法（export_onnx.py）
+
+```bash
+# 无参数；默认处理 Model/PowerRune/power_rune_finetune2
+python3 python/export_onnx.py
+```
+
+换模型：编辑 `python/export_onnx.py` 顶部的 `MODEL_NAME`（如改成 `power_rune`）。
+`Model/PowerRune/` 下生成的 `*.onnx` 若要交由 C++ 直接部署，覆盖
+`Model/PowerRune/power_rune.onnx` 即可（脚本结束时会打印对应的 cp 命令）。
