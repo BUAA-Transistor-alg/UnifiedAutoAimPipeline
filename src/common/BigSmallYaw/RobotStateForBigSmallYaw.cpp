@@ -107,6 +107,16 @@ RobotControllerAdapter::RobotControllerAdapter() {
     c.model.frictionLambda = rc.model.frictionLambda;
     c.model.tau_offset_big   = rc.model.tauOffsetBig;
     c.model.tau_offset_small = rc.model.tauOffsetSmall;
+    // 大 yaw 传动背隙（3-DOF 模型；β 由子模组估计器在线给出，不在此配置）
+    c.model.backlash_delta      = rc.model.backlashDelta;
+    c.model.backlash_k          = rc.model.backlashK;
+    c.model.backlash_c          = rc.model.backlashC;
+    c.model.backlash_smooth_eps = rc.model.backlashSmoothEps;
+    c.model.backlash_through    = rc.model.backlashThrough;
+    c.model.Jmotor              = rc.model.Jmotor;
+    c.model.fcMotor             = rc.model.fcMotor;
+    c.model.fvMotor             = rc.model.fvMotor;
+    c.model.tau_offset_motor    = rc.model.tauOffsetMotor;
 
     // ── MPC（控制周期 = 本构型分支的 robot_controller.dt_control，同时是流水线序列间隔）──
     c.mpc.dt_control            = dt_control_;
@@ -150,7 +160,11 @@ RobotControllerAdapter::RobotControllerAdapter() {
     c.estimator.stale_age_s          = rc.estimator.staleAgeS;
     c.estimator.chassis_imu_timeout_s= rc.estimator.chassisImuTimeoutS;
     c.estimator.max_extrap_s         = rc.estimator.maxExtrapS;
-    c.estimator.rate_lpf_alpha       = rc.estimator.rateLpfAlpha;
+    c.estimator.small_rate_lpf_alpha = rc.estimator.smallRateLpfAlpha;
+    c.estimator.big_rate_lpf_alpha   = rc.estimator.bigRateLpfAlpha;
+    c.estimator.big_motor_rate_tau_s = rc.estimator.bigMotorRateTauS;
+    c.estimator.big_motor_rate_alpha = rc.estimator.bigMotorRateAlpha;
+    c.estimator.backlash_center_tau_s= rc.estimator.backlashCenterTauS;
     c.estimator.pitch_rate_lpf_alpha = rc.estimator.pitchRateLpfAlpha;
     c.estimator.pitch_acc_lpf_alpha  = rc.estimator.pitchAccLpfAlpha;
     c.estimator.bore[0] = rc.estimator.boreX;

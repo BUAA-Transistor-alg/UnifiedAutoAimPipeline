@@ -237,6 +237,18 @@ public:
                     double frictionLambda;     // 库仑摩擦软符号系数 λ
                     double tauOffsetBig;       // 可选常数负载
                     double tauOffsetSmall;
+                    // 大 yaw 传动背隙（tcbs 3-DOF 模型 eomBacklash 用；2-DOF 的 eom 不受影响）
+                    //   τ_t = k·[dz(Δ) + γ·Δ] + c·Δ̇,  Δ = θ_motor − θ_platform − β
+                    //   ★ β（死区中心）由子模组估计器在线给出，不在此配置。
+                    double backlashDelta;      // 背隙总宽度 δ（rad）
+                    double backlashK;          // 接触刚度 k（N·m/rad）
+                    double backlashC;          // 接触阻尼 c（N·m·s/rad）
+                    double backlashSmoothEps;  // 平滑死区的过渡半宽 ε（rad）
+                    double backlashThrough;    // 直通线性项 γ（死区内梯度引导；0 = 严格物理）
+                    double Jmotor;             // 电机侧惯量（折算到关节侧，kg·m²）
+                    double fcMotor;            // 电机侧库仑摩擦
+                    double fvMotor;            // 电机侧粘滞摩擦
+                    double tauOffsetMotor;     // 电机侧可选常数负载（0 = 关闭）
                 };
                 ModelParams model;
 
@@ -272,7 +284,13 @@ public:
                     double staleAgeS;           // 过旧判定阈值（s）
                     double chassisImuTimeoutS;  // 底盘 IMU 可用超时（s）
                     double maxExtrapS;          // 可信量外推上限（s）
-                    double rateLpfAlpha;        // 角速度低通系数
+                    // 角速度低通（分轴；α = 1 表示直通不滤波）
+                    double smallRateLpfAlpha;   // 小 yaw 关节角速度低通系数
+                    double bigRateLpfAlpha;     // 大 yaw 平台/关节角速度低通系数
+                    // 大 yaw 电机侧角速度低通（来源 = MCU 编码器角速度）
+                    double bigMotorRateTauS;    // 低通时间常数（s）
+                    double bigMotorRateAlpha;   // 拿不到采样间隔时的兜底系数
+                    double backlashCenterTauS;  // 背隙中心 β 在线估计的遗忘时间常数（s；<=0 关闭）
                     double pitchRateLpfAlpha;   // pitch 角速度低通系数
                     double pitchAccLpfAlpha;    // pitch 角加速度低通系数（0 = 不用）
                     double boreX, boreY, boreZ; // 视轴方向（head 系单位矢量）

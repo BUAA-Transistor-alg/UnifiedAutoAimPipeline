@@ -222,10 +222,26 @@ void parseBigSmallYawBranch(const YAML::Node& node,
     m.frictionLambda = requireScalar<double>(md, "friction_lambda", M);
     m.tauOffsetBig   = requireScalar<double>(md, "tau_offset_big", M);
     m.tauOffsetSmall = requireScalar<double>(md, "tau_offset_small", M);
+    // 大 yaw 传动背隙（tcbs 3-DOF 模型）
+    m.backlashDelta     = requireScalar<double>(md, "backlash_delta", M);
+    m.backlashK         = requireScalar<double>(md, "backlash_k", M);
+    m.backlashC         = requireScalar<double>(md, "backlash_c", M);
+    m.backlashSmoothEps = requireScalar<double>(md, "backlash_smooth_eps", M);
+    m.backlashThrough   = requireScalar<double>(md, "backlash_through", M);
+    m.Jmotor            = requireScalar<double>(md, "Jmotor", M);
+    m.fcMotor           = requireScalar<double>(md, "fc_motor", M);
+    m.fvMotor           = requireScalar<double>(md, "fv_motor", M);
+    m.tauOffsetMotor    = requireScalar<double>(md, "tau_offset_motor", M);
     if (!(m.JbigEff > 0.0) || !(m.Js > 0.0))
         throw std::runtime_error("RobotConfig: '" + M + "' 的 Jbig_eff / Js 必须 > 0");
     if (!(m.frictionLambda >= 0.0))
         throw std::runtime_error("RobotConfig: '" + M + ".friction_lambda' 必须 >= 0");
+    if (!(m.backlashDelta >= 0.0) || !(m.backlashK >= 0.0) || !(m.backlashC >= 0.0) ||
+        !(m.backlashSmoothEps >= 0.0) || !(m.backlashThrough >= 0.0))
+        throw std::runtime_error("RobotConfig: '" + M + "' 的 backlash_delta / backlash_k / "
+                                 "backlash_c / backlash_smooth_eps / backlash_through 必须 >= 0");
+    if (!(m.Jmotor >= 0.0) || !(m.fcMotor >= 0.0) || !(m.fvMotor >= 0.0))
+        throw std::runtime_error("RobotConfig: '" + M + "' 的 Jmotor / fc_motor / fv_motor 必须 >= 0");
 
     // mpc（tcbs::dual_yaw::DualYawMpcConfig；dt_control 取 robot_controller.dt_control）
     const YAML::Node& mp = rc["mpc"];
@@ -279,7 +295,11 @@ void parseBigSmallYawBranch(const YAML::Node& node,
     e.staleAgeS          = requireScalar<double>(es, "stale_age_s", E);
     e.chassisImuTimeoutS = requireScalar<double>(es, "chassis_imu_timeout_s", E);
     e.maxExtrapS         = requireScalar<double>(es, "max_extrap_s", E);
-    e.rateLpfAlpha       = requireScalar<double>(es, "rate_lpf_alpha", E);
+    e.smallRateLpfAlpha  = requireScalar<double>(es, "small_rate_lpf_alpha", E);
+    e.bigRateLpfAlpha    = requireScalar<double>(es, "big_rate_lpf_alpha", E);
+    e.bigMotorRateTauS   = requireScalar<double>(es, "big_motor_rate_tau_s", E);
+    e.bigMotorRateAlpha  = requireScalar<double>(es, "big_motor_rate_alpha", E);
+    e.backlashCenterTauS = requireScalar<double>(es, "backlash_center_tau_s", E);
     e.pitchRateLpfAlpha  = requireScalar<double>(es, "pitch_rate_lpf_alpha", E);
     e.pitchAccLpfAlpha   = requireScalar<double>(es, "pitch_acc_lpf_alpha", E);
     e.boreX              = requireScalar<double>(es, "bore_x", E);
@@ -291,8 +311,14 @@ void parseBigSmallYawBranch(const YAML::Node& node,
     if (e.imuLocation != 0 && e.imuLocation != 1)
         throw std::runtime_error("RobotConfig: '" + E + ".imu_location' 只能是 0（ON_BIG_YAW）"
                                  " 或 1（ON_HEAD）");
-    if (!(e.rateLpfAlpha > 0.0 && e.rateLpfAlpha <= 1.0))
-        throw std::runtime_error("RobotConfig: '" + E + ".rate_lpf_alpha' 必须落在 (0, 1]");
+    if (!(e.smallRateLpfAlpha > 0.0 && e.smallRateLpfAlpha <= 1.0))
+        throw std::runtime_error("RobotConfig: '" + E + ".small_rate_lpf_alpha' 必须落在 (0, 1]");
+    if (!(e.bigRateLpfAlpha > 0.0 && e.bigRateLpfAlpha <= 1.0))
+        throw std::runtime_error("RobotConfig: '" + E + ".big_rate_lpf_alpha' 必须落在 (0, 1]");
+    if (!(e.bigMotorRateTauS >= 0.0))
+        throw std::runtime_error("RobotConfig: '" + E + ".big_motor_rate_tau_s' 必须 >= 0");
+    if (!(e.bigMotorRateAlpha > 0.0 && e.bigMotorRateAlpha <= 1.0))
+        throw std::runtime_error("RobotConfig: '" + E + ".big_motor_rate_alpha' 必须落在 (0, 1]");
     if (!(e.pitchRateLpfAlpha > 0.0 && e.pitchRateLpfAlpha <= 1.0))
         throw std::runtime_error("RobotConfig: '" + E + ".pitch_rate_lpf_alpha' 必须落在 (0, 1]");
     if (!(e.pitchAccLpfAlpha >= 0.0 && e.pitchAccLpfAlpha <= 1.0))

@@ -123,7 +123,7 @@ common:
         # 同时作为变换树 yaw_small 节点相对 yaw_big 节点的位置与双级 yaw 平面模型的
         # 平面偏置 dx/dy（z 分量只进变换树，不进平面模型）。改机械后必须同步修改。
         small_yaw_offset_x: 0.0
-        small_yaw_offset_y: 0.10
+        small_yaw_offset_y: 0.07      # 子模组 defaultModelParams 的平面偏置 dy = 0.07（另一处 dx = 0.0）
         small_yaw_offset_z: 0.20
         pitch_joint_y_offset: 0.0     # pitch 关节沿 y 轴偏移（相对小 yaw 旋转中心）
         imu_offset_x: 0.0             # imu 相对 head 的 x 偏移（head = pitch 轴与“过 yaw 轴的竖直面”交点）
@@ -142,60 +142,76 @@ common:
         dt_control: 0.01              # 控制周期（秒，100Hz）：预测序列间隔 / MPC 步长 / 后台 loop 周期
 
         # 双级 yaw 平面模型（tcbs::dual_yaw::ModelParams）
-        # ★ 动力学参数为辨识占位值（子模组 defaultModelParams），必须标定后替换；
-        #   平面偏置 dx/dy 取自上面 tf 的 small_yaw_offset_x/y（不在此重复配置）。
+        # ★ 平面 8 参与大 yaw 背隙参数均为子模组实车辨识值（= defaultModelParams），
+        #   已与子模组默认值同步；平面偏置 dx/dy 取自上面 tf 的 small_yaw_offset_x/y
+        #   （不在此重复配置）。可信度分级见子模组 planar_yaw_params.h。
         model:
           gravity: 9.81               # 重力加速度（m/s²）
           m_u_known: 0.0              # 上装质量（未知 ⇒ 0，仅倾斜时 m_u·d·g⊥ 项受影响）
-          Jbig_eff: 0.0240            # 大 yaw 侧惯量（含 m_u|d|²）
-          Js: 0.0130                  # 上装绕小 yaw 轴总惯量
-          Px: 0.0                     # 上装一阶矩（kg·m）
-          Py: 0.0
-          fc_big: 0.090               # 大 yaw 库仑摩擦
-          fv_big: 0.030               # 大 yaw 粘滞摩擦系数
-          fc_small: 0.030             # 小 yaw 库仑摩擦
-          fv_small: 0.008             # 小 yaw 粘滞摩擦系数
+          Jbig_eff: 0.045614          # 大 yaw 侧惯量（含 m_u|d|²）
+          Js: 0.008116                # 上装绕小 yaw 轴总惯量
+          Px: 0.021348                # 上装一阶矩（kg·m）★ 本批数据不可辨识（需固定倾角数据）
+          Py: -0.007430               # ★ 同上
+          fc_big: 0.096245            # 大 yaw 库仑摩擦
+          fv_big: 0.237374            # 大 yaw 粘滞摩擦系数 ★ 可疑（> fc_big）
+          fc_small: 0.033434          # 小 yaw 库仑摩擦
+          fv_small: 0.048466          # 小 yaw 粘滞摩擦系数 ★ 可疑
           friction_lambda: 100.0      # 库仑摩擦软符号系数 λ（与 MPC 子步数强相关，勿随意改）
           tau_offset_big: 0.0         # 可选常数负载（0 = 关闭）
           tau_offset_small: 0.0
+          # ── 大 yaw 传动背隙（tcbs 3-DOF 模型；τ_t = k·[dz(Δ) + γ·Δ] + c·Δ̇，
+          #    Δ = θ_motor − θ_platform − β）★ β（死区中心）由子模组估计器在线给出，不在此配置 ──
+          backlash_delta: 0.096463    # 背隙总宽度 δ（rad）≈5.53°（唯一有物理含义的背隙量）
+          backlash_k: 157.8279        # 接触刚度（N·m/rad）★ 与 c/δ 共线，数值可信度低
+          backlash_c: 2.591145        # 接触阻尼（N·m·s/rad）★ 同上
+          backlash_smooth_eps: 1.0e-4 # 平滑死区的过渡半宽（rad）
+          backlash_through: 0.002     # 直通线性项 γ（死区内梯度引导；0 = 严格物理）
+          Jmotor: 0.005455            # 电机侧惯量（折算到关节侧，kg·m²）
+          fc_motor: 0.004139          # 电机侧库仑摩擦 ★ 与 fv_motor 严重互换
+          fv_motor: 0.030332          # 电机侧粘滞摩擦 ★ 同上（只有两者之和近似可信）
+          tau_offset_motor: 0.0       # 电机侧可选常数负载（0 = 关闭）
 
         # MPC（tcbs::dual_yaw::DualYawMpcConfig；dt_control 取上面的 robot_controller.dt_control）
         mpc:
-          pred_n: 12                  # 预测步数 N（平面 8 参模型可取得较长）
-          substeps: 4                 # 每控制步 RK4 子步（λ=100、dt=10ms 时必须 ≥ 2，建议 4~8）
+          pred_n: 24                  # 预测步数 N（平面 8 参模型可取得较长）
+          substeps: 4                 # 每控制步 RK4 子步（λ=100、dt=10ms 时必须 ≥ 4，substeps=2 已在稳定边界）
           use_rk4: true               # true: RK4；false: 半隐式欧拉（更快、精度略低）
           max_iter: 8                 # 求解迭代上限
           w_big_azimuth: 1.0          # 大 yaw 世界方位角跟踪权重
           w_small_azimuth: 1.0        # 小 yaw 世界方位角跟踪权重
-          w_small_center: 0.05        # 小 yaw 回中权重（打破冗余自由度）
+          w_small_center: 0.0         # 小 yaw 回中权重（打破冗余自由度）
           w_small_limit: 1.0e4        # 小 yaw 软限位障碍项权重
-          small_limit_soft_ratio: 0.75  # 软限位比例：拆分器判界与 MPC 代价共用同一值
-          r_big_torque: 0.01          # 力矩惩罚
+          small_limit_soft_ratio: 0.9  # 软限位比例：拆分器判界与 MPC 代价共用同一值
+          r_big_torque: 1.0           # 力矩惩罚
           r_small_torque: 0.01
-          rd_big_rate: 0.1            # 力矩变化率惩罚
-          rd_small_rate: 0.1
+          rd_big_rate: 100.0          # 力矩变化率惩罚
+          rd_small_rate: 100.0
           smooth_eps: 1.0e-6          # 位置误差平滑常数（代价 = Q*sqrt(err²+a)）
           ref_delay_steps: 0          # 参考延迟步数（0 = 直接使用最新目标序列）
           big_max_torque: 1.0         # 大 yaw 力矩上限（N·m，★ 按实测替换）
           big_max_torque_rate: 40.0   # 大 yaw 力矩变化率上限（N·m/s）
-          small_max_torque: 0.5       # 小 yaw 力矩上限（N·m，★ 占位，按实测替换）
-          small_max_torque_rate: 80.0 # 小 yaw 力矩变化率上限（N·m/s）
+          small_max_torque: 1.0       # 小 yaw 力矩上限（N·m，★ 占位，按实测替换）
+          small_max_torque_rate: 40.0 # 小 yaw 力矩变化率上限（N·m/s）
 
         # 状态估计（tcbs::YawStateEstimator::Config）
         estimator:
-          imu_location: 0             # 0 = ON_BIG_YAW（IMU 固定在大 yaw 转子上）；1 = ON_HEAD
-          mount_yaw: 0.0              # R_A_IMU（IMU 系 → 大 yaw 转子系，ZXY 欧拉角）
+          imu_location: 1             # 0 = ON_BIG_YAW（IMU 固定在大 yaw 转子上）；1 = ON_HEAD（IMU 在头上，子模组默认/现状）
+          mount_yaw: 0.0              # R_A_IMU（IMU 系 → 大 yaw 转子系，ZXY 欧拉角；仅 imu_location = 0 使用）
           mount_pitch: 0.0
           mount_roll: 0.0
           head_mount_yaw: 0.0         # R_H_IMU（仅 imu_location = 1 时使用）
           head_mount_pitch: 0.0
           head_mount_roll: 0.0
-          transport_delay_s: 0.015    # 链路传输时延（s；MCU 侧无时钟，年龄由上位机计时）
+          transport_delay_s: 0.0      # 链路传输时延（s；MCU 侧无时钟，年龄由上位机计时）
           big_enc_max_jump: 0.30      # 大 yaw 单次测量最大修正幅度（rad，抗跳变/坏帧）
           stale_age_s: 0.30           # 大 yaw 采样“过旧”阈值（s）
           chassis_imu_timeout_s: 1.0  # 底盘 IMU 可用超时（s，零阶保持优于当作不转）
-          max_extrap_s: 0.05          # 可信量（小 yaw / pitch 编码器）外推上限（s）
-          rate_lpf_alpha: 0.35        # 角速度低通系数
+          max_extrap_s: 0.30          # 可信量（小 yaw / pitch 编码器）外推上限（s）
+          small_rate_lpf_alpha: 1.0   # 小 yaw 关节角速度低通系数（α=1 ⇒ 直通不滤波，取自 MCU）
+          big_rate_lpf_alpha: 1.0     # 大 yaw 平台/关节角速度低通系数（α=1 ⇒ 直通不滤波）
+          big_motor_rate_tau_s: 0.001 # 大 yaw 电机侧角速度低通时间常数（s）
+          big_motor_rate_alpha: 1.0   # 拿不到采样间隔时的兜底低通系数
+          backlash_center_tau_s: 3.0  # 背隙中心 β 在线估计遗忘时间常数（s；<= 0 关闭估计）
           pitch_rate_lpf_alpha: 0.25  # pitch 角速度低通系数
           pitch_acc_lpf_alpha: 0.15   # pitch 角加速度低通系数（0 = 不使用）
           bore_x: 0.0                 # 视轴方向（head 系单位矢量；本工程 x=右 y=前 z=上）
@@ -206,25 +222,27 @@ common:
           source_timeout_s: 0.5       # 数据源超时（s）
 
         # MCU 数据线性映射（tcbs::McuDataPreprocessor::LinearParams）
-        # ★ 本构型 IMU 移到大 yaw 转子上，pitch 只表示“关节角 ↔ 电控原始值”的映射，
-        #   默认恒等占位；照抄旧构型的 pitch 标定值会把目标角放大 20 倍以上（危险）。
+        # ★ 以下为子模组已标定默认值（改机械/换电控/动过 IMU 安装后都要重标，见子模组 docs/calibration.md §3.3）：
+        #   pitch 的 send / recv 两通道互不为逆（单位与零点不同），必须分别标定、分别使用；
+        #   大 yaw 电控侧该轴正方向与本工程约定相反 ⇒ 位置/速度/力矩收发均取 −1（温度、模式位不参与映射）；
+        #   小 yaw 机械零点处电控上报 +1.025466 rad ⇒ recv offset = −1.025466，下发侧反向补 +1.025466。
         mcu_linear:
-          send_pitch_scale: 1.0       # 关节角 → 电控 pitch 目标值
-          send_pitch_offset: 0.0
-          recv_pitch_scale: 1.0       # 电控原始 pitch 值 → 关节角
-          recv_pitch_offset: 0.0
-          recv_big_yaw_scale: 1.0     # 电控已给弧度，默认恒等
+          send_pitch_scale: 21.337421     # 关节角 → 电控 pitch 目标值
+          send_pitch_offset: -6.708668
+          recv_pitch_scale: 0.006060      # 电控原始 pitch 值 → 关节角
+          recv_pitch_offset: -198.645875
+          recv_big_yaw_scale: -1.0        # 电控该轴正方向与本工程相反 ⇒ 取负
           recv_big_yaw_offset: 0.0
-          recv_big_omega_scale: 1.0
-          send_big_yaw_scale: 1.0
+          recv_big_omega_scale: -1.0
+          send_big_yaw_scale: -1.0
           send_big_yaw_offset: 0.0
-          send_big_velocity_scale: 1.0
-          send_big_torque_scale: 1.0
+          send_big_velocity_scale: -1.0
+          send_big_torque_scale: -1.0
           recv_small_yaw_scale: 1.0
-          recv_small_yaw_offset: 0.0
+          recv_small_yaw_offset: -1.025466  # = −(小 yaw 机械零点处的电控原始读数)
           recv_small_omega_scale: 1.0
           send_small_yaw_scale: 1.0
-          send_small_yaw_offset: 0.0
+          send_small_yaw_offset: 1.025466   # 下发侧反向补同一偏移（电控判据：下发值 == 编码器值 ⇒ 不动）
           send_small_velocity_scale: 1.0
           send_small_torque_scale: 1.0
 
@@ -239,13 +257,17 @@ common:
           integral_on_big: false      # 是否允许大 yaw 积分补偿
 
       # ── 关节行程与回中目标（rad；MPC 的 JointLimits / small_center_angle 与拆分器共用）──
+      # ⚠ 小 yaw 行程取子模组 defaultMpcConfig() 的代码默认值 ±40°（0.698131701 rad）。
+      #   注意子模组该处注释、mcu_code_demo 的 YAW_SMALL_MIN/MAX_RAD 硬限位与
+      #   collect_sysid.py 的 SMALL_TRAVEL_MIN/MAX 仍写 ±30° —— 上电前请确认电控硬限位
+      #   与本值一致（子模组要求“改行程要三处一起改”），否则 MPC 会规划到电控拒绝的区间。
       joints:
         big_min_angle: -1.0e9         # 大 yaw 行程下界（多圈自由转 ⇒ 不限位）
         big_max_angle: 1.0e9          # 大 yaw 行程上界
-        small_min_angle: -0.436332313 # 小 yaw 行程下界 −25°
-        small_max_angle: 0.349065850  # 小 yaw 行程上界 +20°（非对称行程）
+        small_min_angle: -0.698131701 # 小 yaw 行程下界 −40°
+        small_max_angle: 0.698131701  # 小 yaw 行程上界 +40°（行程对称）
         # 小 yaw 回中目标关节角（拆分器“尽量让小 yaw 少偏离”的目标 + MPC 回中代价项共用）。
-        # ★ 本工程取 0（关节零位）；行程中心（−2.5°）与此不同时以本值为准。
+        # 当前行程对称 ⇒ 中心 = 0（子模组 defaultMpcConfig 同此值）。
         small_center_angle: 0.0
 
       # ── 大小 yaw 拆分器：大 yaw 平滑轨迹规划器（同时满足最大速度/加速度/加加速度限制）──
