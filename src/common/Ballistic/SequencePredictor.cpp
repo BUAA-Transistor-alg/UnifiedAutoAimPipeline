@@ -1,5 +1,6 @@
 // SequencePredictor.cpp — 生成瞄准与云台参考序列，负责候选选板和插值。
 // 中低速 Armor 使用联合 Newton；高速 Armor 的 fast_predictor 和 PowerRune 保留原解算。
+// 三条来源共用的序列组装步骤会在插值前统一展开 yaw，保证 ±π 两侧的近邻角连续。
 #include "common/Ballistic/SequencePredictor.h"
 
 #include "common/TransformTree/TfTreeSync.h"
@@ -659,8 +660,13 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     };
     for (int u = 0; u < U; ++u) {
         Item item = makeActual(solved[(size_t)u]);
-        if (normal_armor && u > 0) {
+        if (u > 0) {
             // 先展开精确点的 yaw 再插值，避免 +pi / -pi 两侧的近邻角被连成整圈跳变。
+            // 全部来源（中低速 Armor 的 Newton、fast_target 高速 Armor、PowerRune）统一处理：
+            // 展开只改“同一物理朝向的等价表示”，下游消费方（MPC 序列版 set、
+            // BigSmallYawSplitter）本就会按相邻差再解卷绕一次，对已展开序列幂等，
+            // 因此硬件指令不变，但插值段不会再扫过错误的整圈路径。
+            // 序列首点（索引 0）不展开，保持解算器输出的 (−π, π]，作为整条链的基准。
             const Item& previous = items[(size_t)solve_idx[(size_t)u - 1]];
             item.yaw = previous.yaw + std::remainder(item.yaw - previous.yaw, 2.0 * M_PI);
             item.gimbal_yaw = previous.gimbal_yaw +
