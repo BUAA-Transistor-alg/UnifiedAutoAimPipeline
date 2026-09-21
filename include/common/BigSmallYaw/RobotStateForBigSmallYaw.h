@@ -8,17 +8,21 @@
 //   - RobotState → ExtraInputInfo 的转换只填 big_small 包（single 包保持 NaN），
 //     这样任何按单 yaw 语义读取该帧信息的代码会立刻因 NaN 报错；
 //   - 大/小 yaw 的**角度约定**在本文件统一说明（避免“世界方位角 / 关节角 / 电机角”混淆）：
-//       θ_big        ：大 yaw 关节角（相对底盘，多圈连续，IMU + 编码器估计）
+//       θ_big        ：大 yaw 关节角（相对底盘，**云台侧**；取 strict_pose）
 //       θ_small      ：小 yaw 关节角（相对大 yaw，编码器直测，行程 −25°~+20°）
 //       ψ_big        ：大 yaw 平台 x 轴的世界方位角 = ψ_chassis + θ_big（IMU 直测）
 //       ψ_small      ：小 yaw 输出 x 轴的世界方位角 = ψ_big + θ_small
 //     输出/参考序列一律用**世界方位角**（tcbs 接口语义）；流水线内部的 item.yaw 也是
 //     世界方位角，但其中的底盘修正项按严格反解的欧拉 yaw 计算（见 SequencePredictor）。
+//   - ★ **来源约定**：上面这些姿态量（底盘欧拉角、θ/ψ、IMU 欧拉角）统一取自子模组的
+//     `strict_pose`（严格反解包）；`est` 与 `mcu`/`imu` 原始包只保留在 RobotState 的
+//     mcu/imu/est 镜像里供**可视化**显示，不参与解算与下发（速率类除外，见实现注释）。
 #ifndef BSY_ROBOT_STATE_FOR_BIG_SMALL_YAW_H
 #define BSY_ROBOT_STATE_FOR_BIG_SMALL_YAW_H
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "common/Input/IInputMode.h"
@@ -184,6 +188,27 @@ public:
     ExtraInputInfo sampleExtraInfo();
 
 private:
+    // ── 姿态来源约定（★ 非可视化消费方一律只用 strict_pose）──
+    //   toRobotState 把**控制链要用的姿态量**统一取自 tcbs::dual_yaw::StrictPose
+    //   （严格反解：IMU + 可信编码器 + 标定）：
+    //     底盘欧拉角 ← strict_pose.chassis_euler_*      （ZXY）
+    //     θ_big/θ_small/θ_p ← strict_pose.big/small/pitch_joint_angle（云台侧）
+    //     ψ_big/ψ_small ← strict_pose.platform_azimuth / head_azimuth
+    //     IMU 欧拉角 ← strict_pose.imu_euler_*
+    //   est / mcu / imu 的**原始包只留在本结构的 mcu/imu/est 镜像里供可视化显示**，
+    //   不参与 ExtraInputInfo、变换树、弹道解算与云台下发（速率类字段除外：它们只被
+    //   覆盖层显示，且 strict_pose 不提供速率）。
+    //
+    //   ⚠ strict_pose 只给 (−π,π] 的 **wrap** 方位角，而保持/扫描模式下发给子模组的
+    //     MPC 参考必须与控制器内部的（多圈）chassis_azimuth 同圈 ⇒ 方位角在适配器内
+    //     做多圈解卷绕：输入只有 strict_pose 的 wrap 值，不读 est 的方位角。
+    void unwrapAzimuths(RobotState& s);
+
+    std::mutex az_mtx_;
+    bool   az_unwrap_init_ = false;
+    double big_azimuth_corr_ = 0.0, small_azimuth_corr_ = 0.0;
+    double big_azimuth_last_ = 0.0, small_azimuth_last_ = 0.0;
+
     // 从配置读取的完整参数（common.big_small_yaw.big_small 分支）
     RobotConfig::BigSmallYawParams::BigSmallBranch params_;
     double dt_control_ = 0.0;

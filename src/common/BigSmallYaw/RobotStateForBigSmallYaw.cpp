@@ -19,23 +19,30 @@ RobotState toRobotState(const tcbs::RobotController::State& st) {
     s.info_chassis_roll  = st.strict_pose.chassis_euler_roll;
     s.chassis_azimuth    = st.strict_pose.chassis_azimuth;
 
-    // ── 关节角（θ_big 用延迟补偿后的估计；θ_small / pitch 为可信编码器值）──
-    s.yaw_big_joint    = st.est.big_joint_angle;
-    s.yaw_small_joint  = st.est.small_joint_angle;
-    s.pitch_joint      = st.est.pitch_joint_angle;
+    // ── 关节角：★ 取自 strict_pose（严格反解所用关节角）──
+    //   θ_big 用**云台侧**角（strict_pose.big_joint_angle = big_platform_angle），
+    //   与上面 chassis_euler_* 同源 —— 二者配合才能让变换树复现 IMU 实测头姿态；
+    //   用 est 的电机侧角会差一个背隙 Δ（这正是本次改口径要消除的）。
+    //   θ_small / pitch 同样是反解所用的可信编码器值（strict_pose 内 wrap 到 (−π,π]，两者行程均 < π，等价）。
+    s.yaw_big_joint    = st.strict_pose.big_joint_angle;
+    s.yaw_small_joint  = st.strict_pose.small_joint_angle;
+    s.pitch_joint      = st.strict_pose.pitch_joint_angle;
+    // 速率类 strict_pose 不提供，保持 est（仅覆盖层显示，不参与解算/下发）
     s.yaw_big_rate     = st.est.big_joint_rate;
     s.yaw_small_rate   = st.est.small_joint_rate;
 
-    // ── 世界方位角（估计器语义；多圈连续）──
-    s.yaw_big_azimuth   = st.est.platform_azimuth;
-    s.yaw_small_azimuth = st.est.small_output_azimuth;
-    s.platform_rate     = st.est.platform_rate;
+    // ── 世界方位角：★ 取自 strict_pose（wrap 值；多圈连续由 unwrapAzimuths 恢复）──
+    //   ψ_big = strict_pose.platform_azimuth（大 yaw 平台 x 轴）
+    //   ψ_small = strict_pose.head_azimuth（头 x 轴；= 小 yaw 输出 x 轴，Rx(pitch) 不改 x 轴）
+    s.yaw_big_azimuth   = st.strict_pose.platform_azimuth;
+    s.yaw_small_azimuth = st.strict_pose.head_azimuth;
+    s.platform_rate     = st.est.platform_rate;   // 速率：仅覆盖层显示
 
-    // ── IMU 原始数据（记录/诊断）──
+    // ── IMU 欧拉角：★ 取自 strict_pose（同一份 IMU 快照 + 标定，不依赖 imu.valid）──
     s.imu_location     = st.strict_pose.imu_location;
-    s.imu_euler_yaw    = st.imu.valid ? st.imu.euler_yaw   : st.strict_pose.imu_euler_yaw;
-    s.imu_euler_pitch  = st.imu.valid ? st.imu.euler_pitch : st.strict_pose.imu_euler_pitch;
-    s.imu_euler_roll   = st.imu.valid ? st.imu.euler_roll  : st.strict_pose.imu_euler_roll;
+    s.imu_euler_yaw    = st.strict_pose.imu_euler_yaw;
+    s.imu_euler_pitch  = st.strict_pose.imu_euler_pitch;
+    s.imu_euler_roll   = st.strict_pose.imu_euler_roll;
 
     // ── MCU ──
     s.bullet_velocity  = st.mcu.bullet_velocity;
@@ -311,7 +318,41 @@ RobotControllerAdapter::RobotControllerAdapter() {
 RobotControllerAdapter::~RobotControllerAdapter() = default;
 
 RobotState RobotControllerAdapter::state() {
-    return toRobotState(rc_->getState());
+    RobotState s = toRobotState(rc_->getState());
+    unwrapAzimuths(s);   // strict_pose 只给 wrap 值 → 恢复多圈连续（保持/扫描参考需要）
+    return s;
+}
+
+// 把 strict_pose 的 wrap 方位角解卷绕成**多圈连续**量（原地修改 s.yaw_*_azimuth）。
+// 为什么必须做：非可视化消费方（GimbalOutputForBigSmallYaw 的保持/哨兵扫描）会把这两个
+// 方位角当作 MPC 参考下发，而子模组内部用于代价的 chassis_azimuth 是多圈量；若下发 wrap
+// 值，大 yaw 转过半圈后参考与状态会差整圈，MPC 会去追一个假目标。
+// 只以 strict_pose 的 wrap 值为输入（不读 est 的方位角）：取与上一拍输出最近的同圈值。
+// 起点一致性：适配器**拥有**这个 tcbs::RobotController（子模组估计器的解卷绕累加器与它
+//   同时创建），且 state() 在构造后立刻被采样线程/云台线程调用；首个样本的 |wrap 值| ≤ π，
+//   即使首个样本是未就绪的全零，随后第一个真实样本也只会落在同一圈 ⇒ 与子模组内部
+//   （多圈）chassis_azimuth 不会差整圈。
+void RobotControllerAdapter::unwrapAzimuths(RobotState& s) {
+    std::lock_guard<std::mutex> lock(az_mtx_);
+    constexpr double kTwoPi = 2.0 * M_PI;
+    auto unwrap = [](double wrapped, double& prev, double& corr) {
+        double v = wrapped + corr;
+        const double d = v - prev;
+        if (d > M_PI)       corr -= kTwoPi;   // 跨过 +π：回退一圈
+        else if (d < -M_PI) corr += kTwoPi;   // 跨过 −π：前进一圈
+        v = wrapped + corr;
+        prev = v;
+        return v;
+    };
+    if (!az_unwrap_init_) {
+        // 首个样本：多圈零位取该 wrap 值所在圈（与子模组内部解卷绕的起点一致）
+        big_azimuth_last_   = s.yaw_big_azimuth;
+        small_azimuth_last_ = s.yaw_small_azimuth;
+        az_unwrap_init_     = true;
+        return;
+    }
+    s.yaw_big_azimuth   = unwrap(s.yaw_big_azimuth, big_azimuth_last_, big_azimuth_corr_);
+    s.yaw_small_azimuth = unwrap(s.yaw_small_azimuth, small_azimuth_last_, small_azimuth_corr_);
 }
 
 ExtraInputInfo RobotControllerAdapter::sampleExtraInfo() {
