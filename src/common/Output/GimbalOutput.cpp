@@ -45,7 +45,12 @@ GimbalOutput::GimbalOutput(tcs::RobotController& rc)
       fire_angle_lower_limit_(RobotConfig::instance().common.predictSequence.fireAngleLowerLimit),
       fire_angle_length_(RobotConfig::instance().common.predictSequence.fireAngleLength),
       extra_predict_time_(RobotConfig::instance().common.predictedBallistic.extraPredictTime),
-      dt_control_(RobotConfig::instance().common.dtControl()) {}
+      dt_control_(RobotConfig::instance().common.dtControl()),
+      sentry_(RobotConfig::instance().common.sentryController),
+      scan_seq_points_((RobotConfig::instance().common.predictSequence.predictionPoints - 1)
+                           * RobotConfig::instance().common.predictSequence.interpolationRefine
+                       + 1
+                       + RobotConfig::instance().common.predictSequence.exactLeadPoints) {}
 
 bool GimbalOutput::computeFire(double ref, double pred, double threshold) {
     // 角度差先解缠绕到 (-π, π]
@@ -107,6 +112,13 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
         const std::vector<double> yaw_out   = truncateKeepLast(yaw_seq, 0, 0.0);
         const std::vector<double> pitch_out = truncateKeepLast(pitch_seq, pitch_seq_lead_, 0.0);
         const std::vector<bool>   fire_out  = truncateKeepLast(fire_seq, fire_seq_lead_, false);
+
+        // ── 哨兵扫描控制器：本帧有有效预测 → 复位“无目标”计时并退出扫描；
+        //    同时记录本帧下发序列首值，供进入扫描前的保持段填充整条序列 ──
+        sentry_.update(/*valid=*/true, result.frame_timestamp);
+        last_valid_yaw_   = yaw_out.front();
+        last_valid_pitch_ = pitch_out.front();
+        have_last_valid_  = true;
 
         last_.auto_aim_enable = seq.valid;
         last_.predicted_point = seq.first_point;
@@ -173,16 +185,49 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
             AimSwitchLog::instance().plan(plan);
         }
     } else {
-        // 预测不可用：保持模式（自瞄关闭，目标保持当前严格反解位置）。
-        // 序列模式下用单元素序列调用序列 set。
+        // 预测不可用：自瞄关闭。
+        //  - 哨兵扫描控制器关闭（enabled = false）：**原行为完全不变**——用单元素
+        //    序列保持当前严格反解位置；
+        //  - 开启且已进入扫描模式：按配置生成扫描序列（yaw 匀速旋转 + pitch 锯齿波，
+        //    见 common/SentryController.h），auto_aim_enable = true、fire 全 false；
+        //  - 开启但尚未超过 idle_timeout_sec：保持段——用上一个有效输出序列的首值
+        //    填充整条序列（从未有过有效输出时退化为本帧严格反解位置），自瞄关闭。
+        sentry_.update(/*valid=*/false, result.frame_timestamp);
+
         last_ = LastOutput{};
-        const double hold_yaw   = st.strict.yaw_pos;
-        const double hold_pitch = st.strict.pitch_angle;
-        ctx.fire_out = std::vector<bool>{false};   // 预测不可用：无有效 fire（首元素为 false）
-        rc_.set(/*auto_aim_enable=*/false, /*yaw_torque_only_mode=*/yaw_torque_only_mode_,
-                std::vector<double>{hold_yaw},
-                std::vector<double>{hold_pitch},
-                std::vector<bool>{false},
-                /*integral_enable=*/false);
+        std::vector<double> yaw_out, pitch_out;
+        if (sentry_.enabled()) {
+            const int n = std::max(1, scan_seq_points_);
+            bool auto_aim = false;
+            if (sentry_.scanning()) {
+                sentry_.buildYawSequence(n, dt_control_, st.strict.yaw_pos,
+                                         result.frame_timestamp, yaw_out);
+                sentry_.buildPitchSequence(n, dt_control_, result.frame_timestamp, pitch_out);
+                auto_aim = true;
+            } else {
+                const double hold_yaw   = have_last_valid_ ? last_valid_yaw_ : st.strict.yaw_pos;
+                const double hold_pitch = have_last_valid_ ? last_valid_pitch_ : st.strict.pitch_angle;
+                yaw_out.assign((size_t)n, hold_yaw);
+                pitch_out.assign((size_t)n, hold_pitch);
+            }
+            last_.auto_aim_enable = auto_aim;
+            last_.yaw_seq         = yaw_out;
+            last_.pitch_seq       = pitch_out;
+            last_.fire_seq.assign((size_t)n, false);
+            ctx.fire_out = last_.fire_seq;   // 预测不可用：无有效 fire（首元素 false）
+            rc_.set(auto_aim, /*yaw_torque_only_mode=*/yaw_torque_only_mode_,
+                    yaw_out, pitch_out, last_.fire_seq,
+                    /*integral_enable=*/false);
+        } else {
+            // 原行为（未开启哨兵控制器时与引入本功能前完全一致）
+            const double hold_yaw   = st.strict.yaw_pos;
+            const double hold_pitch = st.strict.pitch_angle;
+            ctx.fire_out = std::vector<bool>{false};   // 预测不可用：无有效 fire（首元素为 false）
+            rc_.set(/*auto_aim_enable=*/false, /*yaw_torque_only_mode=*/yaw_torque_only_mode_,
+                    std::vector<double>{hold_yaw},
+                    std::vector<double>{hold_pitch},
+                    std::vector<bool>{false},
+                    /*integral_enable=*/false);
+        }
     }
 }

@@ -100,6 +100,8 @@ RobotControllerAdapter::RobotControllerAdapter() {
     c.model.Js             = rc.model.Js;
     c.model.Px             = rc.model.Px;
     c.model.Py             = rc.model.Py;
+    c.model.Pbx            = rc.model.Pbx;
+    c.model.Pby            = rc.model.Pby;
     c.model.fcBig          = rc.model.fcBig;
     c.model.fvBig          = rc.model.fvBig;
     c.model.fcSmall        = rc.model.fcSmall;

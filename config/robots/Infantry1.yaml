@@ -8,6 +8,9 @@
 #   只需填写当前 mode（构型开关）对应的那一支——两种构型的参数互不通用，写没用到的
 #   那一份纯属冗余；当前构型那一支内部的字段依旧全部必填。（另一支若写了也会被
 #   严格校验，避免残留半截配置。）
+#
+#   **第二处例外**：common.sentry_controller 的 enabled 为必填总开关，其余字段
+#   仅当 enabled = true 时必填（关闭时可整段省略，代码不读取、不校验）。
 # =============================================================
 
 # ════════════════════════════════════════════════════════════
@@ -52,6 +55,15 @@ common:
   # （SIGKILL 后重新启动并等待就绪，见 InferProcessManager::forceRestart）。
   # 建议大于模型编译/切换耗时（如 10s），避免切换期间误触发。
   infer_force_restart_timeout_sec: 20.0
+
+  # ── 哨兵扫描控制器（可选功能，common.sentry_controller）──
+  # 哨兵长时间无瞄准目标时自动进入扫描模式（yaw 匀速旋转 + pitch 锯齿波往复），
+  # 以便重新发现目标。enabled 为总开关（必填）；**enabled = false 时本段其余字段
+  # 可整段省略**（代码不读取、不校验），两个云台输出模式保持原有行为，与未引入
+  # 本功能时完全一致；enabled = true 时其余字段全部必填（缺字段 / 非法值报错退出）。
+  # 完整参数样例见 config/robots/Sentry1.yaml。
+  sentry_controller:
+    enabled: false
 
   # ── 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择 ──
   input_mode:

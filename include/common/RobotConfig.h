@@ -12,6 +12,8 @@
 //   **唯一例外**：common.big_small_yaw 下按 yaw 构型分为 single / big_small 两支，
 //   只需填写当前 mode 对应的那一支（另一支可整段省略——两种构型的参数互不通用，
 //   写没用到的那一份纯属冗余）；当前构型那一支内部的字段依旧全部必填。
+//   **第二处例外**：common.sentry_controller 下，总开关 enabled 必填，其余字段
+//   仅当 enabled = true 时必填（关闭时可整段省略，代码不读取、不校验）。
 //   新增配置项时必须同步：
 //   1) 在 config/robots/<active_config>.yaml 对应段中添加字段并写明含义；
 //   2) 在 RobotConfig.h 对应结构体中添加成员（无默认初始化）；
@@ -231,7 +233,12 @@ public:
                     double mUKnown;            // 上装质量（未知则 0）
                     double JbigEff;            // 大 yaw 侧惯量（含 m_u|d|²）
                     double Js;                 // 上装绕小 yaw 轴总惯量
-                    double Px, Py;             // 上装一阶矩（kg·m）
+                    double Px, Py;             // 上装一阶矩（kg·m；相对小 yaw 轴，随 θ_s 转）
+                    // 大 yaw 侧一阶矩 Pb = (Pbx, Pby)（kg·m）: "只随大 yaw 转、不随小 yaw 转"
+                    // 的那部分质量偏心；只进大 yaw 行，重力矩
+                    //   Gb = (Pbx + m_u_known·dx)·gy − (Pby + m_u_known·dy)·gx + Gs。
+                    // ⚠ 只在倾斜数据里可辨识（水平底盘 g_⊥≡0 ⇒ 梯度恒 0），0 = 未标定。
+                    double Pbx, Pby;
                     double fcBig, fvBig;       // 大 yaw 库仑/粘滞摩擦
                     double fcSmall, fvSmall;   // 小 yaw 库仑/粘滞摩擦
                     double frictionLambda;     // 库仑摩擦软符号系数 λ
@@ -521,6 +528,34 @@ public:
         TargetSelectionParams targetSelection;
     };
 
+    // ── 哨兵扫描控制器（可选功能，config: common.sentry_controller）──
+    // 用途：哨兵长时间没有瞄准目标时自动进入“扫描模式”，让云台按设定规律运动
+    //       （yaw 匀速旋转 + pitch 锯齿波往复），以便重新发现目标。两条流水线、
+    //       两种 yaw 构型共用本段配置；是否生效还取决于当前 gimbal 输出模式
+    //       （只有云台输出模式调用本功能，可视化/none 模式不产生控制序列）。
+    //
+    // ⚠ 字段必要性约定（本工程第二处“按开关决定字段是否必填”的例外，第一处是
+    //   common.big_small_yaw 的 single / big_small 分支）：
+    //   - enabled：**必填**（总开关）；
+    //   - 其余字段：**仅当 enabled = true 时必填**（缺字段 / 非法值直接抛异常）；
+    //     enabled = false 时可整段省略这些字段，代码既不读取也不校验，两个云台
+    //     输出模式保持原有行为（与未引入本功能时**完全一致**）。
+    struct SentryControllerParams {
+        bool   enabled = false;   // 总开关（config: enabled，必填）
+        // ── 以下仅在 enabled = true 时必需 ──
+        double idleTimeoutSec = 0.0;          // 无有效预测持续多久后进入扫描模式（秒，>= 0）
+        double yawScanAngularVelocity = 0.0;  // 扫描 yaw 角速度（rad/s，!= 0；正值 / 负值
+                                              // = 两个相反的扫描方向）
+        double yawScanMaxDeviation = 0.0;     // 扫描 yaw 目标相对本帧实测角度的最大偏离
+                                              // （rad，> 0）：序列每点都按此限幅，防止
+                                              // 下发序列把枪线甩出过远
+        double pitchScanMin = 0.0;            // 扫描 pitch 下界（rad）
+        double pitchScanMax = 0.0;            // 扫描 pitch 上界（rad，须 > pitch_scan_min）
+        double pitchScanRiseTimeSec = 0.0;    // pitch 由下界线性升到上界的时间（秒，> 0）
+        double pitchScanFallTimeSec = 0.0;    // pitch 由上界线性回落到下界的时间（秒，> 0）
+                                              // （锯齿波周期 = 上升时间 + 回落时间）
+    };
+
     // 共用参数（两个流水线共享）
     struct CommonParams {
         // yaw 构型与**构型相关参数**（tf / 控制器参数 / 新构型模型与拆分器参数）。
@@ -562,6 +597,11 @@ public:
         // InferProcessManager::forceRestart 强制重启对应的推理进程（见 InferShmClient
         // 文件头注释）。0 = 关闭该功能。
         double inferForceRestartTimeoutSec;
+
+        // 哨兵扫描控制器（可选功能，config: common.sentry_controller；见
+        // SentryControllerParams 与 common/SentryController.h）。enabled = false 时
+        // 两个云台输出模式保持原有行为。
+        SentryControllerParams sentryController;
 
         // 队列积压自适应额外延迟（可选功能，见 BacklogAdaptiveDelay，v6 PID 式 PI）：
         // 开启后处理线程每次 tryPopFrame() 后统计除输出缓冲队列外各缓冲队列

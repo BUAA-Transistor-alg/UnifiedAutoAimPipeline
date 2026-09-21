@@ -3,13 +3,16 @@
 // 消费 OutputContext 携带的预测云台控制序列（yaw/pitch，已含底盘修正与偏置）：
 //  - 计算 fire 序列（MPC ref/pred 逐对判定 + 动态角度阈值）并按配置截取
 //    （pitch 截第 m 个之后 / fire 截第 o 个之后）后发送到 tcs::RobotController；
-//  - 预测不可用时进入保持模式（自瞄关闭，保持当前严格反解位置）。
+//  - 预测不可用时进入保持模式（自瞄关闭，保持当前严格反解位置）；若开启哨兵扫描
+//    控制器（config common.sentry_controller.enabled），无目标超过 idle_timeout_sec
+//    后进入扫描模式（yaw 匀速旋转 + pitch 锯齿波，见 common/SentryController.h）。
 // 瞄准点预测由 SequencePredictor 统一完成（main 每帧调用并把结果写入当帧
 // OutputContext），本模式不做解算、不持有 SequencePredictor。
 #ifndef GIMBAL_OUTPUT_H
 #define GIMBAL_OUTPUT_H
 
 #include "common/Output/IOutputMode.h"
+#include "common/SentryController.h"
 #include "tcs/RobotController.h"
 
 #include <opencv2/opencv.hpp>
@@ -57,6 +60,18 @@ private:
     // extra_predict_time + (index+1)·dt_control（与返回点索引时间同一时间轴）
     double extra_predict_time_;
     double dt_control_;
+
+    // ── 哨兵扫描控制器（可选功能，config common.sentry_controller）──
+    // enabled = false 时 sentry_ 所有接口为空操作，下面 else 分支走原有保持逻辑，
+    // 行为与未引入本功能时完全一致（见 common/SentryController.h）。
+    sentry::SentryController sentry_;
+    int    scan_seq_points_;        // 扫描/保持段序列长度 = 正常预测序列总点数
+                                    // (prediction_points-1)*interpolation_refine+1+exact_lead_points
+    // 上一个有效输出序列的首值（进入扫描前的保持段用它填充整条序列；
+    // 从未有过有效输出时退化为本帧实测严格反解位置）
+    bool   have_last_valid_ = false;
+    double last_valid_yaw_   = 0.0;
+    double last_valid_pitch_ = 0.0;
 
     LastOutput last_;
 };
