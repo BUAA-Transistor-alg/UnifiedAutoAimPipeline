@@ -16,6 +16,7 @@ void SentryController::update(bool valid, const TimePoint& now) {
         // 重新瞄准到目标：立即复位计时并退出扫描
         idle_active_ = false;
         scanning_    = false;
+        scan_ref_valid_ = false;
         return;
     }
 
@@ -28,6 +29,7 @@ void SentryController::update(bool valid, const TimePoint& now) {
         if (idle_s >= params_.idleTimeoutSec) {
             scanning_   = true;
             scan_start_ = now;
+            scan_ref_valid_ = false;   // 下一帧首次生成序列时锁存参考初值
         }
     }
 }
@@ -37,10 +39,9 @@ double SentryController::scanElapsed(const TimePoint& now) const {
     return std::chrono::duration<double>(now - scan_start_).count();
 }
 
-double SentryController::yawTargetAt(double current, double t) const {
-    const double target = current + params_.yawScanAngularVelocity * t;
-    const double lo     = current - params_.yawScanMaxDeviation;
-    const double hi     = current + params_.yawScanMaxDeviation;
+double SentryController::clampYawToMeasured(double target, double current) const {
+    const double lo = current - params_.yawScanMaxDeviation;
+    const double hi = current + params_.yawScanMaxDeviation;
     return std::min(std::max(target, lo), hi);
 }
 
@@ -61,14 +62,24 @@ double SentryController::pitchTargetAt(double t) const {
 
 void SentryController::buildYawSequence(int n, double dt, double current_yaw,
                                         const TimePoint& now,
-                                        std::vector<double>& out) const {
+                                        std::vector<double>& out) {
     out.clear();
     if (n <= 0) return;
+
+    // 参考位置 = 进入扫描时锁存的实测角 + ω·scanElapsed，与实测角解耦：
+    // 参考速度恒为 ω（实测角只用于限幅，不参与参考位置的计算）。
+    if (!scan_ref_valid_) {
+        scan_ref_yaw_   = current_yaw;
+        scan_ref_valid_ = true;
+    }
+    const double ref_now =
+        scan_ref_yaw_ + params_.yawScanAngularVelocity * scanElapsed(now);
+
     out.reserve((size_t)n);
-    const double elapsed = scanElapsed(now);
     for (int k = 0; k < n; ++k) {
-        const double t = elapsed + (double)(k + 1) * dt;
-        out.push_back(yawTargetAt(current_yaw, t));
+        const double target =
+            ref_now + params_.yawScanAngularVelocity * (double)(k + 1) * dt;
+        out.push_back(clampYawToMeasured(target, current_yaw));
     }
 }
 
