@@ -10,6 +10,7 @@
 #include <limits>
 
 #include "common/RobotConfig.h"
+#include "common/Debug/AimSwitchLog.h"
 
 namespace {
 // 每个工作线程领取一个固定的 GimbalSolver 编号（持久线程池 + thread_local →
@@ -411,6 +412,12 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     // PowerRune 决策器同样在来源切换时整体重置（离开 PowerRune 后其状态不再有效；
     // Armor 各 label 之间切换时本决策器本就不使用，一并重置无副作用）。
     if (!(active_source_ == predictor.source)) {
+        // 来源切换会清空粘滞索引与决策器状态（下一次 predict 重新建立、可能改选
+        // 另一块靶），记进选靶切换日志以便与"切换时刻"对齐；首次从无来源进入
+        // 不算切换（此时状态本就被 invalidate() 清空过，避免重复记录）。
+        if (active_source_.kind != PredictorSource::Kind::NONE) {
+            AimSwitchLog::instance().event("RESET_SOURCE", "predictor source switched");
+        }
         state_ = State{};
         active_source_ = predictor.source;
         power_rune_selector_.reset();
@@ -853,6 +860,13 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
 
 void SequencePredictor::invalidate()
 {
+    // 仅在"确实有状态被清掉"时记一条日志：main 在预测器无效期间会每帧调用本函数，
+    // 逐帧记录会刷屏；只有从"有来源"变为"无来源"的那一次才是真正的重置
+    // （决策器状态机与粘滞索引被清零 —— 这是频繁改选/切换的根源之一）。
+    if (active_source_.kind != PredictorSource::Kind::NONE) {
+        AimSwitchLog::instance().event("RESET_INVALIDATE",
+                                       "predictor invalid -> selector/state reset");
+    }
     // 预测器不可用（无目标）：自身跨帧状态、当前来源记录与 PowerRune 决策器一并
     // 重置；下次 predict() 将视为新来源并重新初始化状态
     state_ = State{};
