@@ -70,6 +70,31 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
     // ── 当帧预测（main 弹道线程经 SequencePredictor::predict 写入 ctx）──
     const SequencePredictor::Result& seq = ctx.predict_result;
 
+    // 记录"本帧实际下发给子模组的内容"（供可视化覆盖层；序列类字段取首元素 + 长度）：
+    // 每次调用 ctrl_.controller().set(...) 之前调用，保证覆盖层显示的就是真实下发量。
+    auto recordSent = [&](const char* kind, bool auto_aim_enable,
+                          const std::vector<double>& big_seq,
+                          const std::vector<double>& small_seq,
+                          const std::vector<double>& pitch_seq,
+                          const std::vector<bool>& fire_seq,
+                          bool integral_enable) {
+        ctx.bsy_sent = OutputContext::BigSmallSent{};
+        ctx.bsy_sent.valid             = true;
+        ctx.bsy_sent.kind              = kind;
+        ctx.bsy_sent.auto_aim_enable   = auto_aim_enable;
+        ctx.bsy_sent.big_torque_only   = big_torque_only_;
+        ctx.bsy_sent.small_torque_only = small_torque_only_;
+        ctx.bsy_sent.integral_enable   = integral_enable;
+        ctx.bsy_sent.big_yaw_front     = big_seq.empty()   ? 0.0   : big_seq.front();
+        ctx.bsy_sent.small_yaw_front   = small_seq.empty() ? 0.0   : small_seq.front();
+        ctx.bsy_sent.pitch_front       = pitch_seq.empty() ? 0.0   : pitch_seq.front();
+        ctx.bsy_sent.fire_front        = fire_seq.empty()  ? false : fire_seq.front();
+        ctx.bsy_sent.big_len           = (int)big_seq.size();
+        ctx.bsy_sent.small_len         = (int)small_seq.size();
+        ctx.bsy_sent.pitch_len         = (int)pitch_seq.size();
+        ctx.bsy_sent.fire_len          = (int)fire_seq.size();
+    };
+
     if (seq.valid && !seq.items.empty()) {
         holding_ = false;
 
@@ -158,6 +183,8 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
 
         // 序列 set：{自动瞄准开, 大 yaw 仅力矩, 小 yaw 仅力矩, ψ_big 序列, ψ_small 序列,
         //            pitch 序列, fire 序列, 积分补偿}
+        recordSent("predict", /*auto_aim_enable=*/true, sp.big_azimuth, sp.small_azimuth,
+                   pitch_out, fire_out, seq.integral_enable);
         ctrl_.controller().set(/*auto_aim_enable=*/true, big_torque_only_, small_torque_only_,
                                sp.big_azimuth, sp.small_azimuth, pitch_out, fire_out,
                                /*integral_enable=*/seq.integral_enable);
@@ -202,6 +229,8 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
             last_.pitch_seq       = pitch_scan_out;
             last_.fire_seq        = fire_scan_out;
             ctx.fire_out = fire_scan_out;   // 预测不可用：无有效 fire（首元素 false）
+            recordSent(sentry_.scanning() ? "scan" : "hold(sentry)", auto_aim,
+                       big_seq, small_seq, pitch_scan_out, fire_scan_out, /*integral_enable=*/false);
             ctrl_.controller().set(auto_aim, big_torque_only_, small_torque_only_,
                                    big_seq, small_seq, pitch_scan_out, fire_scan_out,
                                    /*integral_enable=*/false);
@@ -211,11 +240,14 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
             const double hold_small = st.yaw_small_azimuth;
             const double hold_pitch = st.pitch_joint;
             ctx.fire_out = std::vector<bool>{false};
+            const std::vector<double> hold_big_seq{hold_big};
+            const std::vector<double> hold_small_seq{hold_small};
+            const std::vector<double> hold_pitch_seq{hold_pitch};
+            const std::vector<bool>   hold_fire_seq{false};
+            recordSent("hold", /*auto_aim_enable=*/false, hold_big_seq, hold_small_seq,
+                       hold_pitch_seq, hold_fire_seq, /*integral_enable=*/false);
             ctrl_.controller().set(/*auto_aim_enable=*/false, big_torque_only_, small_torque_only_,
-                                   std::vector<double>{hold_big},
-                                   std::vector<double>{hold_small},
-                                   std::vector<double>{hold_pitch},
-                                   std::vector<bool>{false},
+                                   hold_big_seq, hold_small_seq, hold_pitch_seq, hold_fire_seq,
                                    /*integral_enable=*/false);
         }
 

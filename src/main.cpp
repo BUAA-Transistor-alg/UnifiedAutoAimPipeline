@@ -207,8 +207,9 @@ static Options parseArgs(int argc, char** argv) {
 //      （--- MCU --- / --- IMU --- / --- EST --- / --- STRICT --- / --- MPC (big/small) ---），
 //      只是字段按双级 yaw 语义展开（θ_big/θ_small、ψ_big/ψ_small、电机侧/云台侧、
 //      背隙 β、LOS 等），见 drawOverlay 的 bsy_state 分支；
-//      末尾另加一栏 --- TF world euler [deg] ---：当前变换树**所有节点**在世界系下的
-//      欧拉角（ZXY，单位 deg；节点按链序，另一构型不存在的节点自动跳过）。
+//      末尾另加两栏：--- SENT to tcbs [deg] ---（本帧**实际下发**给子模组的 set() 实参，
+//      序列取首元素 + 长度）与 --- TF world euler [deg] ---（当前变换树**所有节点**在
+//      世界系下的欧拉角，ZXY；节点按链序，另一构型不存在的节点自动跳过）。
 
 // 帧率显示：无统计（fps <= 0，尚无帧或不可用）时显示 N/A
 static std::string fpsText(double fps) {
@@ -268,6 +269,7 @@ static void drawOverlay(cv::Mat& img,
                         tcs::RobotController* rc,
                         const bsy::RobotState* bsy_state,   // 新构型（大小 yaw）状态；单 yaw 构型为 nullptr
                         const RobotTfTree* tf_tree,         // 当帧变换树（节点世界欧拉角栏）；无则 nullptr
+                        const OutputContext::BigSmallSent* bsy_sent,   // 本帧下发给子模组的内容；无则 nullptr
                         const std::chrono::steady_clock::time_point& frame_ts,
                         const PipelineResult::QueueSizes& queue_sizes,
                         double extra_delay_s, const CommonVisualizationOptions& options) {
@@ -502,6 +504,35 @@ static void drawOverlay(cv::Mat& img,
                              << "  ticks: " << bs.ticks_since_set;
             put(oss.str(), bs.small_ref_over_limit ? cv::Scalar(0, 0, 255)
                                                    : cv::Scalar(0, 255, 0));
+        }
+
+        // ── 本帧**实际下发给子模组**的信息（tcbs 序列 set() 的实参；序列取首元素）──
+        //    由 GimbalOutputForBigSmallYaw::update 在每次 set() 前回写 ctx.bsy_sent，
+        //    因此这里显示的就是真实下发量（而非控制器内部消费后的剩余序列）。
+        //    kind：predict（正常预测）/ scan（哨兵扫描）/ hold(sentry)（扫描前保持）/
+        //          hold（无目标且未开哨兵）；yaw/pitch 单位 deg。
+        put("--- SENT to tcbs [deg] ---");
+        if (bsy_sent != nullptr && bsy_sent->valid) {
+            oss.str(""); oss << "kind: " << bsy_sent->kind
+                             << "  auto_aim: " << (bsy_sent->auto_aim_enable ? 1 : 0)
+                             << "  integral: " << (bsy_sent->integral_enable ? 1 : 0)
+                             << "  torque_only(b/s): " << (bsy_sent->big_torque_only ? 1 : 0)
+                             << "/" << (bsy_sent->small_torque_only ? 1 : 0);
+            put(oss.str());
+            oss.str(""); oss << std::fixed << std::setprecision(1)
+                             << "psi_big*: " << bsy_sent->big_yaw_front * 180.0 / M_PI
+                             << "  (n=" << bsy_sent->big_len << ")   psi_small*: "
+                             << bsy_sent->small_yaw_front * 180.0 / M_PI
+                             << "  (n=" << bsy_sent->small_len << ")";
+            put(oss.str());
+            oss.str(""); oss << std::fixed << std::setprecision(1)
+                             << "pitch*: " << bsy_sent->pitch_front * 180.0 / M_PI
+                             << "  (n=" << bsy_sent->pitch_len << ")   fire*: "
+                             << (bsy_sent->fire_front ? 1 : 0)
+                             << "  (n=" << bsy_sent->fire_len << ")";
+            put(oss.str());
+        } else {
+            put("(no gimbal output this frame)");
         }
 
         // ── TF：当前变换树**所有节点**在 world 系下的欧拉角（ZXY，单位 deg）──
@@ -1367,6 +1398,7 @@ int main(int argc, char** argv) {
                                     robotControllerPtr(),
                                     (yaw_mode == YawMode::BIG_SMALL) ? &bsy_st : nullptr,
                                     vis ? &vis->tree() : nullptr,
+                                    cached.ctx ? &cached.ctx->bsy_sent : nullptr,
                                     shared_frame_timestamp.load(std::memory_order_acquire),
                                     last_qs, backlog_delay.extraDelaySeconds(), controls.common);
                     }

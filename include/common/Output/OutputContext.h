@@ -11,7 +11,9 @@
 //                    每帧统一调用 SequencePredictor 完成）；
 //  - fire_out        云台输出阶段（GimbalOutput::update）计算出的 fire 序列，
 //                    可视化阶段取首元素控制井形叉丝颜色；
-//  - gimbal_enabled  当前是否开启 gimbal 输出模式（main 云台线程转发时写入）。
+//  - gimbal_enabled  当前是否开启 gimbal 输出模式（main 云台线程转发时写入）；
+//  - bsy_sent        大小 yaw 构型下"本帧实际下发给子模组的内容"快照
+//                    （GimbalOutputForBigSmallYaw::update 回写；序列取首元素+长度）。
 #ifndef OUTPUT_CONTEXT_H
 #define OUTPUT_CONTEXT_H
 
@@ -49,6 +51,21 @@ struct OutputContext {
 
     std::vector<bool> fire_out;   // GimbalOutput::update 计算出的 fire 序列（首元素供可视化绘制）
     bool gimbal_enabled = false;  // 是否开启 gimbal 输出模式
+
+    // 大小 yaw 构型：本帧**实际下发给子模组**的内容快照（GimbalOutputForBigSmallYaw
+    // 在每次 tcbs::RobotController 序列 set() 前回写；单 yaw 构型 / 未开启云台输出时
+    // valid = false）。序列类字段只记录"长度 + 首元素"，供覆盖层显示当前下发信息。
+    struct BigSmallSent {
+        bool        valid = false;
+        const char* kind = "";                 // 下发路径：predict / scan / hold
+        bool        auto_aim_enable = false;
+        bool        big_torque_only = false, small_torque_only = false;
+        bool        integral_enable = false;
+        double      big_yaw_front = 0.0, small_yaw_front = 0.0;  // 世界方位角（rad）
+        double      pitch_front = 0.0;                            // pitch（rad）
+        bool        fire_front = false;
+        int         big_len = 0, small_len = 0, pitch_len = 0, fire_len = 0;
+    } bsy_sent;
 };
 
 #endif // OUTPUT_CONTEXT_H
