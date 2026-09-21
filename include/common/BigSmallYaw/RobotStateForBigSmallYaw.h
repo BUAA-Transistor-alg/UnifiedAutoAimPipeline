@@ -60,16 +60,93 @@ struct RobotState {
     double  bullet_velocity = 0.0;
     uint8_t auto_aim_switch = 0;
 
+    // ════════════════════════════════════════════════════════════════════
+    // 完整原始输入（tcbs::RobotController::State 的镜像；仅供左侧信息块显示，
+    // 与单 yaw 构型 drawCommInfo 的 MCU / IMU / FUSED / STRICT / MPC 各块一一对应）
+    // ════════════════════════════════════════════════════════════════════
+
+    // ── MCU 原始反馈（已按 mcu_linear 映射）──
+    struct McuData {
+        bool     valid = false;
+        float    bullet_velocity = 0.0f;
+        float    pitch_angle = 0.0f;      // 已映射
+        double   yaw_big_angle = 0.0;     // 延迟/带误差
+        float    yaw_big_omega = 0.0f;
+        float    yaw_small_angle = 0.0f;  // 可信
+        float    yaw_small_omega = 0.0f;
+        float    chassis_imu_yaw = 0.0f;
+        float    chassis_imu_omega = 0.0f;
+        uint8_t  mark = 0, color = 0, auto_aim_switch = 0;
+        uint8_t  yaw_big_temperature = 0, yaw_small_temperature = 0;
+        uint8_t  mcu2_seq = 0;            // MCU2 新样本序号（大 yaw 与底盘 IMU 同源共用）
+    } mcu;
+
+    // ── IMU 原始数据（大 yaw 转子上 / 头上，取决于 estimator.imu_location）──
+    struct ImuData {
+        bool     valid = false;
+        float    gx = 0.0f, gy = 0.0f, gz = 0.0f;
+        float    ax = 0.0f, ay = 0.0f, az = 0.0f;
+        double   euler_yaw = 0.0, euler_pitch = 0.0, euler_roll = 0.0;
+        uint32_t dt_one_tenth_ms = 0;
+    } imu;
+
+    // ── 状态估计：可信实时量 + 大 yaw 延迟补偿 + 反解真实位姿（对应单 yaw 的 FUSED）──
+    struct EstData {
+        bool   valid = false;
+        double imu_yaw = 0.0, imu_pitch = 0.0, imu_roll = 0.0;
+        double platform_azimuth = 0.0;    // ψ_big（IMU 反解）
+        double platform_rate = 0.0;
+        double small_joint_angle = 0.0, small_joint_rate = 0.0;
+        double pitch_joint_angle = 0.0, pitch_joint_rate = 0.0;
+        double big_joint_angle_meas = 0.0;   // 原始编码器（未补偿）
+        double big_joint_angle = 0.0;        // 延迟补偿后的关节角估计
+        double big_joint_rate = 0.0;
+        double big_motor_angle = 0.0, big_motor_rate = 0.0;      // 电机侧
+        double big_platform_angle = 0.0, big_platform_rate = 0.0; // 云台侧 θ_p
+        double backlash_center = 0.0;        // β（在线估计）
+        double backlash_width_obs = 0.0;     // 观测到的 Δ 极差
+        double big_enc_age = -1.0, big_sample_interval = 0.0;
+        double chassis_imu_age = -1.0, big_enc_innovation = 0.0;
+        bool   big_has_encoder = false;
+        double head_world_yaw = 0.0, head_world_pitch = 0.0, head_world_roll = 0.0;
+        double small_output_azimuth = 0.0;   // ψ_small
+        double los_azimuth = 0.0, los_elevation = 0.0;   // 视轴（bore）方向
+        double chassis_azimuth = 0.0, chassis_yaw_rate = 0.0;
+        double base_omega[3] = {0.0, 0.0, 0.0};
+        double gravity_a[3] = {0.0, 0.0, -9.81};
+        double pitch_acc = 0.0;
+    } est;
+
+    // ── 严格反解包（对应单 yaw 的 --- STRICT --- 块；始终解算、无 valid 标志）──
+    struct StrictData {
+        double imu_euler_yaw = 0.0, imu_euler_pitch = 0.0, imu_euler_roll = 0.0;
+        int    imu_location = 0;
+        double big_joint_angle = 0.0, small_joint_angle = 0.0, pitch_joint_angle = 0.0;
+        double chassis_euler_yaw = 0.0, chassis_euler_pitch = 0.0, chassis_euler_roll = 0.0;
+        double platform_azimuth = 0.0, chassis_azimuth = 0.0, head_azimuth = 0.0;
+        double recon_err_rot = 0.0;          // 自洽性自检（≈0）
+        double big_joint_angle_age = -1.0;   // θ_b 的实测年龄（s）
+    } strict;
+
     // MPC 输出（世界方位角序列，步长 = dt_control）
     std::vector<double> pred_big_azimuth_seq;    // 大 yaw **预测能达到**的方位角序列（长度 N）
     std::vector<double> pred_small_azimuth_seq;  // 小 yaw 预测方位角序列
     std::vector<double> ref_big_azimuth_seq;     // 本拍使用的大 yaw 参考序列
     std::vector<double> ref_small_azimuth_seq;   // 本拍使用的小 yaw 参考序列
     bool   small_ref_over_limit = false;         // 小 yaw 参考越软限位标志（供可视化）
-    double torque_big = 0.0, torque_small = 0.0;
+    double torque_big = 0.0, torque_small = 0.0;         // 实际下发力矩（含积分补偿）
+    double torque_mpc_big = 0.0, torque_mpc_small = 0.0; // MPC 原始力矩（不含积分）
+    double integral_big = 0.0, integral_small = 0.0;     // 积分补偿
     double target_joint_big = 0.0, target_joint_small = 0.0;
+    double target_joint_rate_big = 0.0, target_joint_rate_small = 0.0;
+    double ref_azimuth_big = 0.0, ref_azimuth_small = 0.0;          // 本拍参考
+    double delayed_ref_azimuth_big = 0.0, delayed_ref_azimuth_small = 0.0;  // 延迟缓冲后参考
+    bool   big_torque_only = false, small_torque_only = false;
     double solve_ms = 0.0, loop_fps = 0.0;
+    uint32_t solve_count = 0;
     uint32_t solve_fail_count = 0;
+    uint64_t ticks_since_set = 0;
+    bool   sent_ok = false;
 };
 
 // tcbs 状态 → 本项目状态包（唯一转换点；不改变任何数值语义）

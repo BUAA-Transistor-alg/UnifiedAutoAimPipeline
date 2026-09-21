@@ -41,19 +41,114 @@ RobotState toRobotState(const tcbs::RobotController::State& st) {
     s.bullet_velocity  = st.mcu.bullet_velocity;
     s.auto_aim_switch  = st.mcu.auto_aim_switch;
 
+    // ── 完整原始输入（左侧信息块用；与单 yaw 覆盖层各块一一对应）──
+    // MCU 原始反馈
+    s.mcu.valid               = st.mcu.valid;
+    s.mcu.bullet_velocity     = st.mcu.bullet_velocity;
+    s.mcu.pitch_angle         = st.mcu.pitch_angle;
+    s.mcu.yaw_big_angle       = st.mcu.yaw_big_angle;
+    s.mcu.yaw_big_omega       = st.mcu.yaw_big_omega;
+    s.mcu.yaw_small_angle     = st.mcu.yaw_small_angle;
+    s.mcu.yaw_small_omega     = st.mcu.yaw_small_omega;
+    s.mcu.chassis_imu_yaw     = st.mcu.chassis_imu_yaw;
+    s.mcu.chassis_imu_omega   = st.mcu.chassis_imu_omega;
+    s.mcu.mark                = st.mcu.mark;
+    s.mcu.color               = st.mcu.color;
+    s.mcu.auto_aim_switch     = st.mcu.auto_aim_switch;
+    s.mcu.yaw_big_temperature   = st.mcu.yaw_big_temperature;
+    s.mcu.yaw_small_temperature = st.mcu.yaw_small_temperature;
+    s.mcu.mcu2_seq            = st.mcu.mcu2_seq;
+    // IMU 原始数据
+    s.imu.valid              = st.imu.valid;
+    s.imu.gx = st.imu.gx;   s.imu.gy = st.imu.gy;   s.imu.gz = st.imu.gz;
+    s.imu.ax = st.imu.ax;   s.imu.ay = st.imu.ay;   s.imu.az = st.imu.az;
+    s.imu.euler_yaw   = st.imu.euler_yaw;
+    s.imu.euler_pitch = st.imu.euler_pitch;
+    s.imu.euler_roll  = st.imu.euler_roll;
+    s.imu.dt_one_tenth_ms = st.imu.dt_one_tenth_ms;
+    // 状态估计（可信量 + 延迟补偿 + 反解真实位姿）
+    s.est.valid               = st.est.valid;
+    s.est.imu_yaw             = st.est.imu_yaw;
+    s.est.imu_pitch           = st.est.imu_pitch;
+    s.est.imu_roll            = st.est.imu_roll;
+    s.est.platform_azimuth    = st.est.platform_azimuth;
+    s.est.platform_rate       = st.est.platform_rate;
+    s.est.small_joint_angle   = st.est.small_joint_angle;
+    s.est.small_joint_rate    = st.est.small_joint_rate;
+    s.est.pitch_joint_angle   = st.est.pitch_joint_angle;
+    s.est.pitch_joint_rate    = st.est.pitch_joint_rate;
+    s.est.big_joint_angle_meas= st.est.big_joint_angle_meas;
+    s.est.big_joint_angle     = st.est.big_joint_angle;
+    s.est.big_joint_rate      = st.est.big_joint_rate;
+    s.est.big_motor_angle     = st.est.big_motor_angle;
+    s.est.big_motor_rate      = st.est.big_motor_rate;
+    s.est.big_platform_angle  = st.est.big_platform_angle;
+    s.est.big_platform_rate   = st.est.big_platform_rate;
+    s.est.backlash_center     = st.est.backlash_center;
+    s.est.backlash_width_obs  = st.est.backlash_width_obs;
+    s.est.big_enc_age         = st.est.big_enc_age;
+    s.est.big_sample_interval = st.est.big_sample_interval;
+    s.est.chassis_imu_age     = st.est.chassis_imu_age;
+    s.est.big_enc_innovation  = st.est.big_enc_innovation;
+    s.est.big_has_encoder     = st.est.big_has_encoder;
+    s.est.head_world_yaw      = st.est.head_world_yaw;
+    s.est.head_world_pitch    = st.est.head_world_pitch;
+    s.est.head_world_roll     = st.est.head_world_roll;
+    s.est.small_output_azimuth= st.est.small_output_azimuth;
+    s.est.los_azimuth         = st.est.los_azimuth;
+    s.est.los_elevation       = st.est.los_elevation;
+    s.est.chassis_azimuth     = st.est.chassis_azimuth;
+    s.est.chassis_yaw_rate    = st.est.chassis_yaw_rate;
+    for (int i = 0; i < 3; ++i) {
+        s.est.base_omega[i] = st.est.base_omega[i];
+        s.est.gravity_a[i]  = st.est.gravity_a[i];
+    }
+    s.est.pitch_acc           = st.est.pitch_acc;
+    // 严格反解包
+    s.strict.imu_euler_yaw    = st.strict_pose.imu_euler_yaw;
+    s.strict.imu_euler_pitch  = st.strict_pose.imu_euler_pitch;
+    s.strict.imu_euler_roll   = st.strict_pose.imu_euler_roll;
+    s.strict.imu_location     = st.strict_pose.imu_location;
+    s.strict.big_joint_angle  = st.strict_pose.big_joint_angle;
+    s.strict.small_joint_angle= st.strict_pose.small_joint_angle;
+    s.strict.pitch_joint_angle= st.strict_pose.pitch_joint_angle;
+    s.strict.chassis_euler_yaw   = st.strict_pose.chassis_euler_yaw;
+    s.strict.chassis_euler_pitch = st.strict_pose.chassis_euler_pitch;
+    s.strict.chassis_euler_roll  = st.strict_pose.chassis_euler_roll;
+    s.strict.platform_azimuth = st.strict_pose.platform_azimuth;
+    s.strict.chassis_azimuth  = st.strict_pose.chassis_azimuth;
+    s.strict.head_azimuth     = st.strict_pose.head_azimuth;
+    s.strict.recon_err_rot    = st.strict_pose.recon_err_rot;
+    s.strict.big_joint_angle_age = st.strict_pose.big_joint_angle_age;
+
     // ── MPC：控制输出、参考与预测序列（世界方位角序列，{0}=大 yaw，{1}=小 yaw）──
     s.torque_big          = st.mpc.torque[0];
     s.torque_small        = st.mpc.torque[1];
+    s.torque_mpc_big      = st.mpc.torque_mpc[0];
+    s.torque_mpc_small    = st.mpc.torque_mpc[1];
+    s.integral_big        = st.mpc.integral[0];
+    s.integral_small      = st.mpc.integral[1];
     s.target_joint_big    = st.mpc.target_joint[0];
     s.target_joint_small  = st.mpc.target_joint[1];
+    s.target_joint_rate_big   = st.mpc.target_joint_rate[0];
+    s.target_joint_rate_small = st.mpc.target_joint_rate[1];
+    s.ref_azimuth_big     = st.mpc.ref_azimuth[0];
+    s.ref_azimuth_small   = st.mpc.ref_azimuth[1];
+    s.delayed_ref_azimuth_big   = st.mpc.delayed_ref_azimuth[0];
+    s.delayed_ref_azimuth_small = st.mpc.delayed_ref_azimuth[1];
     s.pred_big_azimuth_seq   = st.mpc.pred_azimuth_seq[0];
     s.pred_small_azimuth_seq = st.mpc.pred_azimuth_seq[1];
     s.ref_big_azimuth_seq    = st.mpc.ref_azimuth_seq[0];
     s.ref_small_azimuth_seq  = st.mpc.ref_azimuth_seq[1];
     s.small_ref_over_limit   = st.mpc.small_ref_over_limit;
+    s.big_torque_only        = st.mpc.big_torque_only;
+    s.small_torque_only      = st.mpc.small_torque_only;
     s.solve_ms               = st.mpc.solve_ms;
     s.loop_fps               = st.mpc.loop_fps;
+    s.solve_count            = st.mpc.solve_count;
     s.solve_fail_count       = st.mpc.solve_fail_count;
+    s.ticks_since_set        = st.mpc.ticks_since_set;
+    s.sent_ok                = st.mpc.sent_ok;
     return s;
 }
 
