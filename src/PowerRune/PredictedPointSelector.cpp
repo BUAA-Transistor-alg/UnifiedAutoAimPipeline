@@ -4,6 +4,7 @@
 #include <limits>
 
 #include "common/RobotConfig.h"
+#include "common/Debug/AimSwitchLog.h"
 
 namespace {
 // 两个计时状态已持续的秒数（timestamp 倒退时按 0 处理，避免负计时）
@@ -42,6 +43,11 @@ PredictedPointSelector::State PredictedPointSelector::stateOf(int index) const {
 
 void PredictedPointSelector::ensureSize(size_t size) {
     if (states_.size() == size) return;
+    // 靶点数变化（首次调用 / 预测列表长度改变）：状态表整体重建、粘滞索引清空，
+    // 下一次必然改选 → 记进选靶切换日志（事件，正常情况下不应出现）
+    AimSwitchLog::instance().event(
+        "RESET_SIZE", "target count changed " + std::to_string(states_.size()) + " -> " +
+                          std::to_string(size) + " (states rebuilt)");
     // 点数变化（首次调用 / 预测列表长度改变）：整体重建，全部从未被观测开始
     states_.assign(size, PointRecord{});
     last_selected_index_ = -1;
@@ -129,11 +135,15 @@ int PredictedPointSelector::select(const std::vector<int>& masked_indices,
     ensureSize(solved.size());
     updateStates(masked_indices, timestamp);
 
+    // 上一帧选中的索引（本帧更新后是否仍可用决定下面走粘滞还是兜底；仅调试日志用）
+    const int prev_index = last_selected_index_;
+
     // 1) 粘滞：上一次选中的目标仍在候选中，且本步有可用解算结果 → 继续选它
     if (last_selected_index_ >= 0 &&
         last_selected_index_ < (int)states_.size() &&
         isCandidate(states_[(size_t)last_selected_index_].state) &&
         usableResult(solved, last_selected_index_) != nullptr) {
+        AimSwitchLog::instance().setReason("sticky");
         return last_selected_index_;
     }
 
@@ -149,6 +159,25 @@ int PredictedPointSelector::select(const std::vector<int>& masked_indices,
             best_z = z;
             best = (int)i;
         }
+    }
+
+    // 选靶原因（调试日志 AimSwitchLog 用）：粘滞为什么没生效
+    {
+        std::string reason;
+        if (best < 0) {
+            reason = "none";
+        } else if (prev_index < 0) {
+            reason = "z-lowest/no-prev";
+        } else if (prev_index >= (int)states_.size()) {
+            reason = "z-lowest/prev-out-of-range";
+        } else if (!isCandidate(states_[(size_t)prev_index].state)) {
+            reason = "z-lowest/prev-not-candidate";
+        } else if (usableResult(solved, prev_index) == nullptr) {
+            reason = "z-lowest/prev-no-solution";
+        } else {
+            reason = "z-lowest";
+        }
+        AimSwitchLog::instance().setReason(reason);
     }
 
     last_selected_index_ = best;

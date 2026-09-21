@@ -2,6 +2,7 @@
 #include "common/Output/GimbalOutput.h"
 #include "common/Ballistic/SequencePredictor.h"
 #include "common/RobotConfig.h"
+#include "common/Debug/AimSwitchLog.h"
 
 #include <algorithm>
 #include <cmath>
@@ -24,7 +25,16 @@ std::vector<T> truncateKeepLast(const std::vector<T>& seq, int skip, const T& fa
     return std::vector<T>(seq.begin() + (long)s, seq.end());
 }
 
-} // namespace
+// 选靶切换日志（AimSwitchLog）辅助：预测器来源名
+const char* aimLogSourceName(const SequencePredictor::PredictorSource& s) {
+    switch (s.kind) {
+        case SequencePredictor::PredictorSource::Kind::ARMOR:      return "Armor";
+        case SequencePredictor::PredictorSource::Kind::POWER_RUNE: return "PowerRune";
+        default:                                                   return "None";
+    }
+}
+
+}  // namespace
 
 GimbalOutput::GimbalOutput(tcs::RobotController& rc)
     : rc_(rc),
@@ -109,6 +119,59 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
         rc_.set(/*auto_aim_enable=*/true, /*yaw_torque_only_mode=*/yaw_torque_only_mode_,
                 yaw_out, pitch_out, fire_out,
                 /*integral_enable=*/seq.integral_enable);
+
+        // ── 选靶切换日志（common/Debug/AimSwitchLog）：本帧的预瞄点计划 ──
+        // 行 = 控制器节拍 tick（= yaw 序列下标）：该节拍的预瞄点（目标索引 / world 坐标）、
+        // fire 判定与**实际下发**的 fire 位（含 fire_seq_lead 偏移）、以及控制器真正
+        // 执行到了哪一拍（ticks_since_set 为上一帧序列已消费的节拍数，减 1 即当前执行点）。
+        // yaw 序列不截取、pitch/fire 截取 —— 故第 k 拍实际下发的是「第 k 点 yaw +
+        // 第 k+pitch_lead 点 pitch + 第 k+fire_lead 点 fire」，两部分都记在 CSV 里。
+        {
+            AimSwitchLog::Plan plan;
+            plan.frame_timestamp = result.frame_timestamp;
+            plan.source          = aimLogSourceName(result.predictor.source);
+            plan.sequence_sent   = true;
+            plan.yaw_lead        = 0;
+            plan.pitch_lead      = (int)pitch_seq_lead_;
+            plan.fire_lead       = (int)fire_seq_lead_;
+            plan.ticks_since_set = (unsigned long long)st.mpc.ticks_since_set;
+            plan.exec_tick       = (st.mpc.ticks_since_set > 0)
+                                       ? (int)(st.mpc.ticks_since_set - 1) : -1;
+            plan.actual_yaw      = st.fused.yaw_pos;
+            plan.actual_pitch    = st.mcu.pitch_angle;
+            const size_t n_ticks = std::max(yaw_out.size(), seq.items.size());
+            plan.ticks.resize(n_ticks);
+            for (size_t k = 0; k < n_ticks; ++k) {
+                AimSwitchLog::PlanPoint& tp = plan.ticks[k];
+                tp.tick = (int)k;
+                // 该节拍的预瞄点（仅 yaw 序列范围内有点；items 通常与 yaw_out 等长）
+                if (k < seq.items.size()) {
+                    const SequencePredictor::Item& it = seq.items[k];
+                    tp.has_point    = true;
+                    tp.target_index = it.target_index;
+                    tp.success      = it.success;
+                    tp.x            = it.predicted_point[0];
+                    tp.y            = it.predicted_point[1];
+                    tp.z            = it.predicted_point[2];
+                    tp.gimbal_yaw   = it.gimbal_yaw;
+                    tp.gimbal_pitch = it.gimbal_pitch;
+                    tp.flight_time  = it.flight_time;
+                }
+                // 该节拍实际下发的 yaw / pitch（pitch 序列被截掉前 pitch_seq_lead_ 个：
+                // 控制器的第 k 拍拿到的是 pitch_out[k]，即预瞄点 (k + pitch_seq_lead_) 的
+                // pitch；pitch 序列先耗尽时控制器保持上一次的 pitch 值）
+                if (k < yaw_out.size()) {
+                    tp.sent       = true;
+                    tp.yaw_sent   = yaw_out[k];
+                }
+                if (k < pitch_out.size()) tp.pitch_sent = pitch_out[k];
+                // 该节拍预瞄点自身的 fire 判定（MPC ref vs pred，未截取）
+                if (k < fire_seq.size()) tp.fire_plan = fire_seq[k] ? 1 : 0;
+                // 该节拍实际下发的 fire 位（= fire_seq[k + fire_seq_lead_]）
+                if (k < fire_out.size()) tp.fire_sent = fire_out[k] ? 1 : 0;
+            }
+            AimSwitchLog::instance().plan(plan);
+        }
     } else {
         // 预测不可用：保持模式（自瞄关闭，目标保持当前严格反解位置）。
         // 序列模式下用单元素序列调用序列 set。

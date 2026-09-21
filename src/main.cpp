@@ -49,6 +49,7 @@
 #include "common/FrameRateCounter.h"
 #include "common/Record/FrameRecorder.h"
 #include "common/Infer/InferProcessManager.h"
+#include "common/Debug/AimSwitchLog.h"
 
 #include <opencv2/opencv.hpp>
 #include <iostream>
@@ -210,6 +211,42 @@ static std::string fpsText(double fps) {
     } else {
         oss << "N/A";
     }
+    return oss.str();
+}
+
+// ── 选靶切换日志（common/Debug/AimSwitchLog）辅助：预测器来源名 ──
+static std::string predictorSourceName(const SequencePredictor::PredictorSource& s) {
+    switch (s.kind) {
+        case SequencePredictor::PredictorSource::Kind::ARMOR:      return "Armor";
+        case SequencePredictor::PredictorSource::Kind::POWER_RUNE: return "PowerRune";
+        default:                                                   return "None";
+    }
+}
+
+// 选靶切换日志辅助：能量机关上下文（亮靶 / 屏蔽 / 跳变 / 角速度 / 拟合 / 检测数）。
+// 非能量机关来源返回空串。这些量是判断"切换原因"的关键：jump 变化 ⇒ 旋转计数
+// 索引整体漂移（决策器里同一索引对应到另一块物理靶）；fit=0 ⇒ 预测器无效 ⇒
+// main 调 invalidate() ⇒ 决策器状态与粘滞索引被清空。
+static std::string powerRuneLogContext(const PipelineResult& r) {
+    if (r.predictor.source.kind != SequencePredictor::PredictorSource::Kind::POWER_RUNE) {
+        return {};
+    }
+    const PowerRunePerception& pr = r.power_rune;
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3);
+    oss << "present=[";
+    for (size_t i = 0; i < pr.filtered_rotation_counts.size(); ++i) {
+        oss << (i ? "," : "") << pr.filtered_rotation_counts[i];
+    }
+    oss << "] mask=[";
+    for (size_t i = 0; i < r.predictor.masked_indices.size(); ++i) {
+        oss << (i ? "," : "") << r.predictor.masked_indices[i];
+    }
+    oss << "] jump=" << pr.jump_a << " flip=" << (pr.flip ? 1 : 0)
+        << " omega=" << pr.filtered_omega
+        << " fit=" << (pr.fit_valid ? 1 : 0) << "/" << pr.fit_method
+        << " pose=" << (pr.pose_valid ? 1 : 0)
+        << " det=" << pr.detection_count;
     return oss.str();
 }
 
@@ -1017,6 +1054,27 @@ int main(int argc, char** argv) {
                         : sequence_predictor.predict(req.st, req.result->predictor, timestamp);
                 } else {
                     sequence_predictor.invalidate();
+                }
+
+                // ── 选靶切换日志（common/Debug/AimSwitchLog）──
+                // 每帧记录最终选中的瞄准点索引；索引变化时打印带绝对时间与切换间隔的
+                // [SWITCH] 行，全部帧写入 <项目根>/logs/aim_switch_*.csv。
+                // 用环境变量控制（无需配置项）：AIM_SWITCH_LOG=0 关闭、
+                // AIM_SWITCH_LOG_ALL=1 逐帧输出、AIM_SWITCH_LOG_DIR=<目录> 指定输出目录。
+                {
+                    AimSwitchLog::Frame lf;
+                    lf.frame_timestamp = timestamp;
+                    lf.predictor_valid = req.result->predictor_valid;
+                    lf.result_valid    = req.ctx->predict_result.valid;
+                    lf.source          = predictorSourceName(req.result->predictor.source);
+                    const auto& items  = req.ctx->predict_result.items;
+                    if (!items.empty()) {
+                        lf.selected_index = items.front().target_index;
+                        lf.target_z       = items.front().predicted_point[2];
+                        lf.flight_time    = items.front().flight_time;
+                    }
+                    lf.context = powerRuneLogContext(*req.result);
+                    AimSwitchLog::instance().frame(lf);
                 }
 
                 // 只填充云台缓冲位（级联顺序：弹道 → 云台 → 可视化）。

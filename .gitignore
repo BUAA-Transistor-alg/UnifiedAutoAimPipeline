@@ -1,6 +1,7 @@
 build/
 bin/
 recordings/
+logs/
 __pycache__
 .dsh
 cache/
