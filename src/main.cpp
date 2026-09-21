@@ -61,7 +61,6 @@
 #include <thread>
 #include <atomic>
 #include <csignal>
-#include <cmath>
 
 // ── backward-cpp 崩溃堆栈回溯 ──
 #include "backward.hpp"
@@ -207,9 +206,10 @@ static Options parseArgs(int argc, char** argv) {
 //      （--- MCU --- / --- IMU --- / --- EST --- / --- STRICT --- / --- MPC (big/small) ---），
 //      只是字段按双级 yaw 语义展开（θ_big/θ_small、ψ_big/ψ_small、电机侧/云台侧、
 //      背隙 β、LOS 等），见 drawOverlay 的 bsy_state 分支；
-//      末尾另加两栏：--- SENT to tcbs [deg] ---（本帧**实际下发**给子模组的 set() 实参，
-//      序列取首元素 + 长度）与 --- TF world euler [deg] ---（当前变换树**所有节点**在
+//      末尾另加两栏：--- SENT to tcbs [rad] ---（本帧**实际下发**给子模组的 set() 实参，
+//      序列取首元素 + 长度）与 --- TF world euler [rad] ---（当前变换树**所有节点**在
 //      世界系下的欧拉角，ZXY；节点按链序，另一构型不存在的节点自动跳过）。
+//      ★ 角度一律用 **rad**（与下发量/子模组接口一致），不做 deg 换算。
 
 // 帧率显示：无统计（fps <= 0，尚无帧或不可用）时显示 N/A
 static std::string fpsText(double fps) {
@@ -510,8 +510,8 @@ static void drawOverlay(cv::Mat& img,
         //    由 GimbalOutputForBigSmallYaw::update 在每次 set() 前回写 ctx.bsy_sent，
         //    因此这里显示的就是真实下发量（而非控制器内部消费后的剩余序列）。
         //    kind：predict（正常预测）/ scan（哨兵扫描）/ hold(sentry)（扫描前保持）/
-        //          hold（无目标且未开哨兵）；yaw/pitch 单位 deg。
-        put("--- SENT to tcbs [deg] ---");
+        //          hold（无目标且未开哨兵）；yaw/pitch 单位 **rad**（与下发量一致）。
+        put("--- SENT to tcbs [rad] ---");
         if (bsy_sent != nullptr && bsy_sent->valid) {
             oss.str(""); oss << "kind: " << bsy_sent->kind
                              << "  auto_aim: " << (bsy_sent->auto_aim_enable ? 1 : 0)
@@ -519,14 +519,14 @@ static void drawOverlay(cv::Mat& img,
                              << "  torque_only(b/s): " << (bsy_sent->big_torque_only ? 1 : 0)
                              << "/" << (bsy_sent->small_torque_only ? 1 : 0);
             put(oss.str());
-            oss.str(""); oss << std::fixed << std::setprecision(1)
-                             << "psi_big*: " << bsy_sent->big_yaw_front * 180.0 / M_PI
+            oss.str(""); oss << std::fixed << std::setprecision(4)
+                             << "psi_big*: " << bsy_sent->big_yaw_front
                              << "  (n=" << bsy_sent->big_len << ")   psi_small*: "
-                             << bsy_sent->small_yaw_front * 180.0 / M_PI
+                             << bsy_sent->small_yaw_front
                              << "  (n=" << bsy_sent->small_len << ")";
             put(oss.str());
-            oss.str(""); oss << std::fixed << std::setprecision(1)
-                             << "pitch*: " << bsy_sent->pitch_front * 180.0 / M_PI
+            oss.str(""); oss << std::fixed << std::setprecision(4)
+                             << "pitch*: " << bsy_sent->pitch_front
                              << "  (n=" << bsy_sent->pitch_len << ")   fire*: "
                              << (bsy_sent->fire_front ? 1 : 0)
                              << "  (n=" << bsy_sent->fire_len << ")";
@@ -535,11 +535,11 @@ static void drawOverlay(cv::Mat& img,
             put("(no gimbal output this frame)");
         }
 
-        // ── TF：当前变换树**所有节点**在 world 系下的欧拉角（ZXY，单位 deg）──
+        // ── TF：当前变换树**所有节点**在 world 系下的欧拉角（ZXY，单位 rad）──
         //    显示值 = transformEuler(node, world, 0)（= 节点旋转传播到世界系后的
         //    ZXY 欧拉角，与各节点 getEuler() 同一约定）；节点按链序，
         //    另一构型不存在的节点（如 BIG_SMALL 下没有 yaw）自动跳过。
-        put("--- TF world euler [deg] ---");
+        put("--- TF world euler [rad] ---");
         if (tf_tree != nullptr && tf_tree->isLocked()) {
             static const char* const kTfNodes[] = {
                 RobotTfTree::ROOT,     RobotTfTree::WORLD,    RobotTfTree::CHASSIS,
@@ -550,10 +550,10 @@ static void drawOverlay(cv::Mat& img,
                 if (tf_tree->manager().getNode(name) == nullptr) continue;   // 非本构型节点
                 const cv::Vec3f e = tf_tree->transformEuler(
                     name, RobotTfTree::WORLD, cv::Vec3f(0.0f, 0.0f, 0.0f));
-                oss.str(""); oss << std::fixed << std::setprecision(1)
-                                 << name << ": yaw=" << e[0] * 180.0 / M_PI
-                                 << " pitch=" << e[1] * 180.0 / M_PI
-                                 << " roll=" << e[2] * 180.0 / M_PI;
+                oss.str(""); oss << std::fixed << std::setprecision(4)
+                                 << name << ": yaw=" << e[0]
+                                 << " pitch=" << e[1]
+                                 << " roll=" << e[2];
                 put(oss.str());
             }
         } else {
