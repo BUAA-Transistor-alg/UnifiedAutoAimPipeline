@@ -43,6 +43,7 @@
 #include "common/Output/GimbalOutput.h"
 #include "common/BigSmallYaw/GimbalOutputForBigSmallYaw.h"
 #include "common/BigSmallYaw/RobotStateForBigSmallYaw.h"
+#include "common/TransformTree/RobotTfTree.h"
 #include "common/Ballistic/SequencePredictor.h"
 #include "common/LatestSlot.h"
 #include "common/RobotConfig.h"
@@ -60,6 +61,7 @@
 #include <thread>
 #include <atomic>
 #include <csignal>
+#include <cmath>
 
 // ── backward-cpp 崩溃堆栈回溯 ──
 #include "backward.hpp"
@@ -204,7 +206,9 @@ static Options parseArgs(int argc, char** argv) {
 //      ★ 大/小双 yaw 构型（BIG_SMALL）在**同一位置、同一分块顺序**显示完整输入信息
 //      （--- MCU --- / --- IMU --- / --- EST --- / --- STRICT --- / --- MPC (big/small) ---），
 //      只是字段按双级 yaw 语义展开（θ_big/θ_small、ψ_big/ψ_small、电机侧/云台侧、
-//      背隙 β、LOS 等），见 drawOverlay 的 bsy_state 分支。
+//      背隙 β、LOS 等），见 drawOverlay 的 bsy_state 分支；
+//      末尾另加一栏 --- TF world euler [deg] ---：当前变换树**所有节点**在世界系下的
+//      欧拉角（ZXY，单位 deg；节点按链序，另一构型不存在的节点自动跳过）。
 
 // 帧率显示：无统计（fps <= 0，尚无帧或不可用）时显示 N/A
 static std::string fpsText(double fps) {
@@ -263,6 +267,7 @@ static void drawOverlay(cv::Mat& img,
                         double visualize_fps,
                         tcs::RobotController* rc,
                         const bsy::RobotState* bsy_state,   // 新构型（大小 yaw）状态；单 yaw 构型为 nullptr
+                        const RobotTfTree* tf_tree,         // 当帧变换树（节点世界欧拉角栏）；无则 nullptr
                         const std::chrono::steady_clock::time_point& frame_ts,
                         const PipelineResult::QueueSizes& queue_sizes,
                         double extra_delay_s, const CommonVisualizationOptions& options) {
@@ -497,6 +502,31 @@ static void drawOverlay(cv::Mat& img,
                              << "  ticks: " << bs.ticks_since_set;
             put(oss.str(), bs.small_ref_over_limit ? cv::Scalar(0, 0, 255)
                                                    : cv::Scalar(0, 255, 0));
+        }
+
+        // ── TF：当前变换树**所有节点**在 world 系下的欧拉角（ZXY，单位 deg）──
+        //    显示值 = transformEuler(node, world, 0)（= 节点旋转传播到世界系后的
+        //    ZXY 欧拉角，与各节点 getEuler() 同一约定）；节点按链序，
+        //    另一构型不存在的节点（如 BIG_SMALL 下没有 yaw）自动跳过。
+        put("--- TF world euler [deg] ---");
+        if (tf_tree != nullptr && tf_tree->isLocked()) {
+            static const char* const kTfNodes[] = {
+                RobotTfTree::ROOT,     RobotTfTree::WORLD,    RobotTfTree::CHASSIS,
+                RobotTfTree::YAW,      RobotTfTree::YAW_BIG,  RobotTfTree::YAW_SMALL,
+                RobotTfTree::PITCH,    RobotTfTree::HEAD,     RobotTfTree::IMU,
+                RobotTfTree::CAMERA,   RobotTfTree::MUZZLE};
+            for (const char* name : kTfNodes) {
+                if (tf_tree->manager().getNode(name) == nullptr) continue;   // 非本构型节点
+                const cv::Vec3f e = tf_tree->transformEuler(
+                    name, RobotTfTree::WORLD, cv::Vec3f(0.0f, 0.0f, 0.0f));
+                oss.str(""); oss << std::fixed << std::setprecision(1)
+                                 << name << ": yaw=" << e[0] * 180.0 / M_PI
+                                 << " pitch=" << e[1] * 180.0 / M_PI
+                                 << " roll=" << e[2] * 180.0 / M_PI;
+                put(oss.str());
+            }
+        } else {
+            put("(tf not synced)");
         }
         return;
     }
@@ -1336,6 +1366,7 @@ int main(int argc, char** argv) {
                                     visualize_stage.fps.load(std::memory_order_relaxed),
                                     robotControllerPtr(),
                                     (yaw_mode == YawMode::BIG_SMALL) ? &bsy_st : nullptr,
+                                    vis ? &vis->tree() : nullptr,
                                     shared_frame_timestamp.load(std::memory_order_acquire),
                                     last_qs, backlog_delay.extraDelaySeconds(), controls.common);
                     }

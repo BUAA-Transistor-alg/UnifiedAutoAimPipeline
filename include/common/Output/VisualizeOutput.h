@@ -51,6 +51,11 @@ public:
     /// 返回浅拷贝，共享像素数据，引用计数原子安全）
     cv::Mat display() const;
 
+    /// 当帧已同步的变换树（update 内由 ExtraInputInfo 同步并上锁）。
+    /// ⚠ 仅供**可视化线程**在 update 之后读取（覆盖层绘制节点世界欧拉角用）；
+    ///   跨线程访问需自行保证不与 update 并发。
+    const RobotTfTree& tree() const { return tree_; }
+
 private:
     void syncTree(const ExtraInputInfo& info);
     // 渲染当前流水线模式的画面到 render_buf_（仅可视化线程访问；create+copyTo
