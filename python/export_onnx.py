@@ -41,7 +41,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(ROOT / "cache" / "matplotlib"))
 
 # ==================== 要处理的模型（手动改这里即可切换） ====================
 MODEL_DIR = "Model/PowerRune"          # 相对项目根目录
-MODEL_NAME = "power_rune_finetune2"    # 不含扩展名：读 <MODEL_NAME>.pt，写 <MODEL_NAME>.onnx
+MODEL_NAME = "power_rune_finetune"    # 不含扩展名：读 <MODEL_NAME>.pt，写 <MODEL_NAME>.onnx
 
 # ==================== 导出参数（与 update_onnx.py 一致） ====================
 IMGSZ = 640

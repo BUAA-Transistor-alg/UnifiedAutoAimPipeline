@@ -58,7 +58,7 @@ void PowerRuneVisualizer::render(Mat& image,
                                   const RobotTfTree& tf_tree,
                                   const CameraProjection& camera_proj) const {
     // 1. 绘制检测框
-    // drawDetections(image, data.detection.detections);
+    drawDetections(image, data.detection.detections);
     // return;
 
     // 2. 绘制世界坐标和欧拉角文字
