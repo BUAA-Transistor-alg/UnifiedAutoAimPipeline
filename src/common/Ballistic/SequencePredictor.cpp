@@ -155,10 +155,8 @@ std::vector<PredictedBallisticSolver::Result> SequencePredictor::solveNormalCand
     if (predictor.source.kind == PredictorSource::Kind::ARMOR ||
         predictor.source.kind == PredictorSource::Kind::POWER_RUNE) {
         // 实测切换：注释下一行并恢复相邻旧调用；旧解算器实现完整保留。
-        return newton_solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big,
-                                             masked_indices);
-        // return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big,
-        //                               masked_indices);
+        return newton_solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big, masked_indices);
+        // return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big, masked_indices);
     }
     return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big,
                                   masked_indices);

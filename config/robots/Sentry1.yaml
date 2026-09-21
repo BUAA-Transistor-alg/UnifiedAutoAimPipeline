@@ -72,16 +72,16 @@ common:
   # 进入扫描前的保持段（未超过 idle_timeout_sec）：用上一个有效输出序列的首值
   #   填充整条序列。
   sentry_controller:
-    enabled: false                 # 总开关（true 启用扫描；false 时以下字段可不填）
+    enabled: true                 # 总开关（true 启用扫描；false 时以下字段可不填）
     # ── 以下仅在 enabled = true 时必需 ──
     idle_timeout_sec: 2.0          # 无有效预测持续多久后进入扫描模式（秒，>= 0）
     yaw_scan_angular_velocity: 1.0 # 扫描 yaw 角速度（rad/s，!= 0；正/负 = 两个相反的扫描方向）
-    yaw_scan_max_deviation: 0.523598  # 扫描 yaw 序列每点相对本帧实测角度的最大偏离
-                                   # （rad，> 0；此处示例 = π/6，防止下发序列把枪线甩出过远）
-    pitch_scan_min: -0.5236        # 扫描 pitch 下界（rad，示例 -30°）
+    yaw_scan_max_deviation: 0.5  # 扫描 yaw 序列每点相对本帧实测角度的最大偏离
+                                   # （rad，> 0，防止下发序列把枪线甩出过远）
+    pitch_scan_min: -0.2618        # 扫描 pitch 下界（rad，示例 -30°）
     pitch_scan_max: 0.2618         # 扫描 pitch 上界（rad，示例 +15°；须 > pitch_scan_min）
-    pitch_scan_rise_time_sec: 0.5  # pitch 由下界线性升到上界的时间（秒，> 0）
-    pitch_scan_fall_time_sec: 0.5  # pitch 由上界线性回落到下界的时间（秒，> 0）
+    pitch_scan_rise_time_sec: 0.3  # pitch 由下界线性升到上界的时间（秒，> 0）
+    pitch_scan_fall_time_sec: 0.3  # pitch 由上界线性回落到下界的时间（秒，> 0）
                                    # 锯齿波周期 = 上升 + 回落 = 1.0 s（示例）
 
   # ── 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择 ──
@@ -101,10 +101,10 @@ common:
         height: 1080                # 图像高（像素）
       # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
       camera_matrix: # 相机内参矩阵
-        [1.30998295e+03, 0.00000000e+00, 6.09427971e+02,
-         0.00000000e+00, 1.30902606e+03, 4.90302544e+02,
+        [1.31162624e+03, 0.00000000e+00, 6.47105777e+02,
+         0.00000000e+00, 1.31146478e+03, 5.31856256e+02,
          0.00000000e+00, 0.00000000e+00, 1.00000000e+00]
-      dist_coeffs: [-0.08532844, 0.24222232, -0.00140170, -0.00094326, -0.22520569] # 畸变系数
+      dist_coeffs: [-0.06899725,  0.08875782, -0.00070951,  0.00026565,  0.11161822] # 畸变系数
 
     # video_mode：--input video / interactive（录制视频 / 交互图片，无网络/曝光参数）。
     video_mode:
@@ -211,12 +211,12 @@ common:
         # MPC（tcbs::dual_yaw::DualYawMpcConfig；dt_control 取上面的 robot_controller.dt_control）
         mpc:
           pred_n: 24                  # 预测步数 N（平面模型每次求值小 ⇒ 可取得较长）
-          substeps: 4                 # 每控制步 RK4 子步（λ=100、dt=10ms 时必须 ≥ 4，substeps=2 已在稳定边界）
+          substeps: 2                 # 每控制步 RK4 子步（λ=100、dt=10ms 时必须 ≥ 4，substeps=2 已在稳定边界）
           use_rk4: true               # true: RK4；false: 半隐式欧拉（更快、精度略低）
           max_iter: 8                 # 求解迭代上限
-          w_big_azimuth: 1.0          # 大 yaw 世界方位角跟踪权重
+          w_big_azimuth: 0.1          # 大 yaw 世界方位角跟踪权重
           w_small_azimuth: 1.0        # 小 yaw 世界方位角跟踪权重
-          w_small_center: 0.0         # 小 yaw 回中权重（打破冗余自由度）
+          w_small_center: 1.0         # 小 yaw 回中权重（打破冗余自由度）
           w_small_limit: 1.0e4        # 小 yaw 软限位障碍项权重
           small_limit_soft_ratio: 0.9285714285714286  # 软限位比例：拆分器判界与 MPC 代价共用同一值
                                                      # （软限位 = 硬限位 − (1−ratio)·总行程 = 35° − 0.0714·70° = 30°）
@@ -286,8 +286,8 @@ common:
 
         # 控制器（tcbs::McuMpcController::Config；loop 周期取 robot_controller.dt_control）
         controller:
-          big_torque_only: false      # 大 yaw 仅力矩模式位（true = 电控只施力矩）
-          small_torque_only: false    # 小 yaw 仅力矩模式位
+          big_torque_only: true      # 大 yaw 仅力矩模式位（true = 电控只施力矩）
+          small_torque_only: true    # 小 yaw 仅力矩模式位
           integral_gain_big: 0.0      # 大 yaw 积分补偿增益（0 = 关闭）
           integral_gain_small: 0.01   # 小 yaw 积分补偿增益
           integral_limit_big: 0.0     # 积分限幅（N·m）
