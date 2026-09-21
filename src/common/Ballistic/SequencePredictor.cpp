@@ -490,11 +490,9 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         // 包未填充（NaN）时抛异常，不会静默用 NaN 解算）
         applyExtraInputInfoToTree(g->tree(), in.info);
         g->setChassisPosition(0.0f, 0.0f, 0.0f);   // 弹道解算固定以底盘为世界原点
-        /* 9.21测试暂时修改，使用默认23.0 m/s的速度
         if (in.has_bullet_velocity) {
             g->setBulletVelocity(in.bullet_velocity);
         }
-        */
     }
     const double chassis_yaw = in.chassis_yaw_correction;  // item.yaw 的底盘 yaw 修正项
     // ── yaw 系原点（world 系）：树已同步，同一线程内计算并写入 Result，
