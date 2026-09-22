@@ -214,8 +214,15 @@ common:
           substeps: 2                 # 每控制步 RK4 子步（λ=100、dt=10ms 时必须 ≥ 4，substeps=2 已在稳定边界）
           use_rk4: true               # true: RK4；false: 半隐式欧拉（更快、精度略低）
           max_iter: 8                 # 求解迭代上限
-          w_big_azimuth: 0.1          # 大 yaw 世界方位角跟踪权重
-          w_small_azimuth: 1.0        # 小 yaw 世界方位角跟踪权重
+          w_big_azimuth: 0.1          # 大 yaw 世界方位角跟踪权重（★ 子模组为**平方**误差 w·(ψ_b−ψ_b*)²）
+          w_small_azimuth: 1.0        # 小 yaw 世界方位角跟踪权重（子模组为**绝对**误差 平滑 |·|）
+          # ── 速度惩罚权重（子模组 2026-09-21 新增，必填；0 = 关闭该代价项）──
+          #   代价项 = w_v·θ̇²，θ̇ 取**云台/关节侧**角速度（不是电机侧，也不是力矩变化率）。
+          #   动机：平方跟踪项对速度没有直接约束 ⇒ 换向/穿越大 yaw 背隙时可以冲很快，激励
+          #   出接触模态与抖动；给大 yaw 一点速度权重（0.1）能把过冲/抖动压下去，小 yaw
+          #   默认不加（保持跟得上）。量纲上 0.1 与跟踪权重 1.0 同量级（θ̇=1 rad/s 时贡献 0.1）。
+          w_big_rate: 0.1             # 大 yaw 云台角速度惩罚权重（子模组默认 0.1）
+          w_small_rate: 0.0           # 小 yaw 关节角速度惩罚权重（子模组默认 0 = 关）
           w_small_center: 1.0         # 小 yaw 回中权重（打破冗余自由度）
           w_small_limit: 1.0e4        # 小 yaw 软限位障碍项权重
           small_limit_soft_ratio: 0.9285714285714286  # 软限位比例：拆分器判界与 MPC 代价共用同一值
@@ -224,7 +231,7 @@ common:
           r_small_torque: 0.01
           rd_big_rate: 10.0           # 力矩变化率惩罚
           rd_small_rate: 100.0
-          smooth_eps: 1.0e-6          # 位置误差平滑常数（代价 = Q*sqrt(err²+a)）
+          smooth_eps: 1.0e-6          # 位置误差平滑常数（小 yaw 跟踪 / 回中 = Q*sqrt(err²+a)；大 yaw 已改平方误差，不用它）
           ref_delay_steps: 0          # 参考延迟步数（0 = 直接使用最新目标序列）
           big_max_torque: 1.0         # 大 yaw 力矩上限（N·m，★ 按实测替换）
           big_max_torque_rate: 40.0   # 大 yaw 力矩变化率上限（N·m/s）

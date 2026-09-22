@@ -257,6 +257,8 @@ void parseBigSmallYawBranch(const YAML::Node& node,
     c.maxIter             = requireScalar<int>(mp, "max_iter", P);
     c.wBigAzimuth         = requireScalar<double>(mp, "w_big_azimuth", P);
     c.wSmallAzimuth       = requireScalar<double>(mp, "w_small_azimuth", P);
+    c.wBigRate            = requireScalar<double>(mp, "w_big_rate", P);
+    c.wSmallRate          = requireScalar<double>(mp, "w_small_rate", P);
     c.wSmallCenter        = requireScalar<double>(mp, "w_small_center", P);
     c.wSmallLimit         = requireScalar<double>(mp, "w_small_limit", P);
     c.smallLimitSoftRatio = requireScalar<double>(mp, "small_limit_soft_ratio", P);
@@ -277,6 +279,9 @@ void parseBigSmallYawBranch(const YAML::Node& node,
         throw std::runtime_error("RobotConfig: '" + P + ".small_limit_soft_ratio' 必须落在 (0, 1]");
     if (c.refDelaySteps < 0)
         throw std::runtime_error("RobotConfig: '" + P + ".ref_delay_steps' 必须 >= 0");
+    if (!(c.wBigRate >= 0.0) || !(c.wSmallRate >= 0.0))
+        throw std::runtime_error("RobotConfig: '" + P + ".w_big_rate' / '" + P +
+                                 ".w_small_rate' 必须 >= 0（速度惩罚权重，0 = 关闭该代价项）");
     if (!(c.bigMaxTorque > 0.0) || !(c.bigMaxTorqueRate > 0.0) ||
         !(c.smallMaxTorque > 0.0) || !(c.smallMaxTorqueRate > 0.0))
         throw std::runtime_error("RobotConfig: '" + P + "' 的力矩上限与力矩变化率上限必须 > 0");

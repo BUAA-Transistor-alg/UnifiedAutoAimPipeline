@@ -230,6 +230,9 @@ RobotControllerAdapter::RobotControllerAdapter() {
     c.mpc.max_iter              = rc.mpc.maxIter;
     c.mpc.w_big_azimuth         = rc.mpc.wBigAzimuth;
     c.mpc.w_small_azimuth       = rc.mpc.wSmallAzimuth;
+    // 速度惩罚（子模组 2026-09-21 新增；θ̇ = 云台/关节侧角速度）
+    c.mpc.w_big_rate            = rc.mpc.wBigRate;
+    c.mpc.w_small_rate          = rc.mpc.wSmallRate;
     c.mpc.w_small_center        = rc.mpc.wSmallCenter;
     c.mpc.w_small_limit         = rc.mpc.wSmallLimit;
     c.mpc.small_limit_soft_ratio = rc.mpc.smallLimitSoftRatio;

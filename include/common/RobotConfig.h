@@ -265,8 +265,14 @@ public:
                     int    substeps;           // 每控制步 RK4 子步
                     bool   useRk4;             // true: RK4；false: 半隐式欧拉
                     int    maxIter;            // 求解迭代上限
-                    double wBigAzimuth;        // 大 yaw 世界方位角跟踪权重
-                    double wSmallAzimuth;      // 小 yaw 世界方位角跟踪权重
+                    double wBigAzimuth;        // 大 yaw 世界方位角跟踪权重（子模组为**平方**误差）
+                    double wSmallAzimuth;      // 小 yaw 世界方位角跟踪权重（子模组为**绝对**误差）
+                    // 速度惩罚权重（tcbs 子模组 2026-09-21 新增）：代价项 = w_v·θ̇²，
+                    // θ̇ 取**云台/关节侧**角速度（不是电机侧），用于压换向/穿越背隙时的
+                    // 速度尖峰（平方跟踪项本身对速度无约束）。0 = 关闭该项；
+                    // 量纲上 0.1 与跟踪权重 1.0 同量级（θ̇ = 1 rad/s 时贡献 0.1）。
+                    double wBigRate;           // 大 yaw 云台角速度惩罚权重（子模组默认 0.1）
+                    double wSmallRate;         // 小 yaw 关节角速度惩罚权重（子模组默认 0 = 关）
                     double wSmallCenter;       // 小 yaw 回中权重
                     double wSmallLimit;        // 小 yaw 软限位权重
                     double smallLimitSoftRatio;  // 软限位比例（拆分器判界与 MPC 代价共用）
