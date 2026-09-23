@@ -714,8 +714,10 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
 
     // 首版保守处理：任一选中的精确点不可用，整帧无效。不能只检查序列首点，
     // 否则后段 Newton 失败可能被插值继承的 success 掩盖后送入 MPC。
-    if (normal_armor && std::any_of(solved.begin(), solved.end(),
-                                   [](const auto& r) { return !r.success; })) {
+    const bool require_all_solved = normal_armor || power_rune_mode;
+
+    if (require_all_solved && std::any_of(solved.begin(), solved.end(),
+                    [](const auto& r) { return !r.success; })) {
         state_.last_first_target_index = -1;
         return Result{};
     }
@@ -786,7 +788,7 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
                 items[a + (size_t)m] = lerpItem(A, B, t);
             } else if (lead_extrap_valid) {
                 // 首段（紧邻窗口）：以第 n 个精确值 items[n-1] 为参考外推
-                items[a + (size_t)m] = extrapItem(A, items[(size_t)n - 1], t);
+                items[a + (size_t)m] = extrapItem(A, items[(size_t)n - 1], static_cast<double>(m));
             } else if (can_extrap) {
                 // 相邻实际点目标不同：用段 (P, A) 的线性差值参数外推
                 items[a + (size_t)m] = extrapItem(A, P, t);
