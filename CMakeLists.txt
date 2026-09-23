@@ -81,6 +81,7 @@ set(COMMON_SOURCES
     src/common/FrameRateCounter.cpp
     src/common/RobotConfig.cpp
     src/common/BacklogAdaptiveDelay.cpp
+    src/common/SentryController.cpp
     # 相机投影 + Ceres 位姿优化/精化（common/pose/，二者打包在一起）
     src/common/pose/CameraProjection.cpp
     src/common/pose/CeresPoseEstimator.cpp

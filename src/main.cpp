@@ -43,6 +43,7 @@
 #include "common/Output/GimbalOutput.h"
 #include "common/BigSmallYaw/GimbalOutputForBigSmallYaw.h"
 #include "common/BigSmallYaw/RobotStateForBigSmallYaw.h"
+#include "common/TransformTree/RobotTfTree.h"
 #include "common/Ballistic/SequencePredictor.h"
 #include "common/LatestSlot.h"
 #include "common/RobotConfig.h"
@@ -200,7 +201,15 @@ static Options parseArgs(int argc, char** argv) {
 //      MPC=McuMpcController 后台循环帧率（无 tcs::RobotController 时 N/A）
 //   4. 串口输入信息 — 原 drawCommInfo 样式：(8,80) 起 0.45 粗 1 绿，按来源分块显示
 //      （--- MCU --- / --- IMU --- / --- FUSED --- / --- STRICT --- / --- MPC ---），
-//      MCU 块含温度行（按温度区间变色）
+//      MCU 块含温度行（按温度区间变色）。
+//      ★ 大/小双 yaw 构型（BIG_SMALL）在**同一位置、同一分块顺序**显示完整输入信息
+//      （--- MCU --- / --- IMU --- / --- EST --- / --- STRICT --- / --- MPC (big/small) ---），
+//      只是字段按双级 yaw 语义展开（θ_big/θ_small、ψ_big/ψ_small、电机侧/云台侧、
+//      背隙 β、LOS 等），见 drawOverlay 的 bsy_state 分支；
+//      末尾另加两栏：--- SENT to tcbs [rad] ---（本帧**实际下发**给子模组的 set() 实参，
+//      序列取首元素 + 长度）与 --- TF world euler [rad] ---（当前变换树**所有节点**在
+//      世界系下的欧拉角，ZXY；节点按链序，另一构型不存在的节点自动跳过）。
+//      ★ 角度一律用 **rad**（与下发量/子模组接口一致），不做 deg 换算。
 
 // 帧率显示：无统计（fps <= 0，尚无帧或不可用）时显示 N/A
 static std::string fpsText(double fps) {
@@ -259,6 +268,8 @@ static void drawOverlay(cv::Mat& img,
                         double visualize_fps,
                         tcs::RobotController* rc,
                         const bsy::RobotState* bsy_state,   // 新构型（大小 yaw）状态；单 yaw 构型为 nullptr
+                        const RobotTfTree* tf_tree,         // 当帧变换树（节点世界欧拉角栏）；无则 nullptr
+                        const OutputContext::BigSmallSent* bsy_sent,   // 本帧下发给子模组的内容；无则 nullptr
                         const std::chrono::steady_clock::time_point& frame_ts,
                         const PipelineResult::QueueSizes& queue_sizes,
                         double extra_delay_s, const CommonVisualizationOptions& options) {
@@ -322,41 +333,232 @@ static void drawOverlay(cv::Mat& img,
         y += lineH;
     };
     if (bsy_state != nullptr) {
-        // ── 新构型（大/小双 yaw）：按关节角 / 世界方位角 / MPC 分块显示 ──
-        oss.str(""); oss << std::fixed << std::setprecision(3);
-        put("--- BIG/SMALL YAW ---");
-        if (bsy_state->valid) {
-            oss.str(""); oss << "theta_big: " << bsy_state->yaw_big_joint
-                             << "  psi_big: " << bsy_state->yaw_big_azimuth
-                             << "  rate: " << bsy_state->platform_rate;
+        // ── 新构型（大/小双 yaw）：与单 yaw 相同的分块顺序
+        //    （--- MCU --- / --- IMU --- / --- EST --- / --- STRICT --- / --- MPC ---），
+        //    字段按双级 yaw 语义展开（θ_big/θ_small、ψ_big/ψ_small、电机侧/云台侧、
+        //    背隙 β、LOS 等），保证两种构型下左侧输入信息块一一对应 ──
+        const bsy::RobotState& bs = *bsy_state;
+        // 控制器未构造 / 尚未收到数据时给出与单 yaw 构型 "Serial: N/A" 对应的提示
+        if (!bs.valid && !bs.estimator_valid) {
+            put("BigSmall: N/A (controller not constructed / no data)");
+        }
+
+        // ── MCU ──
+        put("--- MCU ---");
+        if (bs.mcu.valid) {
+            oss.str(""); oss << std::fixed << std::setprecision(3);
+            oss << "bullet: " << bs.mcu.bullet_velocity
+                << "  pitch: " << bs.mcu.pitch_angle
+                << "  yaw_big: " << bs.mcu.yaw_big_angle
+                << "  yaw_small: " << bs.mcu.yaw_small_angle;
             put(oss.str());
-            oss.str(""); oss << "theta_small: " << bsy_state->yaw_small_joint
-                             << "  psi_small: " << bsy_state->yaw_small_azimuth
-                             << "  rate: " << bsy_state->yaw_small_rate;
+            oss.str(""); oss << "yaw_big_w: " << bs.mcu.yaw_big_omega
+                             << "  yaw_small_w: " << bs.mcu.yaw_small_omega;
             put(oss.str());
-            oss.str(""); oss << "pitch: " << bsy_state->pitch_joint
-                             << "  bullet: " << bsy_state->bullet_velocity
-                             << "  aim: " << (int)bsy_state->auto_aim_switch;
+            oss.str(""); oss << "chassis_imu_yaw: " << bs.mcu.chassis_imu_yaw
+                             << "  chassis_imu_w: " << bs.mcu.chassis_imu_omega;
+            put(oss.str());
+            oss.str(""); oss << "mark: " << (int)bs.mcu.mark
+                             << "  color: " << (int)bs.mcu.color
+                             << "  aim: " << (int)bs.mcu.auto_aim_switch
+                             << "  mcu2_seq: " << (int)bs.mcu.mcu2_seq;
+            put(oss.str());
+            // 温度行（两级各一个；按较高者变色：>=70 红 / >=50 黄 / 其余绿）
+            const int tbig = (int)bs.mcu.yaw_big_temperature;
+            const int tsmall = (int)bs.mcu.yaw_small_temperature;
+            const int tmax = (tbig > tsmall) ? tbig : tsmall;
+            cv::Scalar temp_color(0, 255, 0);
+            if (tmax >= 70)      temp_color = cv::Scalar(0, 0, 255);
+            else if (tmax >= 50) temp_color = cv::Scalar(0, 255, 255);
+            oss.str(""); oss << "temp big/small: " << tbig << " / " << tsmall;
+            put(oss.str(), temp_color);
+        } else {
+            put("(no data)");
+        }
+
+        // ── IMU ──
+        put("--- IMU ---");
+        if (bs.imu.valid) {
+            oss.str(""); oss << std::fixed << std::setprecision(4);
+            oss << "gyro: " << bs.imu.gx << " " << bs.imu.gy << " " << bs.imu.gz;
+            put(oss.str());
+            oss.str(""); oss << "acc: " << bs.imu.ax << " " << bs.imu.ay << " " << bs.imu.az;
+            put(oss.str());
+            oss.str(""); oss << "euler: " << bs.imu.euler_yaw << " "
+                             << bs.imu.euler_pitch << " " << bs.imu.euler_roll;
+            put(oss.str());
+            oss.str(""); oss << "dt: " << bs.imu.dt_one_tenth_ms
+                             << "  loc: " << bs.strict.imu_location
+                             << " (0=big_yaw 1=head)";
             put(oss.str());
         } else {
             put("(no data)");
         }
-        oss.str(""); oss << "--- MPC (big/small) ---";
-        put(oss.str());
-        oss.str(""); oss << "tau: " << bsy_state->torque_big << " / " << bsy_state->torque_small
-                         << "  target_joint: " << bsy_state->target_joint_big << " / "
-                         << bsy_state->target_joint_small;
-        put(oss.str());
-        oss.str(""); oss << "ref: " << (bsy_state->ref_big_azimuth_seq.empty() ? 0.0
-                                                                             : bsy_state->ref_big_azimuth_seq.front())
-                         << " / " << (bsy_state->ref_small_azimuth_seq.empty() ? 0.0
-                                                                              : bsy_state->ref_small_azimuth_seq.front());
-        put(oss.str());
-        // 小 yaw 参考越软限位（拆分器判界的同一边界）：越限标红
-        oss.str(""); oss << "small over_soft_limit: " << (bsy_state->small_ref_over_limit ? "YES" : "no")
-                         << "  solve: " << bsy_state->solve_ms << " ms"
-                         << "  fail: " << bsy_state->solve_fail_count;
-        put(oss.str(), bsy_state->small_ref_over_limit ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 0));
+
+        // ── EST（可信量 + 大 yaw 延迟补偿 + 反解真实位姿；对应单 yaw 的 --- FUSED ---）──
+        put("--- EST ---");
+        if (bs.est.valid) {
+            oss.str(""); oss << std::fixed << std::setprecision(4);
+            oss << "imu_euler: " << bs.est.imu_yaw << " " << bs.est.imu_pitch
+                << " " << bs.est.imu_roll;
+            put(oss.str());
+            oss.str(""); oss << "psi_big: " << bs.est.platform_azimuth
+                             << "  rate: " << bs.est.platform_rate;
+            put(oss.str());
+            oss.str(""); oss << "theta_small: " << bs.est.small_joint_angle
+                             << "  rate: " << bs.est.small_joint_rate;
+            put(oss.str());
+            oss.str(""); oss << "pitch: " << bs.est.pitch_joint_angle
+                             << "  rate: " << bs.est.pitch_joint_rate;
+            put(oss.str());
+            oss.str(""); oss << "theta_big: " << bs.est.big_joint_angle
+                             << "  meas: " << bs.est.big_joint_angle_meas
+                             << "  rate: " << bs.est.big_joint_rate;
+            put(oss.str());
+            oss.str(""); oss << "big motor: " << bs.est.big_motor_angle
+                             << "  platform: " << bs.est.big_platform_angle;
+            put(oss.str());
+            oss.str(""); oss << "backlash beta: " << bs.est.backlash_center
+                             << "  width: " << bs.est.backlash_width_obs;
+            put(oss.str());
+            oss.str(""); oss << "psi_small: " << bs.est.small_output_azimuth
+                             << "  psi_chassis: " << bs.est.chassis_azimuth;
+            put(oss.str());
+            oss.str(""); oss << "LOS az/el: " << bs.est.los_azimuth
+                             << " / " << bs.est.los_elevation;
+            put(oss.str());
+            oss.str(""); oss << "head euler: " << bs.est.head_world_yaw << " "
+                             << bs.est.head_world_pitch << " " << bs.est.head_world_roll;
+            put(oss.str());
+            oss.str(""); oss << "enc_age: " << bs.est.big_enc_age
+                             << "  ch_imu_age: " << bs.est.chassis_imu_age
+                             << "  innov: " << bs.est.big_enc_innovation;
+            put(oss.str());
+        } else {
+            put("(no data)");
+        }
+
+        // ── STRICT（严格反解包；始终解算、无 valid 标志）──
+        put("--- STRICT ---");
+        {
+            oss.str(""); oss << std::fixed << std::setprecision(4);
+            oss << "imu_euler: " << bs.strict.imu_euler_yaw << " "
+                << bs.strict.imu_euler_pitch << " " << bs.strict.imu_euler_roll;
+            put(oss.str());
+            oss.str(""); oss << "theta: big " << bs.strict.big_joint_angle
+                             << "  small " << bs.strict.small_joint_angle
+                             << "  pitch " << bs.strict.pitch_joint_angle;
+            put(oss.str());
+            oss.str(""); oss << "chassis: " << bs.strict.chassis_euler_yaw << " "
+                             << bs.strict.chassis_euler_pitch << " "
+                             << bs.strict.chassis_euler_roll;
+            put(oss.str());
+            oss.str(""); oss << "psi: platform " << bs.strict.platform_azimuth
+                             << "  chassis " << bs.strict.chassis_azimuth
+                             << "  head " << bs.strict.head_azimuth;
+            put(oss.str());
+            oss.str(""); oss << "recon_err: " << bs.strict.recon_err_rot
+                             << "  big_age: " << bs.strict.big_joint_angle_age;
+            put(oss.str());
+        }
+
+        // ── MPC（big/small）──
+        put("--- MPC (big/small) ---");
+        {
+            oss.str(""); oss << std::fixed << std::setprecision(4);
+            oss << "tau mpc: " << bs.torque_mpc_big << " / " << bs.torque_mpc_small
+                << "  integral: " << bs.integral_big << " / " << bs.integral_small;
+            put(oss.str());
+            oss.str(""); oss << "tau out: " << bs.torque_big << " / " << bs.torque_small
+                             << "  mode: " << (bs.big_torque_only ? "T" : "TPID") << " / "
+                             << (bs.small_torque_only ? "T" : "TPID");
+            put(oss.str());
+            oss.str(""); oss << "target_joint: " << bs.target_joint_big << " / "
+                             << bs.target_joint_small
+                             << "  vel: " << bs.target_joint_rate_big << " / "
+                             << bs.target_joint_rate_small;
+            put(oss.str());
+            oss.str(""); oss << "ref now: " << bs.ref_azimuth_big << " / "
+                             << bs.ref_azimuth_small
+                             << "  delayed: " << bs.delayed_ref_azimuth_big << " / "
+                             << bs.delayed_ref_azimuth_small;
+            put(oss.str());
+            oss.str(""); oss << "ref front: "
+                             << (bs.ref_big_azimuth_seq.empty() ? 0.0
+                                                                : bs.ref_big_azimuth_seq.front())
+                             << " / "
+                             << (bs.ref_small_azimuth_seq.empty() ? 0.0
+                                                                  : bs.ref_small_azimuth_seq.front())
+                             << "  pred front: "
+                             << (bs.pred_big_azimuth_seq.empty() ? 0.0
+                                                                 : bs.pred_big_azimuth_seq.front())
+                             << " / "
+                             << (bs.pred_small_azimuth_seq.empty() ? 0.0
+                                                                   : bs.pred_small_azimuth_seq.front());
+            put(oss.str());
+            oss.str(""); oss << "small over_soft_limit: " << (bs.small_ref_over_limit ? "YES" : "no")
+                             << "  solve: " << bs.solve_ms << " ms"
+                             << "  fail: " << bs.solve_fail_count << "/" << bs.solve_count
+                             << "  loop: " << bs.loop_fps << " fps"
+                             << "  sent: " << (bs.sent_ok ? 1 : 0)
+                             << "  ticks: " << bs.ticks_since_set;
+            put(oss.str(), bs.small_ref_over_limit ? cv::Scalar(0, 0, 255)
+                                                   : cv::Scalar(0, 255, 0));
+        }
+
+        // ── 本帧**实际下发给子模组**的信息（tcbs 序列 set() 的实参；序列取首元素）──
+        //    由 GimbalOutputForBigSmallYaw::update 在每次 set() 前回写 ctx.bsy_sent，
+        //    因此这里显示的就是真实下发量（而非控制器内部消费后的剩余序列）。
+        //    kind：predict（正常预测）/ scan（哨兵扫描）/ hold(sentry)（扫描前保持）/
+        //          hold（无目标且未开哨兵）；yaw/pitch 单位 **rad**（与下发量一致）。
+        put("--- SENT to tcbs [rad] ---");
+        if (bsy_sent != nullptr && bsy_sent->valid) {
+            oss.str(""); oss << "kind: " << bsy_sent->kind
+                             << "  auto_aim: " << (bsy_sent->auto_aim_enable ? 1 : 0)
+                             << "  integral: " << (bsy_sent->integral_enable ? 1 : 0)
+                             << "  torque_only(b/s): " << (bsy_sent->big_torque_only ? 1 : 0)
+                             << "/" << (bsy_sent->small_torque_only ? 1 : 0);
+            put(oss.str());
+            oss.str(""); oss << std::fixed << std::setprecision(4)
+                             << "psi_big*: " << bsy_sent->big_yaw_front
+                             << "  (n=" << bsy_sent->big_len << ")   psi_small*: "
+                             << bsy_sent->small_yaw_front
+                             << "  (n=" << bsy_sent->small_len << ")";
+            put(oss.str());
+            oss.str(""); oss << std::fixed << std::setprecision(4)
+                             << "pitch*: " << bsy_sent->pitch_front
+                             << "  (n=" << bsy_sent->pitch_len << ")   fire*: "
+                             << (bsy_sent->fire_front ? 1 : 0)
+                             << "  (n=" << bsy_sent->fire_len << ")";
+            put(oss.str());
+        } else {
+            put("(no gimbal output this frame)");
+        }
+
+        // ── TF：当前变换树**所有节点**在 world 系下的欧拉角（ZXY，单位 rad）──
+        //    显示值 = transformEuler(node, world, 0)（= 节点旋转传播到世界系后的
+        //    ZXY 欧拉角，与各节点 getEuler() 同一约定）；节点按链序，
+        //    另一构型不存在的节点（如 BIG_SMALL 下没有 yaw）自动跳过。
+        put("--- TF world euler [rad] ---");
+        if (tf_tree != nullptr && tf_tree->isLocked()) {
+            static const char* const kTfNodes[] = {
+                RobotTfTree::ROOT,     RobotTfTree::WORLD,    RobotTfTree::CHASSIS,
+                RobotTfTree::YAW,      RobotTfTree::YAW_BIG,  RobotTfTree::YAW_SMALL,
+                RobotTfTree::PITCH,    RobotTfTree::HEAD,     RobotTfTree::IMU,
+                RobotTfTree::CAMERA,   RobotTfTree::MUZZLE};
+            for (const char* name : kTfNodes) {
+                if (tf_tree->manager().getNode(name) == nullptr) continue;   // 非本构型节点
+                const cv::Vec3f e = tf_tree->transformEuler(
+                    name, RobotTfTree::WORLD, cv::Vec3f(0.0f, 0.0f, 0.0f));
+                oss.str(""); oss << std::fixed << std::setprecision(4)
+                                 << name << ": yaw=" << e[0]
+                                 << " pitch=" << e[1]
+                                 << " roll=" << e[2];
+                put(oss.str());
+            }
+        } else {
+            put("(tf not synced)");
+        }
         return;
     }
     if (rc == nullptr) {
@@ -1195,6 +1397,8 @@ int main(int argc, char** argv) {
                                     visualize_stage.fps.load(std::memory_order_relaxed),
                                     robotControllerPtr(),
                                     (yaw_mode == YawMode::BIG_SMALL) ? &bsy_st : nullptr,
+                                    vis ? &vis->tree() : nullptr,
+                                    cached.ctx ? &cached.ctx->bsy_sent : nullptr,
                                     shared_frame_timestamp.load(std::memory_order_acquire),
                                     last_qs, backlog_delay.extraDelaySeconds(), controls.common);
                     }

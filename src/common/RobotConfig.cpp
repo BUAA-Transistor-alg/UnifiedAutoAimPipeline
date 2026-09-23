@@ -215,6 +215,9 @@ void parseBigSmallYawBranch(const YAML::Node& node,
     m.Js             = requireScalar<double>(md, "Js", M);
     m.Px             = requireScalar<double>(md, "Px", M);
     m.Py             = requireScalar<double>(md, "Py", M);
+    // 大 yaw 侧一阶矩（只随大 yaw 转的质量偏心；只进大 yaw 行）
+    m.Pbx            = requireScalar<double>(md, "Pbx", M);
+    m.Pby            = requireScalar<double>(md, "Pby", M);
     m.fcBig          = requireScalar<double>(md, "fc_big", M);
     m.fvBig          = requireScalar<double>(md, "fv_big", M);
     m.fcSmall        = requireScalar<double>(md, "fc_small", M);
@@ -254,6 +257,8 @@ void parseBigSmallYawBranch(const YAML::Node& node,
     c.maxIter             = requireScalar<int>(mp, "max_iter", P);
     c.wBigAzimuth         = requireScalar<double>(mp, "w_big_azimuth", P);
     c.wSmallAzimuth       = requireScalar<double>(mp, "w_small_azimuth", P);
+    c.wBigRate            = requireScalar<double>(mp, "w_big_rate", P);
+    c.wSmallRate          = requireScalar<double>(mp, "w_small_rate", P);
     c.wSmallCenter        = requireScalar<double>(mp, "w_small_center", P);
     c.wSmallLimit         = requireScalar<double>(mp, "w_small_limit", P);
     c.smallLimitSoftRatio = requireScalar<double>(mp, "small_limit_soft_ratio", P);
@@ -274,6 +279,9 @@ void parseBigSmallYawBranch(const YAML::Node& node,
         throw std::runtime_error("RobotConfig: '" + P + ".small_limit_soft_ratio' 必须落在 (0, 1]");
     if (c.refDelaySteps < 0)
         throw std::runtime_error("RobotConfig: '" + P + ".ref_delay_steps' 必须 >= 0");
+    if (!(c.wBigRate >= 0.0) || !(c.wSmallRate >= 0.0))
+        throw std::runtime_error("RobotConfig: '" + P + ".w_big_rate' / '" + P +
+                                 ".w_small_rate' 必须 >= 0（速度惩罚权重，0 = 关闭该代价项）");
     if (!(c.bigMaxTorque > 0.0) || !(c.bigMaxTorqueRate > 0.0) ||
         !(c.smallMaxTorque > 0.0) || !(c.smallMaxTorqueRate > 0.0))
         throw std::runtime_error("RobotConfig: '" + P + "' 的力矩上限与力矩变化率上限必须 > 0");
@@ -494,6 +502,54 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (cfg.common.inferForceRestartTimeoutSec < 0.0) {
         throw std::runtime_error("RobotConfig: common.infer_force_restart_timeout_sec "
                                  "必须 >= 0（0 = 关闭推理挂死强制重启）");
+    }
+
+    // ── common.sentry_controller（哨兵扫描控制器，可选功能）──
+    // 总开关 enabled 必填；其余字段**仅当 enabled = true 时必填**（缺字段 / 非法值
+    // 直接抛异常，不静默采用默认值）；enabled = false 时不读取、不校验这些字段，
+    // 两个云台输出模式保持原有行为（见 common/SentryController.h）。
+    const YAML::Node& sc = cm["sentry_controller"];
+    if (!sc || !sc.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'common.sentry_controller' 配置段");
+    cfg.common.sentryController.enabled =
+        requireScalar<bool>(sc, "enabled", "common.sentry_controller");
+    if (cfg.common.sentryController.enabled) {
+        cfg.common.sentryController.idleTimeoutSec =
+            requireScalar<double>(sc, "idle_timeout_sec", "common.sentry_controller");
+        cfg.common.sentryController.yawScanAngularVelocity =
+            requireScalar<double>(sc, "yaw_scan_angular_velocity", "common.sentry_controller");
+        cfg.common.sentryController.yawScanMaxDeviation =
+            requireScalar<double>(sc, "yaw_scan_max_deviation", "common.sentry_controller");
+        cfg.common.sentryController.pitchScanMin =
+            requireScalar<double>(sc, "pitch_scan_min", "common.sentry_controller");
+        cfg.common.sentryController.pitchScanMax =
+            requireScalar<double>(sc, "pitch_scan_max", "common.sentry_controller");
+        cfg.common.sentryController.pitchScanRiseTimeSec =
+            requireScalar<double>(sc, "pitch_scan_rise_time_sec", "common.sentry_controller");
+        cfg.common.sentryController.pitchScanFallTimeSec =
+            requireScalar<double>(sc, "pitch_scan_fall_time_sec", "common.sentry_controller");
+        // 取值校验（非法值在此报错，不静默修正）
+        if (cfg.common.sentryController.idleTimeoutSec < 0.0) {
+            throw std::runtime_error("RobotConfig: common.sentry_controller.idle_timeout_sec "
+                                     "必须 >= 0");
+        }
+        if (cfg.common.sentryController.yawScanAngularVelocity == 0.0) {
+            throw std::runtime_error("RobotConfig: common.sentry_controller.yaw_scan_angular_velocity "
+                                     "必须 != 0（正值 / 负值 = 两个相反的扫描方向）");
+        }
+        if (cfg.common.sentryController.yawScanMaxDeviation <= 0.0) {
+            throw std::runtime_error("RobotConfig: common.sentry_controller.yaw_scan_max_deviation "
+                                     "必须 > 0");
+        }
+        if (cfg.common.sentryController.pitchScanMax <= cfg.common.sentryController.pitchScanMin) {
+            throw std::runtime_error("RobotConfig: common.sentry_controller.pitch_scan_max "
+                                     "必须 > pitch_scan_min");
+        }
+        if (cfg.common.sentryController.pitchScanRiseTimeSec <= 0.0 ||
+            cfg.common.sentryController.pitchScanFallTimeSec <= 0.0) {
+            throw std::runtime_error("RobotConfig: common.sentry_controller.pitch_scan_rise_time_sec / "
+                                     "pitch_scan_fall_time_sec 必须 > 0");
+        }
     }
 
     // ── common.backlog_adaptive_delay（队列积压自适应额外延迟，v6 PID 式 PI）──

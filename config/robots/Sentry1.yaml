@@ -8,6 +8,9 @@
 #   只需填写当前 mode（构型开关）对应的那一支——两种构型的参数互不通用，写没用到的
 #   那一份纯属冗余；当前构型那一支内部的字段依旧全部必填。（另一支若写了也会被
 #   严格校验，避免残留半截配置。）
+#
+#   **第二处例外**：common.sentry_controller 的 enabled 为必填总开关，其余字段
+#   仅当 enabled = true 时必填（关闭时可整段省略，代码不读取、不校验）。
 # =============================================================
 
 # ════════════════════════════════════════════════════════════
@@ -53,6 +56,34 @@ common:
   # 建议大于模型编译/切换耗时（如 10s），避免切换期间误触发。
   infer_force_restart_timeout_sec: 10.0
 
+  # ── 哨兵扫描控制器（可选功能，common.sentry_controller）──
+  # 哨兵长时间无瞄准目标时自动进入扫描模式：yaw 以给定角速度持续旋转
+  # （大小 yaw 构型下大/小 yaw 取同一个目标世界方位角、同步旋转），pitch 在给定
+  # 上下限之间做锯齿波往复，以便重新发现目标。两条流水线、两种构型共用本段配置。
+  #
+  # ⚠ 字段必要性（本工程第二处“按开关决定是否必填”的例外，第一处是
+  #   common.big_small_yaw 的 single / big_small 分支）：
+  #   enabled 为总开关，**必填**；其余字段**仅当 enabled = true 时必填**
+  #   （缺字段 / 非法值直接报错退出，不设代码默认值）；enabled = false 时可整段
+  #   省略其余字段，两个云台输出模式保持原有行为，与未引入本功能时完全一致。
+  #
+  # 触发判据：本帧没有有效预测序列（无目标，或目标存在但弹道解算失败）即开始计时，
+  #   持续超过 idle_timeout_sec 后进入扫描；重新出现有效预测立即退出扫描。
+  # 进入扫描前的保持段（未超过 idle_timeout_sec）：用上一个有效输出序列的首值
+  #   填充整条序列。
+  sentry_controller:
+    enabled: true                 # 总开关（true 启用扫描；false 时以下字段可不填）
+    # ── 以下仅在 enabled = true 时必需 ──
+    idle_timeout_sec: 2.0          # 无有效预测持续多久后进入扫描模式（秒，>= 0）
+    yaw_scan_angular_velocity: 1.0 # 扫描 yaw 角速度（rad/s，!= 0；正/负 = 两个相反的扫描方向）
+    yaw_scan_max_deviation: 0.5  # 扫描 yaw 序列每点相对本帧实测角度的最大偏离
+                                   # （rad，> 0，防止下发序列把枪线甩出过远）
+    pitch_scan_min: -0.2618        # 扫描 pitch 下界（rad，示例 -30°）
+    pitch_scan_max: 0.2618         # 扫描 pitch 上界（rad，示例 +15°；须 > pitch_scan_min）
+    pitch_scan_rise_time_sec: 0.3  # pitch 由下界线性升到上界的时间（秒，> 0）
+    pitch_scan_fall_time_sec: 0.3  # pitch 由上界线性回落到下界的时间（秒，> 0）
+                                   # 锯齿波周期 = 上升 + 回落 = 1.0 s（示例）
+
   # ── 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择 ──
   input_mode:
     # camera_mode：--input camera（实机相机）。
@@ -70,10 +101,10 @@ common:
         height: 1080                # 图像高（像素）
       # 相机内参矩阵（3x3，行优先：fx, 0, cx, 0, fy, cy, 0, 0, 1）
       camera_matrix: # 相机内参矩阵
-        [1.30998295e+03, 0.00000000e+00, 6.09427971e+02,
-         0.00000000e+00, 1.30902606e+03, 4.90302544e+02,
+        [1.31162624e+03, 0.00000000e+00, 6.47105777e+02,
+         0.00000000e+00, 1.31146478e+03, 5.31856256e+02,
          0.00000000e+00, 0.00000000e+00, 1.00000000e+00]
-      dist_coeffs: [-0.08532844, 0.24222232, -0.00140170, -0.00094326, -0.22520569] # 畸变系数
+      dist_coeffs: [-0.06899725,  0.08875782, -0.00070951,  0.00026565,  0.11161822] # 畸变系数
 
     # video_mode：--input video / interactive（录制视频 / 交互图片，无网络/曝光参数）。
     video_mode:
@@ -142,51 +173,65 @@ common:
         dt_control: 0.01              # 控制周期（秒，100Hz）：预测序列间隔 / MPC 步长 / 后台 loop 周期
 
         # 双级 yaw 平面模型（tcbs::dual_yaw::ModelParams）
-        # ★ 平面 8 参与大 yaw 背隙参数均为子模组实车辨识值（= defaultModelParams），
-        #   已与子模组默认值同步；平面偏置 dx/dy 取自上面 tf 的 small_yaw_offset_x/y
-        #   （不在此重复配置）。可信度分级见子模组 planar_yaw_params.h。
+        # ★ 全部参数均为子模组实车辨识值（= defaultModelParams()），已与子模组默认值同步；
+        #   平面偏置 dx/dy 取自上面 tf 的 small_yaw_offset_x/y（不在此重复配置）。
+        #   可信度分级见子模组 planar_yaw_params.h。
         model:
           gravity: 9.81               # 重力加速度（m/s²）
           m_u_known: 0.0              # 上装质量（未知 ⇒ 0，仅倾斜时 m_u·d·g⊥ 项受影响）
-          Jbig_eff: 0.045614          # 大 yaw 侧惯量（含 m_u|d|²）
-          Js: 0.008116                # 上装绕小 yaw 轴总惯量
-          Px: 0.021348                # 上装一阶矩（kg·m）★ 本批数据不可辨识（需固定倾角数据）
-          Py: -0.007430               # ★ 同上
-          fc_big: 0.096245            # 大 yaw 库仑摩擦
-          fv_big: 0.237374            # 大 yaw 粘滞摩擦系数 ★ 可疑（> fc_big）
-          fc_small: 0.033434          # 小 yaw 库仑摩擦
-          fv_small: 0.048466          # 小 yaw 粘滞摩擦系数 ★ 可疑
+          Jbig_eff: 0.051663          # 大 yaw 侧惯量（含 m_u|d|²）
+          Js: 0.004578                # 上装绕小 yaw 轴总惯量
+          Px: 0.000288                # 上装一阶矩（kg·m，相对小 yaw 轴，随 θ_s 转）
+          Py: 0.021925                # ★ 同上
+          # ── 大 yaw 侧一阶矩 Pb = (Pbx, Pby)（kg·m）："只随大 yaw 转、不随小 yaw 转"的
+          #   质量偏心（上装被偏移 d 带着走的那份 + 转子/支架自身偏心）；只进大 yaw 行：
+          #     Gb = (Pbx + m_u_known·dx)·gy − (Pby + m_u_known·dy)·gx + Gs。
+          #   ⚠ 只在倾斜数据里可辨识（水平底盘 g_⊥≡0 ⇒ 梯度恒 0）；0 = 未知/未标定。 ──
+          Pbx: -0.013844
+          Pby: 0.133088
+          fc_big: 0.261903            # 大 yaw 库仑摩擦
+          fv_big: 0.116187            # 大 yaw 粘滞摩擦系数 ★ 与 fc_big 的分配可信度低
+          fc_small: 0.021027          # 小 yaw 库仑摩擦
+          fv_small: 0.038137          # 小 yaw 粘滞摩擦系数
           friction_lambda: 100.0      # 库仑摩擦软符号系数 λ（与 MPC 子步数强相关，勿随意改）
           tau_offset_big: 0.0         # 可选常数负载（0 = 关闭）
           tau_offset_small: 0.0
           # ── 大 yaw 传动背隙（tcbs 3-DOF 模型；τ_t = k·[dz(Δ) + γ·Δ] + c·Δ̇，
           #    Δ = θ_motor − θ_platform − β）★ β（死区中心）由子模组估计器在线给出，不在此配置 ──
-          backlash_delta: 0.096463    # 背隙总宽度 δ（rad）≈5.53°（唯一有物理含义的背隙量）
-          backlash_k: 157.8279        # 接触刚度（N·m/rad）★ 与 c/δ 共线，数值可信度低
-          backlash_c: 2.591145        # 接触阻尼（N·m·s/rad）★ 同上
+          backlash_delta: 0.018163    # 背隙总宽度 δ（rad）≈1.04°（唯一有物理含义的背隙量）
+          backlash_k: 23.450883       # 接触刚度（N·m/rad）★ 与 c/δ 共线，数值可信度低
+          backlash_c: 7.702286        # 接触阻尼（N·m·s/rad）★ 同上
           backlash_smooth_eps: 1.0e-4 # 平滑死区的过渡半宽（rad）
           backlash_through: 0.002     # 直通线性项 γ（死区内梯度引导；0 = 严格物理）
-          Jmotor: 0.005455            # 电机侧惯量（折算到关节侧，kg·m²）
-          fc_motor: 0.004139          # 电机侧库仑摩擦 ★ 与 fv_motor 严重互换
-          fv_motor: 0.030332          # 电机侧粘滞摩擦 ★ 同上（只有两者之和近似可信）
+          Jmotor: 0.025028            # 电机侧惯量（折算到关节侧，kg·m²）
+          fc_motor: 0.059399          # 电机侧库仑摩擦 ★ 与 fv_motor 互换，只有和值近似可信
+          fv_motor: 0.066934          # 电机侧粘滞摩擦 ★ 同上
           tau_offset_motor: 0.0       # 电机侧可选常数负载（0 = 关闭）
 
         # MPC（tcbs::dual_yaw::DualYawMpcConfig；dt_control 取上面的 robot_controller.dt_control）
         mpc:
-          pred_n: 24                  # 预测步数 N（平面 8 参模型可取得较长）
-          substeps: 4                 # 每控制步 RK4 子步（λ=100、dt=10ms 时必须 ≥ 4，substeps=2 已在稳定边界）
+          pred_n: 24                  # 预测步数 N（平面模型每次求值小 ⇒ 可取得较长）
+          substeps: 2                 # 每控制步 RK4 子步（λ=100、dt=10ms 时必须 ≥ 4，substeps=2 已在稳定边界）
           use_rk4: true               # true: RK4；false: 半隐式欧拉（更快、精度略低）
           max_iter: 8                 # 求解迭代上限
-          w_big_azimuth: 1.0          # 大 yaw 世界方位角跟踪权重
-          w_small_azimuth: 1.0        # 小 yaw 世界方位角跟踪权重
-          w_small_center: 0.0         # 小 yaw 回中权重（打破冗余自由度）
+          w_big_azimuth: 0.1          # 大 yaw 世界方位角跟踪权重（★ 子模组为**平方**误差 w·(ψ_b−ψ_b*)²）
+          w_small_azimuth: 1.0        # 小 yaw 世界方位角跟踪权重（子模组为**绝对**误差 平滑 |·|）
+          # ── 速度惩罚权重（子模组 2026-09-21 新增，必填；0 = 关闭该代价项）──
+          #   代价项 = w_v·θ̇²，θ̇ 取**云台/关节侧**角速度（不是电机侧，也不是力矩变化率）。
+          #   动机：平方跟踪项对速度没有直接约束 ⇒ 换向/穿越大 yaw 背隙时可以冲很快，激励
+          #   出接触模态与抖动；给大 yaw 一点速度权重（0.1）能把过冲/抖动压下去，小 yaw
+          #   默认不加（保持跟得上）。量纲上 0.1 与跟踪权重 1.0 同量级（θ̇=1 rad/s 时贡献 0.1）。
+          w_big_rate: 0.1             # 大 yaw 云台角速度惩罚权重（子模组默认 0.1）
+          w_small_rate: 0.0           # 小 yaw 关节角速度惩罚权重（子模组默认 0 = 关）
+          w_small_center: 1.0         # 小 yaw 回中权重（打破冗余自由度）
           w_small_limit: 1.0e4        # 小 yaw 软限位障碍项权重
-          small_limit_soft_ratio: 0.9  # 软限位比例：拆分器判界与 MPC 代价共用同一值
-          r_big_torque: 1.0           # 力矩惩罚
+          small_limit_soft_ratio: 0.9285714285714286  # 软限位比例：拆分器判界与 MPC 代价共用同一值
+                                                     # （软限位 = 硬限位 − (1−ratio)·总行程 = 35° − 0.0714·70° = 30°）
+          r_big_torque: 0.1           # 力矩惩罚
           r_small_torque: 0.01
-          rd_big_rate: 100.0          # 力矩变化率惩罚
+          rd_big_rate: 10.0           # 力矩变化率惩罚
           rd_small_rate: 100.0
-          smooth_eps: 1.0e-6          # 位置误差平滑常数（代价 = Q*sqrt(err²+a)）
+          smooth_eps: 1.0e-6          # 位置误差平滑常数（小 yaw 跟踪 / 回中 = Q*sqrt(err²+a)；大 yaw 已改平方误差，不用它）
           ref_delay_steps: 0          # 参考延迟步数（0 = 直接使用最新目标序列）
           big_max_torque: 1.0         # 大 yaw 力矩上限（N·m，★ 按实测替换）
           big_max_torque_rate: 40.0   # 大 yaw 力矩变化率上限（N·m/s）
@@ -248,8 +293,8 @@ common:
 
         # 控制器（tcbs::McuMpcController::Config；loop 周期取 robot_controller.dt_control）
         controller:
-          big_torque_only: false      # 大 yaw 仅力矩模式位（true = 电控只施力矩）
-          small_torque_only: false    # 小 yaw 仅力矩模式位
+          big_torque_only: true      # 大 yaw 仅力矩模式位（true = 电控只施力矩）
+          small_torque_only: true    # 小 yaw 仅力矩模式位
           integral_gain_big: 0.0      # 大 yaw 积分补偿增益（0 = 关闭）
           integral_gain_small: 0.01   # 小 yaw 积分补偿增益
           integral_limit_big: 0.0     # 积分限幅（N·m）
@@ -257,15 +302,17 @@ common:
           integral_on_big: false      # 是否允许大 yaw 积分补偿
 
       # ── 关节行程与回中目标（rad；MPC 的 JointLimits / small_center_angle 与拆分器共用）──
-      # ⚠ 小 yaw 行程取子模组 defaultMpcConfig() 的代码默认值 ±40°（0.698131701 rad）。
-      #   注意子模组该处注释、mcu_code_demo 的 YAW_SMALL_MIN/MAX_RAD 硬限位与
-      #   collect_sysid.py 的 SMALL_TRAVEL_MIN/MAX 仍写 ±30° —— 上电前请确认电控硬限位
-      #   与本值一致（子模组要求“改行程要三处一起改”），否则 MPC 会规划到电控拒绝的区间。
+      # ⚠ 小 yaw 行程取子模组 defaultMpcConfig() 的代码默认值 ±35°（机械硬限位），
+      #   软限位 ±30°（由上面 mpc.small_limit_soft_ratio 推出）。
+      #   子模组 collect_sysid.py 的 SMALL_TRAVEL_MIN/MAX 已同步为 ±35°（2026-09-21 由
+      #   ±30° 放宽）；但 mcu_code_demo 的 YAW_SMALL_MIN/MAX_RAD 仍写 ±30° —— 上电前请
+      #   确认电控硬限位与本值一致（子模组要求“改行程要三处一起改”），否则 MPC 会规划到
+      #   电控拒绝的区间。
       joints:
         big_min_angle: -1.0e9         # 大 yaw 行程下界（多圈自由转 ⇒ 不限位）
         big_max_angle: 1.0e9          # 大 yaw 行程上界
-        small_min_angle: -0.698131701 # 小 yaw 行程下界 −40°
-        small_max_angle: 0.698131701  # 小 yaw 行程上界 +40°（行程对称）
+        small_min_angle: -0.6108652381980153 # 小 yaw 行程下界 −35°（机械硬限位）
+        small_max_angle: 0.6108652381980153  # 小 yaw 行程上界 +35°（行程对称）
         # 小 yaw 回中目标关节角（拆分器“尽量让小 yaw 少偏离”的目标 + MPC 回中代价项共用）。
         # 当前行程对称 ⇒ 中心 = 0（子模组 defaultMpcConfig 同此值）。
         small_center_angle: 0.0

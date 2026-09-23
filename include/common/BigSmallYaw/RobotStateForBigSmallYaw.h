@@ -8,17 +8,21 @@
 //   - RobotState → ExtraInputInfo 的转换只填 big_small 包（single 包保持 NaN），
 //     这样任何按单 yaw 语义读取该帧信息的代码会立刻因 NaN 报错；
 //   - 大/小 yaw 的**角度约定**在本文件统一说明（避免“世界方位角 / 关节角 / 电机角”混淆）：
-//       θ_big        ：大 yaw 关节角（相对底盘，多圈连续，IMU + 编码器估计）
+//       θ_big        ：大 yaw 关节角（相对底盘，**云台侧**；取 strict_pose）
 //       θ_small      ：小 yaw 关节角（相对大 yaw，编码器直测，行程 −25°~+20°）
 //       ψ_big        ：大 yaw 平台 x 轴的世界方位角 = ψ_chassis + θ_big（IMU 直测）
 //       ψ_small      ：小 yaw 输出 x 轴的世界方位角 = ψ_big + θ_small
 //     输出/参考序列一律用**世界方位角**（tcbs 接口语义）；流水线内部的 item.yaw 也是
 //     世界方位角，但其中的底盘修正项按严格反解的欧拉 yaw 计算（见 SequencePredictor）。
+//   - ★ **来源约定**：上面这些姿态量（底盘欧拉角、θ/ψ、IMU 欧拉角）统一取自子模组的
+//     `strict_pose`（严格反解包）；`est` 与 `mcu`/`imu` 原始包只保留在 RobotState 的
+//     mcu/imu/est 镜像里供**可视化**显示，不参与解算与下发（速率类除外，见实现注释）。
 #ifndef BSY_ROBOT_STATE_FOR_BIG_SMALL_YAW_H
 #define BSY_ROBOT_STATE_FOR_BIG_SMALL_YAW_H
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "common/Input/IInputMode.h"
@@ -60,16 +64,93 @@ struct RobotState {
     double  bullet_velocity = 0.0;
     uint8_t auto_aim_switch = 0;
 
+    // ════════════════════════════════════════════════════════════════════
+    // 完整原始输入（tcbs::RobotController::State 的镜像；仅供左侧信息块显示，
+    // 与单 yaw 构型 drawCommInfo 的 MCU / IMU / FUSED / STRICT / MPC 各块一一对应）
+    // ════════════════════════════════════════════════════════════════════
+
+    // ── MCU 原始反馈（已按 mcu_linear 映射）──
+    struct McuData {
+        bool     valid = false;
+        float    bullet_velocity = 0.0f;
+        float    pitch_angle = 0.0f;      // 已映射
+        double   yaw_big_angle = 0.0;     // 延迟/带误差
+        float    yaw_big_omega = 0.0f;
+        float    yaw_small_angle = 0.0f;  // 可信
+        float    yaw_small_omega = 0.0f;
+        float    chassis_imu_yaw = 0.0f;
+        float    chassis_imu_omega = 0.0f;
+        uint8_t  mark = 0, color = 0, auto_aim_switch = 0;
+        uint8_t  yaw_big_temperature = 0, yaw_small_temperature = 0;
+        uint8_t  mcu2_seq = 0;            // MCU2 新样本序号（大 yaw 与底盘 IMU 同源共用）
+    } mcu;
+
+    // ── IMU 原始数据（大 yaw 转子上 / 头上，取决于 estimator.imu_location）──
+    struct ImuData {
+        bool     valid = false;
+        float    gx = 0.0f, gy = 0.0f, gz = 0.0f;
+        float    ax = 0.0f, ay = 0.0f, az = 0.0f;
+        double   euler_yaw = 0.0, euler_pitch = 0.0, euler_roll = 0.0;
+        uint32_t dt_one_tenth_ms = 0;
+    } imu;
+
+    // ── 状态估计：可信实时量 + 大 yaw 延迟补偿 + 反解真实位姿（对应单 yaw 的 FUSED）──
+    struct EstData {
+        bool   valid = false;
+        double imu_yaw = 0.0, imu_pitch = 0.0, imu_roll = 0.0;
+        double platform_azimuth = 0.0;    // ψ_big（IMU 反解）
+        double platform_rate = 0.0;
+        double small_joint_angle = 0.0, small_joint_rate = 0.0;
+        double pitch_joint_angle = 0.0, pitch_joint_rate = 0.0;
+        double big_joint_angle_meas = 0.0;   // 原始编码器（未补偿）
+        double big_joint_angle = 0.0;        // 延迟补偿后的关节角估计
+        double big_joint_rate = 0.0;
+        double big_motor_angle = 0.0, big_motor_rate = 0.0;      // 电机侧
+        double big_platform_angle = 0.0, big_platform_rate = 0.0; // 云台侧 θ_p
+        double backlash_center = 0.0;        // β（在线估计）
+        double backlash_width_obs = 0.0;     // 观测到的 Δ 极差
+        double big_enc_age = -1.0, big_sample_interval = 0.0;
+        double chassis_imu_age = -1.0, big_enc_innovation = 0.0;
+        bool   big_has_encoder = false;
+        double head_world_yaw = 0.0, head_world_pitch = 0.0, head_world_roll = 0.0;
+        double small_output_azimuth = 0.0;   // ψ_small
+        double los_azimuth = 0.0, los_elevation = 0.0;   // 视轴（bore）方向
+        double chassis_azimuth = 0.0, chassis_yaw_rate = 0.0;
+        double base_omega[3] = {0.0, 0.0, 0.0};
+        double gravity_a[3] = {0.0, 0.0, -9.81};
+        double pitch_acc = 0.0;
+    } est;
+
+    // ── 严格反解包（对应单 yaw 的 --- STRICT --- 块；始终解算、无 valid 标志）──
+    struct StrictData {
+        double imu_euler_yaw = 0.0, imu_euler_pitch = 0.0, imu_euler_roll = 0.0;
+        int    imu_location = 0;
+        double big_joint_angle = 0.0, small_joint_angle = 0.0, pitch_joint_angle = 0.0;
+        double chassis_euler_yaw = 0.0, chassis_euler_pitch = 0.0, chassis_euler_roll = 0.0;
+        double platform_azimuth = 0.0, chassis_azimuth = 0.0, head_azimuth = 0.0;
+        double recon_err_rot = 0.0;          // 自洽性自检（≈0）
+        double big_joint_angle_age = -1.0;   // θ_b 的实测年龄（s）
+    } strict;
+
     // MPC 输出（世界方位角序列，步长 = dt_control）
     std::vector<double> pred_big_azimuth_seq;    // 大 yaw **预测能达到**的方位角序列（长度 N）
     std::vector<double> pred_small_azimuth_seq;  // 小 yaw 预测方位角序列
     std::vector<double> ref_big_azimuth_seq;     // 本拍使用的大 yaw 参考序列
     std::vector<double> ref_small_azimuth_seq;   // 本拍使用的小 yaw 参考序列
     bool   small_ref_over_limit = false;         // 小 yaw 参考越软限位标志（供可视化）
-    double torque_big = 0.0, torque_small = 0.0;
+    double torque_big = 0.0, torque_small = 0.0;         // 实际下发力矩（含积分补偿）
+    double torque_mpc_big = 0.0, torque_mpc_small = 0.0; // MPC 原始力矩（不含积分）
+    double integral_big = 0.0, integral_small = 0.0;     // 积分补偿
     double target_joint_big = 0.0, target_joint_small = 0.0;
+    double target_joint_rate_big = 0.0, target_joint_rate_small = 0.0;
+    double ref_azimuth_big = 0.0, ref_azimuth_small = 0.0;          // 本拍参考
+    double delayed_ref_azimuth_big = 0.0, delayed_ref_azimuth_small = 0.0;  // 延迟缓冲后参考
+    bool   big_torque_only = false, small_torque_only = false;
     double solve_ms = 0.0, loop_fps = 0.0;
+    uint32_t solve_count = 0;
     uint32_t solve_fail_count = 0;
+    uint64_t ticks_since_set = 0;
+    bool   sent_ok = false;
 };
 
 // tcbs 状态 → 本项目状态包（唯一转换点；不改变任何数值语义）
@@ -107,6 +188,27 @@ public:
     ExtraInputInfo sampleExtraInfo();
 
 private:
+    // ── 姿态来源约定（★ 非可视化消费方一律只用 strict_pose）──
+    //   toRobotState 把**控制链要用的姿态量**统一取自 tcbs::dual_yaw::StrictPose
+    //   （严格反解：IMU + 可信编码器 + 标定）：
+    //     底盘欧拉角 ← strict_pose.chassis_euler_*      （ZXY）
+    //     θ_big/θ_small/θ_p ← strict_pose.big/small/pitch_joint_angle（云台侧）
+    //     ψ_big/ψ_small ← strict_pose.platform_azimuth / head_azimuth
+    //     IMU 欧拉角 ← strict_pose.imu_euler_*
+    //   est / mcu / imu 的**原始包只留在本结构的 mcu/imu/est 镜像里供可视化显示**，
+    //   不参与 ExtraInputInfo、变换树、弹道解算与云台下发（速率类字段除外：它们只被
+    //   覆盖层显示，且 strict_pose 不提供速率）。
+    //
+    //   ⚠ strict_pose 只给 (−π,π] 的 **wrap** 方位角，而保持/扫描模式下发给子模组的
+    //     MPC 参考必须与控制器内部的（多圈）chassis_azimuth 同圈 ⇒ 方位角在适配器内
+    //     做多圈解卷绕：输入只有 strict_pose 的 wrap 值，不读 est 的方位角。
+    void unwrapAzimuths(RobotState& s);
+
+    std::mutex az_mtx_;
+    bool   az_unwrap_init_ = false;
+    double big_azimuth_corr_ = 0.0, small_azimuth_corr_ = 0.0;
+    double big_azimuth_last_ = 0.0, small_azimuth_last_ = 0.0;
+
     // 从配置读取的完整参数（common.big_small_yaw.big_small 分支）
     RobotConfig::BigSmallYawParams::BigSmallBranch params_;
     double dt_control_ = 0.0;

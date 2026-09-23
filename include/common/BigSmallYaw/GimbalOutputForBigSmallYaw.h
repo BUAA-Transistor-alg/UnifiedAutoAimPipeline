@@ -7,6 +7,9 @@
 //     轨迹 + 小 yaw 到限位时无限幅快速运动”规划得到（见其文件头注释）；
 //   - fire 序列判据改用控制器 MPC 的**小 yaw** 参考/预测序列（与旧版用 yaw 通道一致）；
 //   - 预测不可用时进入保持模式：大/小 yaw 均保持当前严格反解世界方位角，自瞄关闭。
+//     若开启哨兵扫描控制器（config common.sentry_controller.enabled），无目标超过
+//     idle_timeout_sec 后进入扫描模式：大/小 yaw 取**同一个**目标世界方位角
+//     （同一条扫描序列，不保持关节角差）、pitch 走锯齿波（见 common/SentryController.h）。
 #ifndef BSY_GIMBAL_OUTPUT_FOR_BIG_SMALL_YAW_H
 #define BSY_GIMBAL_OUTPUT_FOR_BIG_SMALL_YAW_H
 
@@ -19,6 +22,7 @@
 #include "common/BigSmallYaw/BigSmallYawSplitter.h"
 #include "common/BigSmallYaw/RobotStateForBigSmallYaw.h"
 #include "common/Output/IOutputMode.h"
+#include "common/SentryController.h"
 
 namespace bsy {
 
@@ -77,6 +81,19 @@ private:
     // 保持模式起点（预测不可用持续超过一个规划时域后复位拆分器跨帧状态）
     bool   holding_ = false;
     std::chrono::steady_clock::time_point hold_start_{};
+
+    // ── 哨兵扫描控制器（可选功能，config common.sentry_controller）──
+    // enabled = false 时 sentry_ 所有接口为空操作，下面 else 分支走原有保持逻辑，
+    // 行为与未引入本功能时完全一致（见 common/SentryController.h）。
+    sentry::SentryController sentry_;
+    int    scan_seq_points_;   // 扫描/保持段序列长度 = 正常预测序列总点数
+                               // (prediction_points-1)*interpolation_refine+1+exact_lead_points
+    // 上一个有效输出序列的首值（进入扫描前的保持段用它填充整条序列；
+    // 从未有过有效输出时退化为本帧实测角度）
+    bool   have_last_valid_ = false;
+    double last_valid_big_   = 0.0;   // ψ_big* 首值
+    double last_valid_small_ = 0.0;   // ψ_small* 首值
+    double last_valid_pitch_ = 0.0;   // pitch 首值
 };
 
 } // namespace bsy
