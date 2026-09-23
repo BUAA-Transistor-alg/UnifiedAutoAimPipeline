@@ -1350,11 +1350,13 @@ int main(int argc, char** argv) {
                 const std::shared_ptr<VisualizeOutput> vis = findVisualize();
                 const bool owner_changed = render_owner != vis;
                 if (owner_changed) {
+                    if (render_owner) render_owner->closePowerRuneFitWindow();
                     render_owner = vis;
                     last_display.release();
                 }
                 if (vis) {
                     vis->setArmorOptions(controls.options);
+                    vis->setPowerRuneOptions(controls.power_rune);
                     vis->setCommonOptions(controls.common);
                 }
                 if (got && req.result) {
@@ -1366,6 +1368,14 @@ int main(int argc, char** argv) {
                 {
                     std::lock_guard<std::mutex> lock(pipeline_mtx);
                     current_mode = active_pipeline->mode();
+                }
+                if (vis) {
+                    const bool fit_active = current_mode == PipelineMode::POWER_RUNE &&
+                                            controls.power_rune.fit_window;
+                    if (!vis->syncPowerRuneFitWindow(fit_active) && fit_active) {
+                        controls.setPowerRuneFitWindow(false);
+                        vis->setPowerRuneOptions(controls.power_rune);
+                    }
                 }
                 const bool matching_frame = cached.result &&
                     (current_mode == PipelineMode::ARMOR ? cached.result->armor.valid
@@ -1380,7 +1390,7 @@ int main(int argc, char** argv) {
                     }
                 }
                 controls.changed = false;
-                controls.show(vis != nullptr, vis && current_mode == PipelineMode::ARMOR);
+                controls.show(vis != nullptr, current_mode == PipelineMode::ARMOR);
 
                 // Paint HUD on a clean copy, never accumulate overlays on cached pixels.
                 const bool vis_active = vis && matching_frame && !last_display.empty();
@@ -1441,6 +1451,7 @@ int main(int argc, char** argv) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
             }
+            if (render_owner) render_owner->closePowerRuneFitWindow();
             controls.close();
         });
     };

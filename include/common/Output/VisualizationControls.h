@@ -1,5 +1,6 @@
 #pragma once
 #include "Armor/ArmorVisualizationOptions.h"
+#include "PowerRune/PowerRuneVisualizationOptions.h"
 #include "common/Output/CommonVisualizationOptions.h"
 #include <opencv2/opencv.hpp>
 #include <array>
@@ -8,6 +9,12 @@
 class VisualizationControls {
 public:
     ArmorVisualizationOptions options;
+    PowerRuneVisualizationOptions power_rune;
+    void setPowerRuneFitWindow(bool enabled) {
+        power_rune.fit_window = enabled;
+        changed = true;
+        dirty_ = true;
+    }
     CommonVisualizationOptions common;
     bool changed = true;
     void open() {
@@ -37,10 +44,17 @@ public:
         };
         for (int i = 0; i < 4; ++i)
             row(72 + i * 40, common_labels_[i], common.*common_fields_[i], active);
-        cv::putText(panel, "Armor", {18,260}, 0, .6, {235,235,235}, 1, cv::LINE_AA);
-        for (int i = 0; i < 7; ++i)
-            row(280 + i * 40, labels_[i], options.*fields_[i],
-                armor_active && (i != 1 || options.detections));
+        cv::putText(panel, armor_active ? "Armor" : "PowerRune", {18,260},
+                    0, .6, {235,235,235}, 1, cv::LINE_AA);
+        if (armor_active) {
+            for (int i = 0; i < 7; ++i)
+                row(280 + i * 40, labels_[i], options.*fields_[i],
+                    active && (i != 1 || options.detections));
+        } else {
+            for (int i = 0; i < 6; ++i)
+                row(280 + i * 40, rune_labels_[i], power_rune.*rune_fields_[i],
+                    active && (i != 1 || power_rune.detections));
+        }
         cv::putText(panel, "v: visualization on/off   c: reopen controls", {18,583},
                     0, .43, {170,170,170}, 1, cv::LINE_AA);
         cv::imshow(name_, panel);
@@ -64,9 +78,15 @@ private:
             value = !value;
         } else if (y >= 280 && y < 560) {
             const int row = (y - 280) / 40;
-            if (!self.last_armor_active_ || (row == 1 && !self.options.detections)) return;
-            bool& value = self.options.*fields_[row];
-            value = !value;
+            if (self.last_armor_active_) {
+                if (row == 1 && !self.options.detections) return;
+                bool& value = self.options.*fields_[row];
+                value = !value;
+            } else {
+                if (row >= 6 || (row == 1 && !self.power_rune.detections)) return;
+                bool& value = self.power_rune.*rune_fields_[row];
+                value = !value;
+            }
         } else return;
         self.changed = true;
         self.dirty_ = true;
@@ -85,6 +105,13 @@ private:
         &CommonVisualizationOptions::aim, &CommonVisualizationOptions::gimbal};
     inline static constexpr std::array<const char*,4> common_labels_ = {
         "Common: status text", "Common: performance", "Common: aim point", "Common: gimbal directions"};
+    inline static constexpr std::array<bool PowerRuneVisualizationOptions::*,6> rune_fields_ = {
+        &PowerRuneVisualizationOptions::detections, &PowerRuneVisualizationOptions::details,
+        &PowerRuneVisualizationOptions::raw_pose, &PowerRuneVisualizationOptions::filtered_pose,
+        &PowerRuneVisualizationOptions::predicted_pose, &PowerRuneVisualizationOptions::fit_window};
+    inline static constexpr std::array<const char*,6> rune_labels_ = {
+        "YOLO: simple", "YOLO: more information", "Raw pose",
+        "Filtered pose + targets", "Predicted pose + targets (0.3s)", "Fit curve + status window"};
     bool last_armor_active_ = false;
     bool open_ = false;
     bool dirty_ = true;

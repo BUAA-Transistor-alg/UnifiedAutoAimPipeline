@@ -257,7 +257,7 @@ void VisualizeOutput::renderPowerRune(const PipelineResult& result, tcs::RobotCo
     vis.filtered_pose.filtered_R = p.filtered_R;
     vis.filtered_pose.target_rotation_counts = p.filtered_rotation_counts;
 
-    if (p.pose_valid && !p.filtered_rotation_counts.empty()) {
+    if (power_rune_options_.filtered_pose && p.pose_valid && !p.filtered_rotation_counts.empty()) {
         vis.filtered_target_points = TargetPositionCalculator::calculate(
             p.filtered_pos, p.filtered_R, p.filtered_rotation_counts);
     }
@@ -271,10 +271,10 @@ void VisualizeOutput::renderPowerRune(const PipelineResult& result, tcs::RobotCo
     vis.roll_predictor.fitted_curve = p.fitted_curve;
     vis.roll_predictor.raw_points = p.raw_points;
 
-    if (p.fit_valid && p.predictor_lambda) {
+    if (power_rune_options_.predicted_pose && p.fit_valid && p.predictor_lambda) {
         vis.roll_predictor.predictor_prediction = (*p.predictor_lambda)(0.3f);
     }
-    if (result.predictor_valid) {
+    if (power_rune_options_.predicted_pose && result.predictor_valid) {
         // 靶点预测函数由流水线组装进 result.predictor（Predictor::function，
         // 统一签名 (double) -> (预测车体中心, 预测目标点列表)，取 second 为靶点
         // 列表）；可视化数据仍用 Vec3f，逐个转换。
@@ -292,5 +292,6 @@ void VisualizeOutput::renderPowerRune(const PipelineResult& result, tcs::RobotCo
     // 成员缓冲复用：尺寸/类型不变时 create 不重新分配，仅 copyTo 拷贝像素
     render_buf_.create(result.frame.size(), result.frame.type());
     result.frame.copyTo(render_buf_);
-    power_rune_vis_.render(render_buf_, vis, tree_, *camera_proj_);
+    power_rune_vis_.render(render_buf_, vis, tree_, *camera_proj_, power_rune_options_);
+    if (power_rune_options_.fit_window) power_rune_vis_.renderFitWindow(vis);
 }

@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <iostream>
 #include <limits>
+#include <cmath>
 
 using namespace cv;
 using namespace std;
@@ -56,148 +57,12 @@ cv::Point2f PowerRuneVisualizer::worldToImage(
 void PowerRuneVisualizer::render(Mat& image,
                                   const PowerRuneVisualizationData& data,
                                   const RobotTfTree& tf_tree,
-                                  const CameraProjection& camera_proj) const {
-    // 1. 绘制检测框
-    drawDetections(image, data.detection.detections);
-    // return;
-
-    // 2. 绘制世界坐标和欧拉角文字
-    string label = format("%.3f   %.3f   %.3f", data.raw_pose.world_pos[0], data.raw_pose.world_pos[1], data.raw_pose.world_pos[2]);
-    putText(image, label, Point(620, 80),
-        FONT_HERSHEY_SIMPLEX, 1, COLOR_GRAY, 2);
-    label = format("%.3f   %.3f   %.3f", data.raw_pose.world_euler[0], data.raw_pose.world_euler[1], data.raw_pose.world_euler[2]);
-    putText(image, label, Point(620, 120),
-        FONT_HERSHEY_SIMPLEX, 1, COLOR_GRAY, 2);
-
-    // 3. 绘制角速度和跳变信息
-    label = format("%.3f", data.filtered_pose.filtered_omega);
-    putText(image, label, Point(620, 160),
-        FONT_HERSHEY_SIMPLEX, 1, COLOR_WHITE, 2);
-    label = format("%d", data.filtered_pose.jump_a);
-    putText(image, label, Point(800, 160),
-        FONT_HERSHEY_SIMPLEX, 1, data.filtered_pose.flip ? Scalar(255, 0, 255) : Scalar(0, 255, 0), 2);
-
-    // 3.5. 绘制滤波后的世界坐标和欧拉角
-    if (!data.filtered_pose.filtered_R.empty()) {
-        cv::Vec3f filtered_euler = CoordinateTransform::rotationMatrixToEuler(data.filtered_pose.filtered_R);
-        label = format("%.3f  %.3f  %.3f",
-                       data.filtered_pose.filtered_pos[0],
-                       data.filtered_pose.filtered_pos[1],
-                       data.filtered_pose.filtered_pos[2]);
-        putText(image, label, Point(620, 200),
-            FONT_HERSHEY_SIMPLEX, 1, COLOR_WHITE, 2);
-        label = format("%.3f  %.3f  %.3f",
-                       filtered_euler[0], filtered_euler[1], filtered_euler[2]);
-        putText(image, label, Point(620, 240),
-            FONT_HERSHEY_SIMPLEX, 1, COLOR_WHITE, 2);
-    }
-
-    // 3.6. 绘制 Roll 预测器拟合参数和方向（在 filtered_euler 下方，绿色，拟合无效时不显示）
-    if (data.roll_predictor.fit_valid) {
-        if (data.roll_predictor.fit_method == "big") {
-            label = format("%.3f  %.3f  %.3f  bias:%.3f  dir:%+d",
-                           data.roll_predictor.big_params.a,
-                           data.roll_predictor.big_params.omega,
-                           data.roll_predictor.big_params.o_t,
-                           data.roll_predictor.correction_bias,
-                           data.roll_predictor.direction);
-        } else {
-            label = format("%.3f  bias:%.3f  dir:%+d",
-                           data.roll_predictor.small_params.o_t,
-                           data.roll_predictor.correction_bias,
-                           data.roll_predictor.direction);
-        }
-        putText(image, label, Point(620, 280),
-            FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 255, 0), 2);
-    }
-
-    // 3.8. 绘制 target rotation counts（红色，空格分隔）
-    if (!data.filtered_pose.target_rotation_counts.empty()) {
-        string target_label;
-        for (size_t i = 0; i < data.filtered_pose.target_rotation_counts.size(); ++i) {
-            if (i > 0) target_label += " ";
-            target_label += std::to_string(data.filtered_pose.target_rotation_counts[i]);
-        }
-        putText(image, target_label, Point(620, 660),
-            FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 0, 255), 2);
-    }
-
-    // 3.9. 绘制当前使用的拟合方法（在 target rotation counts 下方，青色）
-    if (data.roll_predictor.fit_valid && !data.roll_predictor.fit_method.empty()) {
-        string method_label = "method: " + data.roll_predictor.fit_method;
-        putText(image, method_label, Point(620, 700),
-            FONT_HERSHEY_SIMPLEX, 1, Scalar(255, 255, 0), 2);
-    }
-
-    // 3.7. 绘制 Roll 预测器拟合曲线图（仅在拟合有效时绘制）
-    if (data.roll_predictor.fit_valid &&
-        !data.roll_predictor.fitted_curve.empty() &&
-        !data.roll_predictor.raw_points.empty()) {
-
-        // 绘图区域边界
-        constexpr int PLOT_X1 = 620, PLOT_Y1 = 320;
-        constexpr int PLOT_X2 = 920, PLOT_Y2 = 620;
-        const cv::Point plot_tl(PLOT_X1, PLOT_Y1);
-        const cv::Point plot_br(PLOT_X2, PLOT_Y2);
-
-        // 绘制边框
-        rectangle(image, plot_tl, plot_br, Scalar(255, 255, 255), 1);
-
-        // 计算两组数据合并后的最值
-        float t_min = std::numeric_limits<float>::max();
-        float t_max = std::numeric_limits<float>::lowest();
-        float r_min = std::numeric_limits<float>::max();
-        float r_max = std::numeric_limits<float>::lowest();
-
-        auto updateBounds = [&](const std::vector<std::pair<float, float>>& pts) {
-            for (const auto& p : pts) {
-                if (p.first  < t_min) t_min = p.first;
-                if (p.first  > t_max) t_max = p.first;
-                if (p.second < r_min) r_min = p.second;
-                if (p.second > r_max) r_max = p.second;
-            }
-        };
-
-        updateBounds(data.roll_predictor.fitted_curve);
-        updateBounds(data.roll_predictor.raw_points);
-
-        // 防止除零（数据为常量时扩展一定范围）
-        constexpr float EPS = 1e-5f;
-        if (t_max - t_min < EPS) { t_max += 0.5f; t_min -= 0.5f; }
-        if (r_max - r_min < EPS) { r_max += 0.5f; r_min -= 0.5f; }
-
-        // 数据坐标到像素坐标的线性映射
-        // t: [t_min, t_max] → 像素 x [plot_tl.x, plot_br.x]
-        // r: [r_min, r_max] → 像素 y [plot_br.y, plot_tl.y]（r 越大越靠上）
-        float scale_t = static_cast<float>(PLOT_X2 - PLOT_X1) / (t_max - t_min);
-        float scale_r = static_cast<float>(PLOT_Y2 - PLOT_Y1) / (r_max - r_min);
-
-        auto dataToPixel = [&](float t, float r) -> cv::Point {
-            int px = static_cast<int>(PLOT_X1 + (t - t_min) * scale_t + 0.5f);
-            int py = static_cast<int>(PLOT_Y2 - (r - r_min) * scale_r + 0.5f);
-            return cv::Point(px, py);
-        };
-
-        // 绘制原始观测点（青色小点）
-        for (const auto& p : data.roll_predictor.raw_points) {
-            cv::Point pt = dataToPixel(p.first, p.second);
-            circle(image, pt, 2, Scalar(255, 255, 0), -1);
-        }
-
-        // 绘制拟合曲线（绿色折线段）
-        for (size_t i = 1; i < data.roll_predictor.fitted_curve.size(); ++i) {
-            cv::Point pt1 = dataToPixel(
-                data.roll_predictor.fitted_curve[i - 1].first,
-                data.roll_predictor.fitted_curve[i - 1].second);
-            cv::Point pt2 = dataToPixel(
-                data.roll_predictor.fitted_curve[i].first,
-                data.roll_predictor.fitted_curve[i].second);
-            line(image, pt1, pt2, Scalar(0, 255, 0), 2);
-        }
-    }
+                                  const CameraProjection& camera_proj,
+                                  const PowerRuneVisualizationOptions& options) const {
+    if (options.detections) drawDetections(image, data.detection.detections, options.details);
 
     // 4. 绘制滤波后的位姿：白色五边形 + CMY 三轴(粗线)
-    if (!data.filtered_pose.filtered_R.empty()) {
+    if (options.filtered_pose && !data.filtered_pose.filtered_R.empty()) {
         drawPoseAxes(
             image, data.filtered_pose.filtered_pos, data.filtered_pose.filtered_R,
             COLOR_WHITE, 3,                             // 白色五边形, 线宽3
@@ -209,21 +74,8 @@ void PowerRuneVisualizer::render(Mat& image,
         );
     }
 
-    // // 5. 绘制滤波器预测位姿：白色五边形(不绘制) + CMY 三轴(细线)
-    // if (!data.filtered_pose.filter_predicted_R.empty()) {
-    //     drawPoseAxes(
-    //         image, data.filtered_pose.filtered_pos, data.filtered_pose.filter_predicted_R,
-    //         COLOR_WHITE, 0,                             // 白色五边形, 线宽0(不绘制)
-    //         {Scalar(0, 255, 255),
-    //          Scalar(255, 0, 255),
-    //          Scalar(255, 255, 0)}, 2,                    // CMY 三轴, 线宽2
-    //         COLOR_WHITE, 0,                               // 白色中心点, 半径0(不绘制)
-    //         coordinate_transform, pose_solver
-    //     );
-    // }
-
     // 6. 绘制滤波前的原始位姿：灰色五边形 + RGB 三轴(细线)
-    if (!data.raw_pose.world_rot_mat.empty()) {
+    if (options.raw_pose && !data.raw_pose.world_rot_mat.empty()) {
         drawPoseAxes(
             image, data.raw_pose.world_pos, data.raw_pose.world_rot_mat,
             COLOR_GRAY, 2,                               // 灰色五边形, 线宽2
@@ -235,7 +87,8 @@ void PowerRuneVisualizer::render(Mat& image,
         );
     }
 
-    if (data.roll_predictor.fit_valid) {
+    if (options.predicted_pose && data.roll_predictor.fit_valid &&
+        !data.roll_predictor.predictor_prediction.second.empty()) {
         drawPoseAxes(
             image, data.roll_predictor.predictor_prediction.first, data.roll_predictor.predictor_prediction.second,
             Scalar(0, 255, 0), 2,                           // 绿色五边形, 线宽2
@@ -249,41 +102,180 @@ void PowerRuneVisualizer::render(Mat& image,
 
     // 6. 绘制目标位置可视化点
     // 滤波位姿下的目标位置（黄色圆点，半径10）
-    for (const auto& pt : data.filtered_target_points) {
-        cv::Point2f img_pt = worldToImage(pt, tf_tree, camera_proj);
-        if (img_pt.x >= 0) {
-            cv::circle(image, img_pt, 10, Scalar(0, 255, 255), -1);
+    if (options.filtered_pose) {
+        for (const auto& pt : data.filtered_target_points) {
+            cv::Point2f img_pt = worldToImage(pt, tf_tree, camera_proj);
+            if (img_pt.x >= 0) {
+                cv::circle(image, img_pt, 10, Scalar(0, 255, 255), -1);
+            }
         }
     }
     // 预测位姿下的目标位置（天蓝色圆点，半径10）：被屏蔽的靶点（本帧不存在）
     // 不绘制——预测列表恒含全部 5 个靶点，屏蔽索引与列表下标一一对应
-    for (size_t i = 0; i < data.predictor_target_points.size(); ++i) {
-        if (std::find(data.predictor_masked_indices.begin(),
-                      data.predictor_masked_indices.end(), static_cast<int>(i)) !=
-            data.predictor_masked_indices.end()) {
-            continue;
-        }
-        cv::Point2f img_pt = worldToImage(data.predictor_target_points[i], tf_tree, camera_proj);
-        if (img_pt.x >= 0) {
-            cv::circle(image, img_pt, 10, Scalar(255, 255, 0), -1);
+    if (options.predicted_pose) {
+        for (size_t i = 0; i < data.predictor_target_points.size(); ++i) {
+            if (std::find(data.predictor_masked_indices.begin(),
+                          data.predictor_masked_indices.end(), static_cast<int>(i)) !=
+                data.predictor_masked_indices.end()) {
+                continue;
+            }
+            cv::Point2f img_pt = worldToImage(data.predictor_target_points[i], tf_tree, camera_proj);
+            if (img_pt.x >= 0) {
+                cv::circle(image, img_pt, 10, Scalar(255, 255, 0), -1);
+            }
         }
     }
+
+}
+
+// ==================== Separate fit / status window ====================
+bool PowerRuneVisualizer::fitWindowExists() const {
+    // GTK does not support WND_PROP_VISIBLE; use the same probe as the controls panel.
+    try { return cv::getWindowProperty(fit_window_name_, cv::WND_PROP_AUTOSIZE) >= 0; }
+    catch (const cv::Exception&) { return false; }
+}
+
+bool PowerRuneVisualizer::syncFitWindow(bool active) {
+    if (!active) {
+        closeFitWindow();
+        return true;
+    }
+    if (fit_window_open_) {
+        if (fitWindowExists()) return true;
+        fit_window_open_ = false;
+        return false;  // Let the controls panel reflect a manual window close.
+    }
+    cv::namedWindow(fit_window_name_, cv::WINDOW_AUTOSIZE);
+    fit_window_open_ = true;
+    // Show useful empty-state text even before the first PowerRune frame arrives.
+    cv::imshow(fit_window_name_, makeFitPanel(PowerRuneVisualizationData{}));
+    return true;
+}
+
+void PowerRuneVisualizer::closeFitWindow() {
+    if (fit_window_open_ && fitWindowExists()) cv::destroyWindow(fit_window_name_);
+    fit_window_open_ = false;
+}
+
+void PowerRuneVisualizer::renderFitWindow(const PowerRuneVisualizationData& data) const {
+    if (fit_window_open_ && fitWindowExists())
+        cv::imshow(fit_window_name_, makeFitPanel(data));
+}
+
+cv::Mat PowerRuneVisualizer::makeFitPanel(const PowerRuneVisualizationData& data) const {
+    cv::Mat panel(740, 820, CV_8UC3, cv::Scalar(25, 25, 25));
+    const cv::Scalar white(225, 225, 225), gray(155, 155, 155);
+    const cv::Scalar green(0, 230, 100), cyan(255, 255, 0);
+    const auto text = [&](int y, const std::string& value, cv::Scalar color) {
+        cv::putText(panel, value, {20, y}, cv::FONT_HERSHEY_SIMPLEX,
+                    .52, color, 1, cv::LINE_AA);
+    };
+    text(28, "PowerRune | Fit curve and pose status", white);
+    const bool raw_valid = !data.raw_pose.world_rot_mat.empty();
+    text(60, raw_valid ? cv::format("Raw position [m]: %.3f  %.3f  %.3f",
+         data.raw_pose.world_pos[0], data.raw_pose.world_pos[1], data.raw_pose.world_pos[2])
+         : "Raw position [m]: N/A", gray);
+    text(84, raw_valid ? cv::format("Raw Euler [rad]: %.3f  %.3f  %.3f",
+         data.raw_pose.world_euler[0], data.raw_pose.world_euler[1], data.raw_pose.world_euler[2])
+         : "Raw Euler [rad]: N/A", gray);
+
+    const bool filtered_valid = !data.filtered_pose.filtered_R.empty();
+    text(116, filtered_valid ? cv::format("Filtered position [m]: %.3f  %.3f  %.3f",
+         data.filtered_pose.filtered_pos[0], data.filtered_pose.filtered_pos[1],
+         data.filtered_pose.filtered_pos[2]) : "Filtered position [m]: N/A", white);
+    if (filtered_valid) {
+        const auto euler = CoordinateTransform::rotationMatrixToEuler(data.filtered_pose.filtered_R);
+        text(140, cv::format("Filtered Euler [rad]: %.3f  %.3f  %.3f",
+             euler[0], euler[1], euler[2]), white);
+        text(164, cv::format("Omega [rad/s]: %.3f   jump_a: %d   flip: %s",
+             data.filtered_pose.filtered_omega, data.filtered_pose.jump_a,
+             data.filtered_pose.flip ? "true" : "false"), white);
+    } else {
+        text(140, "Filtered Euler [rad]: N/A", white);
+        text(164, "Omega / jump_a / flip: N/A", white);
+    }
+    std::string targets = "Observed target indices:";
+    for (int index : data.filtered_pose.target_rotation_counts)
+        targets += " " + std::to_string(index);
+    if (data.filtered_pose.target_rotation_counts.empty()) targets += " none";
+    text(188, targets, white);
+
+    const auto& fit = data.roll_predictor;
+    if (fit.fit_valid) {
+        text(222, cv::format("Fit: valid   method: %s   direction: %+d",
+             fit.fit_method.c_str(), fit.direction), green);
+        if (fit.fit_method == "big") {
+            text(246, cv::format("a: %.3f   omega: %.3f   o_t: %.3f",
+                 fit.big_params.a, fit.big_params.omega, fit.big_params.o_t), green);
+        } else {
+            text(246, cv::format("o_t: %.3f", fit.small_params.o_t), green);
+        }
+        text(270, cv::format("Correction bias [rad]: %.3f", fit.correction_bias), green);
+    } else {
+        text(222, "Fit: invalid / waiting for observations", gray);
+        text(246, "Fit parameters: N/A", gray);
+        text(270, "Correction bias: N/A", gray);
+    }
+    text(304, "Cyan: observations     Green: fitted curve", white);
+    text(328, "Roll [rad] vs sample time [s] (automatic scale)", gray);
+    constexpr int x1 = 75, y1 = 360, x2 = 790, y2 = 680;
+    cv::rectangle(panel, {x1, y1}, {x2, y2}, gray, 1);
+    const auto finite = [](const auto& point) {
+        return std::isfinite(point.first) && std::isfinite(point.second);
+    };
+    float tmin = std::numeric_limits<float>::max(), tmax = -tmin;
+    float rmin = tmin, rmax = -tmin;
+    bool have_points = false;
+    const auto bounds = [&](const auto& points) {
+        for (const auto& point : points) {
+            if (!finite(point)) continue;
+            have_points = true;
+            tmin = std::min(tmin, point.first); tmax = std::max(tmax, point.first);
+            rmin = std::min(rmin, point.second); rmax = std::max(rmax, point.second);
+        }
+    };
+    bounds(fit.raw_points);
+    if (fit.fit_valid) bounds(fit.fitted_curve);
+    if (!have_points) {
+        text(400, "No curve samples available", gray);
+        return panel;
+    }
+    if (tmax - tmin < 1e-5f) { tmax += .5f; tmin -= .5f; }
+    if (rmax - rmin < 1e-5f) { rmax += .5f; rmin -= .5f; }
+    const auto pixel = [&](const auto& point) {
+        return cv::Point(x1 + cvRound((point.first-tmin)/(tmax-tmin)*(x2-x1)),
+                         y2 - cvRound((point.second-rmin)/(rmax-rmin)*(y2-y1)));
+    };
+    for (const auto& point : fit.raw_points)
+        if (finite(point)) cv::circle(panel, pixel(point), 2, cyan, -1);
+    if (fit.fit_valid) {
+        for (size_t i = 1; i < fit.fitted_curve.size(); ++i)
+            if (finite(fit.fitted_curve[i-1]) && finite(fit.fitted_curve[i]))
+                cv::line(panel, pixel(fit.fitted_curve[i-1]), pixel(fit.fitted_curve[i]), green, 2);
+    }
+    cv::putText(panel, cv::format("%.2f", rmax), {5, y1+5}, 0, .42, gray, 1, cv::LINE_AA);
+    cv::putText(panel, cv::format("%.2f", rmin), {5, y2}, 0, .42, gray, 1, cv::LINE_AA);
+    cv::putText(panel, cv::format("%.2f", tmin), {x1, y2+25}, 0, .45, gray, 1, cv::LINE_AA);
+    cv::putText(panel, cv::format("%.2f", tmax), {x2-65, y2+25}, 0, .45, gray, 1, cv::LINE_AA);
+    return panel;
 }
 
 // ==================== drawDetections ====================
 void PowerRuneVisualizer::drawDetections(Mat& image,
-                                          const vector<PoseDetection>& detections) {
+                                          const vector<PoseDetection>& detections, bool details) {
     int obj_index = 0;
     for (const auto& det : detections) {
         Scalar obj_color = OBJECT_PALETTE[obj_index % OBJECT_PALETTE_SIZE];
         ++obj_index;
-        const char* class_name = (det.class_id >= 0 && det.class_id <= 7)
+        const string class_name = (det.class_id >= 0 && det.class_id <= 7)
             ? CLASS_NAMES[det.class_id]
-            : ("Unknown:" + to_string(det.class_id)).c_str();
+            : ("Unknown:" + to_string(det.class_id));
 
         rectangle(image, det.rect, obj_color, 2);
 
-        string label = format("%s %.1f%%", class_name, det.confidence * 100.0f);
+        if (!details) continue;
+
+        string label = format("%s %.1f%%", class_name.c_str(), det.confidence * 100.0f);
         int baseline;
         Size label_sz = getTextSize(label, FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseline);
         Rect label_bg(det.rect.x, det.rect.y - label_sz.height - 5,

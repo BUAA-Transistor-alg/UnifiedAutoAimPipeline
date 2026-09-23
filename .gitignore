@@ -1,4 +1,5 @@
 build/
+build_temp/
 bin/
 recordings/
 logs/
@@ -6,3 +7,4 @@ __pycache__
 .dsh
 cache/
 infantry_blue.mp4
+powerruene_blue.mp4

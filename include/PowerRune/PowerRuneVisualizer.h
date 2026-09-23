@@ -6,6 +6,7 @@
 #include "common/pose/CameraProjection.h"
 #include "PowerRune/PowerRuneInfer.h"
 #include "PowerRune/RollPredictor.h"
+#include "PowerRune/PowerRuneVisualizationOptions.h"
 
 #include <opencv2/opencv.hpp>
 #include <array>
@@ -103,7 +104,15 @@ public:
     void render(cv::Mat& image,
                 const PowerRuneVisualizationData& data,
                 const RobotTfTree& tf_tree,
-                const CameraProjection& camera_proj) const;
+                const CameraProjection& camera_proj,
+                const PowerRuneVisualizationOptions& options = {}) const;
+
+    // All HighGUI operations are called on the visualization thread.
+    // Returns false if the user manually closed an active window.
+    bool syncFitWindow(bool active);
+    void closeFitWindow();
+    void renderFitWindow(const PowerRuneVisualizationData& data) const;
+    cv::Mat makeFitPanel(const PowerRuneVisualizationData& data) const;
 
     /**
      * @brief 绘制检测框和关键点(独立工具函数)
@@ -111,7 +120,8 @@ public:
      * @param detections  检测结果
      */
     static void drawDetections(cv::Mat& image,
-                               const std::vector<PoseDetection>& detections);
+                               const std::vector<PoseDetection>& detections,
+                               bool details = true);
 
     /**
      * @brief 绘制五边形与三轴
@@ -146,6 +156,9 @@ public:
                              const CameraProjection& camera_proj) const;
 
 private:
+    static constexpr const char* fit_window_name_ = "PowerRune Fit & Status";
+    bool fit_window_open_ = false;
+    bool fitWindowExists() const;
     // ==================== 五边形生成 ====================
     static std::vector<cv::Point3f> generatePentagonPoints();
 

@@ -34,6 +34,9 @@ public:
     // Armor display options and windows: visualization thread only.
     void setCommonOptions(const CommonVisualizationOptions& options) { common_options_ = options; }
     void setArmorOptions(const ArmorVisualizationOptions& options) { armor_options_ = options; }
+    void setPowerRuneOptions(const PowerRuneVisualizationOptions& options) { power_rune_options_ = options; }
+    bool syncPowerRuneFitWindow(bool active) { return power_rune_vis_.syncFitWindow(active); }
+    void closePowerRuneFitWindow() { power_rune_vis_.closeFitWindow(); }
     // ---- Armor XY 平面窗口管理（进入/退出 Armor 模式时由 main 调用；
     //      仅可视化开启时调用，转发给 ArmorVisualizer）----
     void openArmorXYWindow()  { armor_vis_.openXYWindow(); }
@@ -75,6 +78,7 @@ private:
     std::shared_ptr<CameraProjection> camera_proj_;
     CommonVisualizationOptions common_options_;
     ArmorVisualizationOptions armor_options_;
+    PowerRuneVisualizationOptions power_rune_options_;
     ArmorVisualizer  armor_vis_;
     PowerRuneVisualizer power_rune_vis_;
     FrameRateCounter fps_;
