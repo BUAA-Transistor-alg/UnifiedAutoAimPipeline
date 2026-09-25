@@ -1,6 +1,7 @@
 // NewtonPredictedBallisticSolver.cpp — 联合求解 yaw、pitch 和飞行时间。
 // 通过目标预测器构造拦截残差，RK4 同步传播弹道和角度灵敏度，使用带回溯的 Newton
-// 修正。每次调用完全独立，适用于 SequencePredictor 的精确时间点并行解算。
+// 修正。同一板可用上一时刻的解及隐函数导数预测初值；状态由调用方局部持有，
+// 解算器不缓存跨帧状态，不同板可并行求解。
 #include "common/Ballistic/NewtonPredictedBallisticSolver.h"
 
 #include <Eigen/QR>
@@ -136,9 +137,8 @@ NewtonPredictedBallisticSolver::Evaluation NewtonPredictedBallisticSolver::evalu
         q[1] < geometry.pitch_min || q[1] > geometry.pitch_max ||
         q[2] < options_.min_flight_time || q[2] > options_.max_flight_time) return evaluation;
 
-    Eigen::Vector3d target_velocity;
     if (!sampleTargetState(predictor, target_index, extra_predict_time + q[2],
-                           evaluation.target_position, target_velocity)) return evaluation;
+                           evaluation.target_position, evaluation.target_velocity)) return evaluation;
 
     const auto launch = GimbalSolver::evaluateLaunchState(geometry, q[0], q[1]);
     Rk4BallisticIntegrator::State initial;
@@ -152,23 +152,29 @@ NewtonPredictedBallisticSolver::Evaluation NewtonPredictedBallisticSolver::evalu
     evaluation.residual = endpoint.position - evaluation.target_position;
     evaluation.jacobian.leftCols<2>() = endpoint.position_jacobian;
     // τ 同时改变弹丸端点与目标采样时刻，第三列必须是两者的相对速度。
-    evaluation.jacobian.col(2) = endpoint.velocity - target_velocity;
+    evaluation.jacobian.col(2) = endpoint.velocity - evaluation.target_velocity;
     evaluation.valid = evaluation.residual.allFinite() && evaluation.jacobian.allFinite();
     return evaluation;
 }
 
 // ============ 线性方程求解与步长限制 ============
-bool NewtonPredictedBallisticSolver::computeNewtonStep(
-    const Evaluation& evaluation, Eigen::Vector3d& delta) const {
+bool NewtonPredictedBallisticSolver::solveLinearSystem(
+    const Eigen::Matrix3d& jacobian, const Eigen::Vector3d& rhs,
+    Eigen::Vector3d& solution) const {
     // 用各变量允许步长做列缩放，减少 rad / s 量纲和幅值差异对秩判断的影响。
     const Eigen::Vector3d scale(options_.angle_step_limit, options_.angle_step_limit,
                                 options_.time_step_limit);
-    const Eigen::Matrix3d scaled_jacobian = evaluation.jacobian * scale.asDiagonal();
+    const Eigen::Matrix3d scaled_jacobian = jacobian * scale.asDiagonal();
     Eigen::ColPivHouseholderQR<Eigen::Matrix3d> qr(scaled_jacobian);
     qr.setThreshold(1e-10);
     if (qr.rank() < 3) return false;
-    delta = scale.asDiagonal() * qr.solve(-evaluation.residual);
-    if (!delta.allFinite()) return false;
+    solution = scale.asDiagonal() * qr.solve(rhs);
+    return solution.allFinite();
+}
+
+bool NewtonPredictedBallisticSolver::computeNewtonStep(
+    const Evaluation& evaluation, Eigen::Vector3d& delta) const {
+    if (!solveLinearSystem(evaluation.jacobian, -evaluation.residual, delta)) return false;
     // 所有分量等比例缩小，保持 Newton 方向；不是把逆矩阵显式算出来。
     const double ratio = std::max({1.0, std::fabs(delta[0]) / options_.angle_step_limit,
                                   std::fabs(delta[1]) / options_.angle_step_limit,
@@ -226,25 +232,45 @@ NewtonPredictedBallisticSolver::Result NewtonPredictedBallisticSolver::packResul
 // ============ 单目标阻尼 Newton 迭代 ============
 NewtonPredictedBallisticSolver::TargetSolution NewtonPredictedBallisticSolver::solveTarget(
     const Predictor& predictor, int target_index, double extra_predict_time,
-    const LaunchGeometry& geometry) const {
+    const LaunchGeometry& geometry, const WarmStart* warm_start) const {
     if (!validInput(predictor, extra_predict_time, geometry) || target_index < 0) {
         TargetSolution invalid;
         invalid.result.target_index = target_index;
         invalid.result.gimbal.distance = std::numeric_limits<double>::infinity();
         return invalid;
     }
+    // ============ 上次解的一阶时间预测 + Newton 校正 ============
+    // 时间增量只取发射时刻（extra_predict_time）之差，不能把飞行时间再加一次。
+    if (warm_start && warm_start->target_index == target_index) {
+        const double dt = extra_predict_time - warm_start->extra_predict_time;
+        if (std::isfinite(dt) && dt >= 0.0) {
+            Eigen::Vector3d q = warm_start->q + dt * warm_start->time_derivative;
+            // 沿上一解的连续 yaw 分支外推，仅在 packResult 中归一化输出角。
+            q[1] = std::clamp(q[1], geometry.pitch_min, geometry.pitch_max);
+            q[2] = std::clamp(q[2], options_.min_flight_time, options_.max_flight_time);
+            TargetSolution solution = solveTargetImpl(
+                predictor, target_index, extra_predict_time, geometry, &q);
+            if (solution.result.success &&
+                solution.residual_norm <= std::min(distance_tolerance_, options_.solve_tolerance)) {
+                return solution;
+            }
+        }
+    }
+    // 预测初值无效或未充分收敛时，用已有几何初值重试；不把外推值直接交给后续序列。
     return solveTargetImpl(predictor, target_index, extra_predict_time, geometry);
 }
 
 NewtonPredictedBallisticSolver::TargetSolution NewtonPredictedBallisticSolver::solveTargetImpl(
     const Predictor& predictor, int target_index, double extra_predict_time,
-    const LaunchGeometry& geometry) const {
+    const LaunchGeometry& geometry, const Eigen::Vector3d* initial_guess) const {
     TargetSolution solution;
     solution.result.target_index = target_index;
     solution.result.gimbal.distance = std::numeric_limits<double>::infinity();
 
     Eigen::Vector3d q;
-    if (!makeInitialGuess(predictor, target_index, extra_predict_time, geometry, q)) {
+    if (initial_guess) {
+        q = *initial_guess;
+    } else if (!makeInitialGuess(predictor, target_index, extra_predict_time, geometry, q)) {
         solution.status = Status::INVALID_TARGET;
         return solution;
     }
@@ -280,6 +306,17 @@ NewtonPredictedBallisticSolver::TargetSolution NewtonPredictedBallisticSolver::s
     solution.residual_norm = evaluation.residual.norm();
     if (solution.result.success) {
         solution.status = Status::CONVERGED;
+        // ============ 隐函数求导（固定发射几何） ============
+        // F(q, t) = p_bullet(q) - p_target(t + tau) = 0，故 J * dq/dt = v_target。
+        // 此处求的是变化率，不使用 Newton 单步限幅；下一时刻仍按完整模型校正。
+        solution.warm_start.target_index = target_index;
+        solution.warm_start.extra_predict_time = extra_predict_time;
+        solution.warm_start.q = q;
+        if (!solveLinearSystem(evaluation.jacobian, evaluation.target_velocity,
+                               solution.warm_start.time_derivative)) {
+            // 当前命中有效但局部导数不可用时，退化为直接复用上次解（零阶热启动）。
+            solution.warm_start.time_derivative.setZero();
+        }
     } else if (solution.residual_norm <= distance_tolerance_) {
         // 残差合格仍可能违反截止高度；不能保留 CONVERGED 而同时返回失败。
         solution.status = Status::CONSTRAINT_VIOLATION;

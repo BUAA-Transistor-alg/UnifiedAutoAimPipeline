@@ -1,5 +1,5 @@
 // SequencePredictor.h — 预测序列通用类（预测云台控制序列 + 瞄准点序列）。
-// 中低速 Armor 的精确点由 Newton 解算；高速 Armor / PowerRune 保留原弹道路径。
+// 中低速 Armor 的精确点由 Newton 按板顺序热启动；其余来源保留当前弹道路径。
 //
 // 复用新旧解算器的统一结果：对目标预测函数生成预测云台控制序列与对应的
 // 瞄准点序列，并把最新结果返回给调用方：
@@ -240,7 +240,8 @@ public:
     SequencePredictor();
 
     /// 同步内部树（st.strict + MCU 弹速）并生成预测云台控制序列 + 瞄准点序列。
-    /// 实际计算点（solve）经内部线程池并行执行；每个工作线程通过 thread_local
+    /// 中低速 Armor 按板并行、同板按精算时间顺序热启动；其它路径按精算点并行。
+    /// 每个工作线程通过 thread_local
     /// 绑定一个独立的 GimbalSolver（内部 pitch 粗搜索保持并行且互不竞争）。
     ///
     /// 目标（瞄准点）选择已从 PredictedBallisticSolver 移入本类：solve() 返回
@@ -307,8 +308,9 @@ private:
     std::vector<PredictedBallisticSolver> solvers_;  // 高速 Armor / PowerRune 保留旧算法
     std::vector<NewtonPredictedBallisticSolver> newton_solvers_;
 
-    // 普通路径唯一切换点：中低速 Armor 使用 Newton，PowerRune 使用原解算器。
-    // 实测对照直接注释实现中的新调用并恢复相邻旧调用，无运行时开关。
+    // 原逐时间点解算入口：保留当前 PowerRune 调用及旧算法，Armor 热启动另见 predictImpl。
+    // 实测旧 Armor 时，先跳过 predictImpl 的热启动分支，再恢复本函数中相邻的旧 solve
+    // 调用；仅切换本函数不会影响热启动分支。不增加运行时开关。
     // masked_indices 为本次解算实际使用的屏蔽列表（一般为 predictor.masked_indices；
     // PowerRune 会先按 PredictedPointSelector::preUpdateCandidateIndices 解除
     // “已观测到/临时丢失”点的屏蔽，见 predictImpl）：被屏蔽的瞄准点不做弹道解算，

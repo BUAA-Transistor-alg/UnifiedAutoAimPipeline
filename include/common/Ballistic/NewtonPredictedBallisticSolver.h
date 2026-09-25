@@ -1,6 +1,7 @@
 // NewtonPredictedBallisticSolver.h — 中低速 Armor 的联合拦截解算器。
 // 将 yaw、pitch、飞行时间作为未知量，利用 RK4 灵敏度构造 Jacobian 并做阻尼 Newton
-// 迭代；输出兼容旧弹道结果。只解算候选点（屏蔽索引跳过并占位），不选板、不重复
+// 迭代，支持同一预测器内相邻时刻的一阶热启动；输出兼容旧弹道结果。
+// 只解算候选点（屏蔽索引跳过并占位），不选板、不重复
 // 补偿延迟、不修改预测器。
 #ifndef NEWTON_PREDICTED_BALLISTIC_SOLVER_H
 #define NEWTON_PREDICTED_BALLISTIC_SOLVER_H
@@ -35,6 +36,7 @@ public:
         bool valid = false;
         Eigen::Vector3d residual = Eigen::Vector3d::Zero();
         Eigen::Vector3d target_position = Eigen::Vector3d::Zero();
+        Eigen::Vector3d target_velocity = Eigen::Vector3d::Zero();
         Eigen::Matrix3d jacobian = Eigen::Matrix3d::Zero();
     };
 
@@ -43,11 +45,22 @@ public:
         SINGULAR_JACOBIAN, NO_DESCENT, ITERATION_LIMIT, CONSTRAINT_VIOLATION
     };
 
+    // ============ 同一装甲板的跨时间点初值 ============
+    // 由调用方按预测器快照管理生命周期，不跨帧缓存；target_index < 0 表示不可复用。
+    // q 保留 double 与连续 yaw，time_derivative 是固定发射几何下 dq / d(extra_time)。
+    struct WarmStart {
+        int target_index = -1;
+        double extra_predict_time = 0.0;
+        Eigen::Vector3d q = Eigen::Vector3d::Zero();
+        Eigen::Vector3d time_derivative = Eigen::Vector3d::Zero();
+    };
+
     struct TargetSolution {
         Result result;
         Status status = Status::INVALID_INPUT;
         int iterations = 0;
         double residual_norm = std::numeric_limits<double>::infinity();
+        WarmStart warm_start;
     };
 
     // 工程入口：复用已同步的 GimbalSolver 几何、弹速、命中容差及机器弹丸参数。
@@ -68,9 +81,11 @@ public:
                                          const LaunchGeometry& geometry,
                                          const std::vector<int>& masked_indices = {}) const;
 
-    // 单目标详细入口：失败原因 / 迭代次数供测试和诊断使用，无共享可变状态。
+    // 单目标详细入口：可复用同一快照、同一板的上次成功解，无共享可变状态。
+    // 热启动未达到迭代目标时重试原几何初值；最终命中 / 范围校验不变。
     TargetSolution solveTarget(const Predictor& predictor, int target_index,
-                               double extra_predict_time, const LaunchGeometry& geometry) const;
+                               double extra_predict_time, const LaunchGeometry& geometry,
+                               const WarmStart* warm_start = nullptr) const;
 
     // q = [相对底盘的总 yaw, pitch, 飞行时间]；公开只读接口便于差分验证 Jacobian。
     Evaluation evaluateResidualAndJacobian(const Predictor& predictor, int target_index,
@@ -81,7 +96,8 @@ public:
 private:
     // 内部入口复用外层已校验的 predictor / 几何 / Options，避免每个目标、每轮重复检查。
     TargetSolution solveTargetImpl(const Predictor& predictor, int target_index,
-                                   double extra_predict_time, const LaunchGeometry& geometry) const;
+                                   double extra_predict_time, const LaunchGeometry& geometry,
+                                   const Eigen::Vector3d* initial_guess = nullptr) const;
     Evaluation evaluateCandidate(const Predictor& predictor, int target_index,
                                  double extra_predict_time, const LaunchGeometry& geometry,
                                  const Eigen::Vector3d& q) const;
@@ -93,6 +109,8 @@ private:
                            Eigen::Vector3d& position, Eigen::Vector3d& velocity) const;
     bool makeInitialGuess(const Predictor& predictor, int target_index, double extra_predict_time,
                           const LaunchGeometry& geometry, Eigen::Vector3d& q) const;
+    bool solveLinearSystem(const Eigen::Matrix3d& jacobian, const Eigen::Vector3d& rhs,
+                           Eigen::Vector3d& solution) const;
     bool computeNewtonStep(const Evaluation& evaluation, Eigen::Vector3d& delta) const;
     bool applyDampedStep(const Predictor& predictor, int target_index, double extra_predict_time,
                          const LaunchGeometry& geometry, const Eigen::Vector3d& delta,

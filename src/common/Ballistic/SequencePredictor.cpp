@@ -1,5 +1,5 @@
 // SequencePredictor.cpp — 生成瞄准与云台参考序列，负责候选选板和插值。
-// 中低速 Armor 使用联合 Newton；高速 Armor 的 fast_predictor 和 PowerRune 保留原解算。
+// 中低速 Armor 使用联合 Newton 与同板跨时间点热启动；其余来源保留当前解算路径。
 // 三条来源共用的序列组装步骤会在插值前统一展开 yaw，保证 ±π 两侧的近邻角连续。
 #include "common/Ballistic/SequencePredictor.h"
 
@@ -154,7 +154,7 @@ std::vector<PredictedBallisticSolver::Result> SequencePredictor::solveNormalCand
     double extra_predict_time, float yaw_big, size_t worker) const {
     if (predictor.source.kind == PredictorSource::Kind::ARMOR ||
         predictor.source.kind == PredictorSource::Kind::POWER_RUNE) {
-        // 实测切换：注释下一行并恢复相邻旧调用；旧解算器实现完整保留。
+        // 旧算法对照：注释下一行并恢复相邻旧调用；Armor 还须跳过下方热启动分支。
         return newton_solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big, masked_indices);
         // return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big, masked_indices);
     }
@@ -501,7 +501,7 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     // 目标选择在各 worker 内用该值计算（与原来 solve() 内部判据一致）
     const cv::Vec3f muzzle_origin = gimbals_.front()->muzzleWorldOrigin();
 
-    // ── 1. 精确解算点集合（solve 之间并行）──
+    // ── 1. 精确解算点集合（中低速 Armor 按板并行，其余按时间点并行）──
     // 返回序列 = [前 n 个前导精确点（索引 0..n-1）] 后接 [原划分序列
     // （索引 n .. n+(M-1)K）]，总返回点数 = (M-1)*K + 1 + n，
     // 时间间隔全程均匀为 dt_control（索引 i 对应 extra + (i+1)*dt）。
@@ -548,7 +548,7 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         }
     }
 
-    // ── 1. 并行解算：每个实际计算点独立求出全部目标点的解算结果（不做目标选择）──
+    // ── 1. 候选解算：各时刻、各目标独立校验命中，热启动只改变初值（不做目标选择）──
     // fast_target 帧：**直接替换精确点的解算目标**——不做原来的逐点提前量解算，改为用
     // 「包装预测器」（瞄准点换成对齐位置，见 wrapFastAimPredictor）调用**原迭代解算器**
     // 求解一次，再按各板自己的总预测时间算实际夹角选板（中心平动因此一并算进提前量）；
@@ -584,41 +584,84 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     std::vector<std::vector<PredictedBallisticSolver::Result>> candidates_all((size_t)U);
     std::vector<PredictedBallisticSolver::Result> fast_solved((size_t)U);   // 快目标帧的精确点结果
     std::vector<int> fast_plate((size_t)U, -1);    // 快目标帧各精确点选中的真板序号
-    pool_.run_parallel(U, [&](int idx) {
-        const int wid = workerGimbalIndex(next_gimbal_);
-        const int ret_idx = solve_idx[(size_t)idx];   // 该实际计算点在返回点序列中的索引
-        // 大小 yaw 构型：该点用“该时刻大 yaw 实际会到哪”求有效 yaw 旋转中心（θ_big(t)）；
-        // 单 yaw 构型：传 NaN ⇒ 走原路径（用树当前 yaw 关节角）
-        const float yaw_big = in.big_small ? yaw_big_seq[(size_t)ret_idx]
-                                           : std::numeric_limits<float>::quiet_NaN();
-        if (fast_target) {
-            // 该精确点只解算这一次：包装预测器（瞄准对齐位置）+ 原迭代求解器
-            // （内部照常迭代弹道飞行时间；中心平动由包装预测器在每次预测时刻重新给出，
-            //   因此提前量里已包含中心平动）
-            const std::vector<PredictedBallisticSolver::Result> fast_cands =
-                solvers_[(size_t)(wid % T)].solve(
-                    fast_predictor, extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big,
-                    predictor.masked_indices);   // 屏蔽板：包装预测器下标不变，同样跳过解算
-            // 各板在自己的总预测时间上的实际中心瞄准夹角 → 选板
-            // （异号正在靠近枪线，或 |夹角| 已在容差内刚过枪线也打得到）
-            const int ci = selectFastAimPlate(fast_cands, predictor, yaw_world_origin,
-                                              plate_tolerance, predictor.target_omega);
-            PredictedBallisticSolver::Result r;
-            if (ci >= 0) {
-                r = fast_cands[(size_t)ci];
-                fast_plate[(size_t)idx] = r.target_index;
-            }
-            r.target_index = kFastAimTargetIndex;   // 整段序列同一合成索引
-            fast_solved[(size_t)idx] = r;
-            return;
+    // ============ Armor 同板跨时间点热启动（板间并行、板内按时序求解） ============
+    // 同一预测器快照内板索引稳定；每帧首点冷启动，避免跟踪重置后同名索引串用旧解。
+    const bool normal_armor =
+        predictor.source.kind == PredictorSource::Kind::ARMOR && !fast_target;
+    // 实测旧 Armor：临时把下面 if 的条件改为 false，再恢复 solveNormalCandidates 的旧调用。
+    if (normal_armor) {
+        const size_t target_count = predictor.function(0.0).second.size();
+        for (auto& candidates : candidates_all) candidates.resize(target_count);
+        std::vector<NewtonPredictedBallisticSolver::LaunchGeometry> geometries;
+        geometries.reserve((size_t)U);
+        for (int ret_idx : solve_idx) {
+            const float yaw_big = in.big_small ? yaw_big_seq[(size_t)ret_idx]
+                                               : std::numeric_limits<float>::quiet_NaN();
+            geometries.push_back(gimbals_.front()->captureLaunchGeometry(yaw_big));
         }
-        // solve() 返回预测函数列表中全部目标点的解算结果（不再内部选目标）；
-        // 实际目标选择在下方顺序循环完成（PowerRune 见“PowerRune 选点”）。
-        candidates_all[(size_t)idx] = solveNormalCandidates(
-            predictor, solve_masked_indices,
-            extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big,
-            (size_t)(wid % T));
-    });
+        pool_.run_parallel((int)target_count, [&](int target_index) {
+            const int wid = workerGimbalIndex(next_gimbal_);
+            NewtonPredictedBallisticSolver::WarmStart warm_start;
+            for (int u = 0; u < U; ++u) {
+                auto& result = candidates_all[(size_t)u][(size_t)target_index];
+                if (PredictedBallisticSolver::isMaskedIndex(solve_masked_indices, target_index)) {
+                    result.target_index = target_index;
+                    result.masked = true;
+                    continue;
+                }
+                // 一阶率按固定发射几何推导；大 yaw 改变有效旋转中心时只复用上一解，
+                // 本点仍用新的几何快照进行完整 Newton 修正。
+                if (u > 0 && (geometries[(size_t)u].yaw_position -
+                              geometries[(size_t)(u - 1)].yaw_position).squaredNorm() > 0.0) {
+                    warm_start.time_derivative.setZero();
+                }
+                const double point_time = extra_predict_time +
+                    (solve_idx[(size_t)u] + 1) * dt_control_;
+                const auto solution = newton_solvers_[(size_t)(wid % T)].solveTarget(
+                    predictor.function, target_index, point_time, geometries[(size_t)u],
+                    &warm_start);
+                result = solution.result;
+                // 失败解的 warm_start 默认为无效，下一个时刻自动从原几何初值重启。
+                warm_start = solution.warm_start;
+            }
+        });
+    } else {
+        pool_.run_parallel(U, [&](int idx) {
+            const int wid = workerGimbalIndex(next_gimbal_);
+            const int ret_idx = solve_idx[(size_t)idx];   // 该实际计算点在返回点序列中的索引
+            // 大小 yaw 构型：该点用“该时刻大 yaw 实际会到哪”求有效 yaw 旋转中心（θ_big(t)）；
+            // 单 yaw 构型：传 NaN ⇒ 走原路径（用树当前 yaw 关节角）
+            const float yaw_big = in.big_small ? yaw_big_seq[(size_t)ret_idx]
+                                               : std::numeric_limits<float>::quiet_NaN();
+            if (fast_target) {
+                // 该精确点只解算这一次：包装预测器（瞄准对齐位置）+ 原迭代求解器
+                // （内部照常迭代弹道飞行时间；中心平动由包装预测器在每次预测时刻重新给出，
+                //   因此提前量里已包含中心平动）
+                const std::vector<PredictedBallisticSolver::Result> fast_cands =
+                    solvers_[(size_t)(wid % T)].solve(
+                        fast_predictor, extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big,
+                        predictor.masked_indices);   // 屏蔽板：包装预测器下标不变，同样跳过解算
+                // 各板在自己的总预测时间上的实际中心瞄准夹角 → 选板
+                // （异号正在靠近枪线，或 |夹角| 已在容差内刚过枪线也打得到）
+                const int ci = selectFastAimPlate(fast_cands, predictor, yaw_world_origin,
+                                                  plate_tolerance, predictor.target_omega);
+                PredictedBallisticSolver::Result r;
+                if (ci >= 0) {
+                    r = fast_cands[(size_t)ci];
+                    fast_plate[(size_t)idx] = r.target_index;
+                }
+                r.target_index = kFastAimTargetIndex;   // 整段序列同一合成索引
+                fast_solved[(size_t)idx] = r;
+                return;
+            }
+            // solve() 返回预测函数列表中全部目标点的解算结果（不再内部选目标）；
+            // 实际目标选择在下方顺序循环完成（PowerRune 见“PowerRune 选点”）。
+            candidates_all[(size_t)idx] = solveNormalCandidates(
+                predictor, solve_masked_indices,
+                extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big,
+                (size_t)(wid % T));
+        });
+    }
 
     // ── 2. 顺序目标（瞄准点）选择（按时间顺序逐点传递粘滞）──
     // 仅 Armor 类来源走本段；PowerRune 已在上面“PowerRune 选点”用决策器选出统一
@@ -638,8 +681,6 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     // 屏蔽占位符（Result::masked，success 恒为 false）也在此一并移除。
     // 此保护不更改高速 fast_predictor 与 PowerRune 的既有行为（PowerRune 不清理，
     // 由决策器选点后按索引取结果）。
-    const bool normal_armor =
-        predictor.source.kind == PredictorSource::Kind::ARMOR && !fast_target;
     if (normal_armor) {
         for (auto& candidates : candidates_all) {
             candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
