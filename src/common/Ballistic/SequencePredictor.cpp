@@ -152,11 +152,11 @@ SequencePredictor::SequencePredictor()
 std::vector<PredictedBallisticSolver::Result> SequencePredictor::solveNormalCandidates(
     const Predictor& predictor, const std::vector<int>& masked_indices,
     double extra_predict_time, float yaw_big, size_t worker) const {
-    if (predictor.source.kind == PredictorSource::Kind::ARMOR ||
-        predictor.source.kind == PredictorSource::Kind::POWER_RUNE) {
-        // 旧算法对照：注释下一行并恢复相邻旧调用；Armor 还须跳过下方热启动分支。
+    if (predictor.source.kind == PredictorSource::Kind::ARMOR) {
         return newton_solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big, masked_indices);
-        // return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big, masked_indices);
+    }
+    else if (predictor.source.kind == PredictorSource::Kind::POWER_RUNE) {
+        return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big, masked_indices);
     }
     return solvers_[worker].solve(predictor.function, extra_predict_time, yaw_big,
                                   masked_indices);
