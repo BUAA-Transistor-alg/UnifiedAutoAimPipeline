@@ -178,16 +178,19 @@ public:
     // 单个序列返回点（云台控制值 + 瞄准点；实际计算点或插值/外推/复制生成）
     struct Item {
         bool   success = false;
-        cv::Vec3f predicted_point;   // 瞄准点（world 系）
-        double predict_time = 0.0;   // 预测时间 = 额外预测时间 + 飞行时间（秒）
-        float  yaw = 0.0f;           // 云台解算 yaw（已叠加底盘修正与 yaw 偏置）
-        float  pitch = 0.0f;         // 云台解算 pitch（已叠加 pitch 偏置）
-        float  gimbal_yaw = 0.0f;    // 解算器原始云台 yaw（相对底盘关节角，未叠加底盘修正/偏置；
-                                     // 供可视化复现"需要的云台位姿"使用）
-        float  gimbal_pitch = 0.0f;  // 解算器原始云台 pitch（未叠加偏置）
-        double flight_time = 0.0;    // 弹道飞行时间（秒）
-        int    target_index = -1;    // 该点对应的目标索引（实际计算点为选中目标，插值/外推继承左侧）。
-                                     // fast_target 帧恒为 kFastAimTargetIndex（合成索引，见下）
+        cv::Vec3f predicted_point;          // 瞄准点（world 系）
+        double predict_time = 0.0;          // 预测时间 = 额外预测时间 + 飞行时间（秒）
+        float  yaw = 0.0f;                  // 云台解算 yaw（已叠加底盘修正与 yaw 偏置）
+        float  pitch = 0.0f;                // 云台解算 pitch（已叠加 pitch 偏置）
+        float  gimbal_yaw = 0.0f;           // 解算器原始云台 yaw（相对底盘关节角，未叠加底盘修正/偏置；
+                                            // 供可视化复现"需要的云台位姿"使用）
+        float  gimbal_pitch = 0.0f;         // 解算器原始云台 pitch（未叠加偏置）
+        double flight_time = 0.0;           // 弹道飞行时间（秒）
+        int    target_index = -1;           // 该点对应的目标索引（实际计算点为选中目标，插值/外推继承左侧）。
+                                            // fast_target 帧恒为 kFastAimTargetIndex（合成索引，见下）
+        double target_age = 0.0;          // 本轮首次观测至本点控制序列时刻的秒数：
+                                         // 当前帧年龄 + extra_predict_time_ + (i+1)*dt_control_，不含飞行时间
+        bool target_age_valid = false;      // 用于区分未知和 0 秒
     };
 
     // 预测结果：预测云台控制序列 + 瞄准点序列

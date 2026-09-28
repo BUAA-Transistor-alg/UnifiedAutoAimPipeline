@@ -64,19 +64,25 @@ public:
     /// @param masked_indices 本步（本帧）被屏蔽的靶点索引（预测函数列表下标）
     /// @param solved         本步解算序列（下标 = 目标索引；被 mask 的点为占位符，
     ///                       见 PredictedBallisticSolver::Result::masked）
-    /// @param timestamp      本步时间戳（计时基准；不用系统当前时间）
+    /// @param timestamp      本步处理时间戳（状态机计时基准；不用系统当前时间）
+    /// @param observation_timestamp 本步观测对应的图像时间戳（仅用于首次出现时间）
     /// @return 选中的目标索引（预测函数列表下标）；无可用候选返回 -1。
     int select(const std::vector<int>& masked_indices,
                const std::vector<PredictedBallisticSolver::Result>& solved,
-               TimePoint timestamp);
+               TimePoint timestamp, TimePoint observation_timestamp);
 
-    /// 状态整体重置：全部点回到 UNOBSERVED、粘滞目标清空（状态表长度保留）。
+    /// 状态整体重置：全部点回到 UNOBSERVED、首次出现时间与粘滞目标清空（长度保留）。
     /// 由 SequencePredictor 在“不使用本决策器”（来源非 PowerRune）与“无目标”
     /// （predictor 无效 → invalidate）时调用。
     void reset();
 
     /// 单点当前状态（诊断/测试用）
     State stateOf(int index) const;
+
+    /// 查询本次观测周期的首次出现时间（首次观测对应的图像时间戳，非物理点亮时间）。
+    /// 建立、确认及临时丢失期间均有效；记录清除 / reset 后无效。
+    /// 返回 false 时不修改输出参数；TimePoint{} 本身也可以是有效起点。
+    bool firstSeenTime(int index, TimePoint& first_seen) const;
 
     /// 上一次选中的目标索引（-1 = 无；诊断/测试用）
     int lastSelectedIndex() const { return last_selected_index_; }
@@ -86,13 +92,16 @@ private:
     struct PointRecord {
         State     state = State::UNOBSERVED;
         TimePoint state_since{};   // 进入当前计时状态的时刻
+        TimePoint first_seen{};    // 本次从 UNOBSERVED 开始被观测的图像时间戳
+        bool has_first_seen = false; // 独立有效标记，不以零时间戳判断有效性
     };
 
     /// 状态表长度与解算序列不一致（首次调用 / 靶点数变化）时整体重建为 UNOBSERVED
     void ensureSize(size_t size);
 
     /// 逐点转移 + 特殊规则（见文件头说明）
-    void updateStates(const std::vector<int>& masked_indices, TimePoint timestamp);
+    void updateStates(const std::vector<int>& masked_indices, TimePoint timestamp,
+                      TimePoint observation_timestamp);
 
     static bool isCandidate(State s) {
         return s == State::OBSERVED || s == State::TEMPORARILY_LOST;

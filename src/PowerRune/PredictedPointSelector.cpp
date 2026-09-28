@@ -41,6 +41,14 @@ PredictedPointSelector::State PredictedPointSelector::stateOf(int index) const {
     return states_[(size_t)index].state;
 }
 
+bool PredictedPointSelector::firstSeenTime(int index, TimePoint& first_seen) const {
+    if (index < 0 || index >= static_cast<int>(states_.size())) return false;
+    const PointRecord& rec = states_[static_cast<size_t>(index)];
+    if (!rec.has_first_seen) return false;
+    first_seen = rec.first_seen;
+    return true;
+}
+
 void PredictedPointSelector::ensureSize(size_t size) {
     if (states_.size() == size) return;
     // 靶点数变化（首次调用 / 预测列表长度改变）：状态表整体重建、粘滞索引清空，
@@ -54,7 +62,7 @@ void PredictedPointSelector::ensureSize(size_t size) {
 }
 
 void PredictedPointSelector::updateStates(const std::vector<int>& masked_indices,
-                                          TimePoint timestamp) {
+                                          TimePoint timestamp, TimePoint observation_timestamp) {
     for (size_t i = 0; i < states_.size(); ++i) {
         const bool masked = isMaskedIndex(masked_indices, (int)i);
         PointRecord& rec = states_[i];
@@ -64,13 +72,15 @@ void PredictedPointSelector::updateStates(const std::vector<int>& masked_indices
                 if (!masked) {
                     rec.state = State::ESTABLISHING;
                     rec.state_since = timestamp;
+                    rec.first_seen = observation_timestamp;
+                    rec.has_first_seen = true;
                 }
                 break;
 
             case State::ESTABLISHING:
                 if (masked) {
                     // 建立过程被打断：计时清零，回到未被观测
-                    rec.state = State::UNOBSERVED;
+                    rec = PointRecord{}; // 同时清除本次首次出现时间
                     rec.state_since = timestamp;
                 } else if (elapsedSec(rec.state_since, timestamp) >= establish_duration_s_) {
                     rec.state = State::OBSERVED;
@@ -93,7 +103,7 @@ void PredictedPointSelector::updateStates(const std::vector<int>& masked_indices
                     rec.state_since = timestamp;
                 } else if (elapsedSec(rec.state_since, timestamp) >= lost_timeout_s_) {
                     // 丢失超时：忘记该点
-                    rec.state = State::UNOBSERVED;
+                    rec = PointRecord{}; // 同时清除本次首次出现时间
                     rec.state_since = timestamp;
                 }
                 break;
@@ -113,7 +123,7 @@ void PredictedPointSelector::updateStates(const std::vector<int>& masked_indices
         for (size_t i = 0; i < states_.size(); ++i) {
             if (isMaskedIndex(masked_indices, (int)i) &&
                 states_[i].state == State::TEMPORARILY_LOST) {
-                states_[i].state = State::UNOBSERVED;
+                states_[i] = PointRecord{}; // 特殊规则遗忘该目标，同时清除首次出现时间
                 states_[i].state_since = timestamp;
             }
         }
@@ -131,9 +141,9 @@ const PredictedBallisticSolver::Result* PredictedPointSelector::usableResult(
 
 int PredictedPointSelector::select(const std::vector<int>& masked_indices,
                                    const std::vector<PredictedBallisticSolver::Result>& solved,
-                                   TimePoint timestamp) {
+                                   TimePoint timestamp, TimePoint observation_timestamp) {
     ensureSize(solved.size());
-    updateStates(masked_indices, timestamp);
+    updateStates(masked_indices, timestamp, observation_timestamp);
 
     // 上一帧选中的索引（本帧更新后是否仍可用决定下面走粘滞还是兜底；仅调试日志用）
     const int prev_index = last_selected_index_;
@@ -186,8 +196,7 @@ int PredictedPointSelector::select(const std::vector<int>& masked_indices,
 
 void PredictedPointSelector::reset() {
     for (PointRecord& rec : states_) {
-        rec.state = State::UNOBSERVED;
-        rec.state_since = TimePoint{};
+        rec = PointRecord{};
     }
     last_selected_index_ = -1;
 }

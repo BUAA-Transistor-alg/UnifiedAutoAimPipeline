@@ -89,6 +89,9 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
             mpc_available = true;
             last_.fire_threshold = threshold;
             fire_seq.reserve(ns);
+            
+            using Kind = SequencePredictor::PredictorSource::Kind;
+
             for (size_t k = 0; k < ns; ++k) {
                 // 条件1：MPC 预测轨迹与目标轨迹（参考）误差在动态角度阈值内
                 const bool track_ok = computeFire(st.mpc.ref_sequence[k], st.mpc.pred_sequence[k],
@@ -97,7 +100,16 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
                 // 枪线上（匀速旋转模型；非 fast_target 时恒 true，保持原行为）
                 const bool line_ok = SequencePredictor::fastGunLineOk(
                     seq, (int)k, extra_predict_time_, dt_control_);
-                fire_seq.push_back(track_ok && line_ok);   // 两个条件都满足才开火
+                if (result.predictor.source.kind == Kind::ARMOR){
+                    fire_seq.push_back(track_ok && line_ok);   // 两个条件都满足才开火
+                }
+                else if (result.predictor.source.kind == Kind::POWER_RUNE){
+                    const bool time_ok = (k < seq.items.size() &&
+                                          seq.items[k].flight_time + seq.items[k].target_age < 2.5 &&
+                                          seq.items[k].target_age_valid
+                                         );
+                    fire_seq.push_back(track_ok && time_ok); // 能量机关链路下，保证开火一定打击到正在激活的目标
+                }
             }
         }
 

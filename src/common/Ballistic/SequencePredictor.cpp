@@ -709,7 +709,7 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     int power_rune_target = -1;
     if (power_rune_mode && !candidates_all.empty()) {
         power_rune_target = power_rune_selector_.select(
-            predictor.masked_indices, candidates_all.front(), timestamp);
+            predictor.masked_indices, candidates_all.front(), timestamp, predictor.timestamp);
     }
     // PowerRune 特例：“全部瞄准点都被屏蔽”且决策也返回 -1（无任何候选）时，本帧
     // 预测器等同不可用（无真实目标、也无临时丢失粘滞）→ invalidate()（重置状态机
@@ -774,6 +774,14 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         item.gimbal_pitch = r.gimbal.pitch;
         item.flight_time = r.gimbal.flight_time;
         item.target_index = r.target_index;
+        if (power_rune_mode) {
+            PredictedPointSelector::TimePoint first_seen;
+            if (power_rune_selector_.firstSeenTime(item.target_index, first_seen)
+                && timestamp >= first_seen) {
+                item.target_age = std::chrono::duration<double>(timestamp - first_seen).count();
+                item.target_age_valid = true;
+            }
+        }
         return item;
     };
     for (int u = 0; u < U; ++u) {
@@ -834,6 +842,25 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
             } else {
                 // 无可用外推参考：复制左侧点
                 items[a + (size_t)m] = A;
+            }
+        }
+    }
+
+    // 序列全部生成后，按最终下标填写目标年龄，覆盖精确、插值、外推和复制点。
+    // first_seen 为首次观测图像时间，与当前 timestamp 使用同一时钟；年龄截至控制序列时刻，
+    // 不叠加 predictor_age（当前帧年龄已以 timestamp 为基准）或弹道飞行时间。
+    if (power_rune_mode) {
+        for (size_t i = 0; i < items.size(); ++i) {
+            Item& item = items[i];
+            PredictedPointSelector::TimePoint first_seen;
+            item.target_age = 0.0;
+            item.target_age_valid = false;
+            if (power_rune_selector_.firstSeenTime(item.target_index, first_seen) &&
+                timestamp >= first_seen) {
+                item.target_age =
+                    std::chrono::duration<double>(timestamp - first_seen).count() +
+                    extra_predict_time_ + static_cast<double>(i + 1) * dt_control_;
+                item.target_age_valid = true;
             }
         }
     }
