@@ -50,6 +50,13 @@ struct OutputContext {
     } split_diag;
 
     std::vector<bool> fire_out;   // GimbalOutput::update 计算出的 fire 序列（首元素供可视化绘制）
+    // 与 fire_out.front() 同一火控点的门控结果（已经应用 fire_seq_lead）。
+    // valid=false 表示没有判定数据，不能把缺失数据显示成门控失败。
+    struct FireGateStatus {
+        bool valid = false;
+        bool track_ok = false;
+        bool second_ok = false;  // 该输出分支实际使用的第二门控
+    } fire_gate_front;
     bool gimbal_enabled = false;  // 是否开启 gimbal 输出模式
 
     // 大小 yaw 构型：本帧**实际下发给子模组**的内容快照（GimbalOutputForBigSmallYaw

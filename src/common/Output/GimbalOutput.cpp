@@ -62,6 +62,7 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
                           OutputContext& ctx)
 {
     // 无新帧时不重发序列，让 McuMpcController 后台 100Hz 线程正常消费已发送序列
+    ctx.fire_gate_front = {};  // 每帧清空，避免无效预测沿用旧门控结果
     if (!result.valid) return;
 
     // ── 直接读取串口/MPC 状态（不经流水线）──
@@ -74,6 +75,7 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
     if (seq.valid && !seq.items.empty()) {
         // ── fire 序列：ref/pred 每一对按当前方法计算 ──
         std::vector<bool> fire_seq;
+        std::vector<OutputContext::FireGateStatus> gate_seq;
         bool mpc_available = false;
         const size_t ns = std::min(st.mpc.ref_sequence.size(), st.mpc.pred_sequence.size());
         if (ns > 0) {
@@ -89,6 +91,7 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
             mpc_available = true;
             last_.fire_threshold = threshold;
             fire_seq.reserve(ns);
+            gate_seq.reserve(ns);
             
             using Kind = SequencePredictor::PredictorSource::Kind;
 
@@ -102,6 +105,7 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
                     seq, (int)k, extra_predict_time_, dt_control_);
                 if (result.predictor.source.kind == Kind::ARMOR){
                     fire_seq.push_back(track_ok && line_ok);   // 两个条件都满足才开火
+                    gate_seq.push_back({true, track_ok, line_ok});
                 }
                 else if (result.predictor.source.kind == Kind::POWER_RUNE){
                     const bool time_ok = (k < seq.items.size() &&
@@ -109,6 +113,7 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
                                           seq.items[k].target_age_valid
                                          );
                     fire_seq.push_back(track_ok && time_ok); // 能量机关链路下，保证开火一定打击到正在激活的目标
+                    gate_seq.push_back({true, track_ok, time_ok});
                 }
             }
         }
@@ -124,6 +129,9 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
         const std::vector<double> yaw_out   = truncateKeepLast(yaw_seq, 0, 0.0);
         const std::vector<double> pitch_out = truncateKeepLast(pitch_seq, pitch_seq_lead_, 0.0);
         const std::vector<bool>   fire_out  = truncateKeepLast(fire_seq, fire_seq_lead_, false);
+        // 与 fire_out 使用相同截取规则（短序列保留末点，空序列标记无数据）。
+        ctx.fire_gate_front = truncateKeepLast(
+            gate_seq, fire_seq_lead_, OutputContext::FireGateStatus{}).front();
 
         // ── 哨兵扫描控制器：本帧有有效预测 → 复位“无目标”计时并退出扫描；
         //    同时记录本帧下发序列首值，供进入扫描前的保持段填充整条序列 ──

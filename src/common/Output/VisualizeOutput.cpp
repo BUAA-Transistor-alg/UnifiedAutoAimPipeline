@@ -31,6 +31,23 @@ void drawAimPointOverlay(cv::Mat& img, const cv::Vec3f& aim_world, double aim_t,
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1);
 }
 
+// 井形叉丝右侧固定两槽：上红 = track 未通过，下蓝 = 第二门控未通过。
+// 只有已计算出的失败门控才画；通过或无判定数据时留空。
+void drawFireGateIndicators(cv::Mat& img, const cv::Point2f& p,
+                            const OutputContext::FireGateStatus& gates) {
+    if (!gates.valid) return;
+    const int size = 10;
+    const int x = (int)p.x + 28;  // 叉丝半臂长 20，右侧留 8px
+    const auto square = [&](int y, const cv::Scalar& color) {
+        const cv::Rect box(x, y, size, size);
+        cv::rectangle(img, box + cv::Size(2, 2) - cv::Point(1, 1),
+                      cv::Scalar(0, 0, 0), cv::FILLED);
+        cv::rectangle(img, box, color, cv::FILLED);
+    };
+    if (!gates.track_ok) square((int)p.y - 20, cv::Scalar(0, 0, 255));
+    if (!gates.second_ok) square((int)p.y - 5, cv::Scalar(255, 0, 0));
+}
+
 // cam 系 (0,1,0) 点（相机 y 轴正方向 1m 处的点）在当前图像上的投影叉丝绘制。
 // world_pt 为某云台位姿下该点（= 该位姿相机原点 + 相机 y 轴方向）的 world 系坐标，
 // 经当前树（cur_tree，已同步并上锁）投影到当前画面。
@@ -38,7 +55,8 @@ void drawAimPointOverlay(cv::Mat& img, const cv::Vec3f& aim_world, double aim_t,
 // 否则绘制普通十字（均无文字）。
 void drawCamYAxisCrosshair(cv::Mat& img, const cv::Vec3f& world_pt,
                            const RobotTfTree& cur_tree, const CameraProjection& proj,
-                           const cv::Scalar& color, bool full_cross) {
+                           const cv::Scalar& color, bool full_cross,
+                           const OutputContext::FireGateStatus* gates = nullptr) {
     cv::Vec3f cam_pt = cur_tree.transformPoint(RobotTfTree::WORLD, RobotTfTree::CAMERA, world_pt);
     std::vector<cv::Point2f> pts;
     proj.projectPoints_Cam({cv::Point3f(cam_pt[0], cam_pt[1], cam_pt[2])}, pts);
@@ -63,6 +81,7 @@ void drawCamYAxisCrosshair(cv::Mat& img, const cv::Vec3f& world_pt,
         // 右下角 (cx+gap, cy+gap)：竖臂向下、横臂向右
         cv::line(img, cv::Point((int)p.x + gap, (int)(p.y + gap)), cv::Point((int)p.x + gap, (int)(p.y + gap + len)), color, 2);
         cv::line(img, cv::Point((int)p.x + gap, (int)(p.y + gap)), cv::Point((int)(p.x + gap + len), (int)p.y + gap), color, 2);
+        if (gates) drawFireGateIndicators(img, p, *gates);
     } else {
         // 普通十字
         cv::line(img, cv::Point((int)(p.x - arm), (int)p.y), cv::Point((int)(p.x + arm), (int)p.y), color, 2);
@@ -112,7 +131,9 @@ void drawGimbalYAxisOverlays(cv::Mat& img, const SequencePredictor::Result& seq,
     if (ctx.gimbal_enabled && (!ctx.fire_out.empty()) && (!ctx.fire_out.front())) {
         req_color = cv::Scalar(0, 0, 255);
     }
-    drawCamYAxisCrosshair(img, req_world, cur_tree, proj, req_color, true);
+    const auto* gates = ctx.gimbal_enabled && !ctx.fire_out.empty()
+                            ? &ctx.fire_gate_front : nullptr;
+    drawCamYAxisCrosshair(img, req_world, cur_tree, proj, req_color, true, gates);
 }
 
 } // namespace
