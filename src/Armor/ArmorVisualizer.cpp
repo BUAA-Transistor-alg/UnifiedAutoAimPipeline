@@ -9,6 +9,142 @@
 
 #include "common/TransformTree/CoordinateTransform.h"
 
+
+namespace {
+using SectorCandidate = ArmorVisualizationData::SectorViewData::Candidate;
+
+bool hasSectorGeometry(const SectorCandidate& candidate) {
+    const auto finite = [](const cv::Vec3f& point) {
+        return std::isfinite(point[0]) && std::isfinite(point[1]) && std::isfinite(point[2]);
+    };
+    return candidate.geometry_valid && finite(candidate.center) && finite(candidate.point) &&
+           finite(candidate.muzzle) && std::isfinite(candidate.radius) && candidate.radius >= 0.0;
+}
+
+cv::Scalar sectorPointColor(const SectorCandidate& candidate) {
+    if (candidate.selected) return {210, 0, 190};        // 品红：最终选中
+    if (candidate.eligible) return {45, 145, 35};        // 绿：通过选板几何
+    return {35, 55, 215};                               // 红：被排除
+}
+
+// project 接受世界点；主图使用真实 world XY，放大图仍保持 +X 向右、+Y 向上。
+// 每个图只使用该候选自己的中心、发射枪口和命中点，避免混用不同候选的时间/半径。
+template <typename Project>
+void drawSectorGeometry(cv::Mat& image, const SectorCandidate& candidate, const Project& project) {
+    if (!hasSectorGeometry(candidate)) return;
+    const cv::Point center = project(candidate.center);
+    const cv::Point plate = project(candidate.point);
+    const auto onCircle = [&](double angle, double multiplier = 1.0) {
+        return project(cv::Vec3f(
+            static_cast<float>(candidate.center[0] + multiplier * candidate.radius * std::cos(angle)),
+            static_cast<float>(candidate.center[1] + multiplier * candidate.radius * std::sin(angle)),
+            candidate.center[2]));
+    };
+    const double axis = std::atan2(static_cast<double>(candidate.muzzle[1]) - candidate.center[1],
+                                   static_cast<double>(candidate.muzzle[0]) - candidate.center[0]);
+    const int radius_px = std::max(1, static_cast<int>(std::lround(cv::norm(onCircle(0.0) - center))));
+    if (candidate.radius > 1e-6) {
+        cv::circle(image, center, radius_px, cv::Scalar(180, 180, 180), 1, cv::LINE_AA);
+        if (candidate.sector_applied && std::isfinite(candidate.half_angle) && candidate.half_angle >= 0.0) {
+            std::vector<cv::Point> fan{center};
+            constexpr int arc_segments = 48;
+            for (int i = 0; i <= arc_segments; ++i) {
+                fan.push_back(onCircle(axis - candidate.half_angle +
+                                      2.0 * candidate.half_angle * i / arc_segments));
+            }
+            // 仅混合扇区包围盒，避免每块板都复制整张实时窗口。
+            const cv::Rect bounds = cv::boundingRect(fan) & cv::Rect(0, 0, image.cols, image.rows);
+            if (!bounds.empty()) {
+                cv::Mat region = image(bounds);
+                cv::Mat overlay = region.clone();
+                std::vector<cv::Point> local;
+                local.reserve(fan.size());
+                for (const auto& point : fan) local.push_back(point - bounds.tl());
+                cv::fillConvexPoly(overlay, local, cv::Scalar(80, 190, 70), cv::LINE_AA);
+                cv::addWeighted(overlay, 0.28, region, 0.72, 0.0, region);
+            }
+            const std::vector<std::vector<cv::Point>> outline{fan};
+            cv::polylines(image, outline, true, cv::Scalar(45, 145, 35), 1, cv::LINE_AA);
+        }
+        // 短箭头只表示目标中心到枪口的方向，长度不是枪口距离。
+        cv::arrowedLine(image, center, onCircle(axis, 1.25), cv::Scalar(120, 110, 30),
+                        1, cv::LINE_AA, 0, 0.15);
+    }
+    cv::drawMarker(image, center, cv::Scalar(40, 40, 180), cv::MARKER_CROSS, 9, 1, cv::LINE_AA);
+    cv::circle(image, plate, candidate.selected ? 6 : 5, sectorPointColor(candidate), -1, cv::LINE_AA);
+    if (candidate.selected) cv::circle(image, plate, 9, sectorPointColor(candidate), 1, cv::LINE_AA);
+}
+
+void drawSectorPanel(cv::Mat& image, const ArmorVisualizationData::SectorViewData& sector, int x0) {
+    const cv::Scalar ink(65, 65, 65);
+    cv::line(image, cv::Point(x0, 0), cv::Point(x0, image.rows - 1), cv::Scalar(190, 190, 190), 1);
+    const auto line = [&](const std::string& value, int y, double size = 0.43) {
+        cv::putText(image, value, cv::Point(x0 + 14, y), cv::FONT_HERSHEY_SIMPLEX, size,
+                    ink, 1, cv::LINE_AA);
+    };
+    line("Selection sectors: first sample", 27, 0.50);
+    line(sector.omega_valid ? cv::format("w = %+.2f rad/s", sector.omega) : "w unavailable: sector OFF", 49);
+    line(sector.sample_available ? cv::format("Launch offset: +%.1f ms", sector.control_time * 1000.0)
+                                 : "Launch offset: --", 70);
+    line(sector.status, 93);
+    line("Green area: allowed sector (+/- theta)", 115, 0.40);
+    line("Each tile uses its own impact time", 133, 0.40);
+
+    constexpr int gap = 8;
+    const int tile_width = (image.cols - x0 - 28 - gap) / 2;
+    constexpr int tile_height = 210;
+    const int shown = static_cast<int>(std::min<std::size_t>(6, sector.candidates.size()));
+    double max_radius = 0.05;
+    for (const auto& candidate : sector.candidates) {
+        if (hasSectorGeometry(candidate)) max_radius = std::max(max_radius, candidate.radius);
+    }
+    for (int i = 0; i < shown; ++i) {
+        const auto& candidate = sector.candidates[static_cast<std::size_t>(i)];
+        const cv::Rect box(x0 + 14 + (i % 2) * (tile_width + gap), 146 + (i / 2) * (tile_height + gap),
+                           tile_width, tile_height);
+        cv::Mat tile = image(box);
+        tile.setTo(cv::Scalar(255, 255, 255));
+        cv::rectangle(tile, cv::Rect(0, 0, tile.cols, tile.rows), cv::Scalar(210, 210, 210), 1);
+        const cv::Scalar color = hasSectorGeometry(candidate) ? sectorPointColor(candidate) : cv::Scalar(130, 130, 130);
+        cv::putText(tile, cv::format("A%d", candidate.target_index), cv::Point(8, 19),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.48, color, 1, cv::LINE_AA);
+        cv::putText(tile, candidate.status, cv::Point(8, 37), cv::FONT_HERSHEY_SIMPLEX,
+                    0.34, color, 1, cv::LINE_AA);
+        if (hasSectorGeometry(candidate)) {
+            const double zoom = (tile_width * 0.5 - 16.0) / (1.3 * max_radius);
+            const auto project = [&](const cv::Vec3f& point) {
+                return cv::Point(static_cast<int>(std::lround(tile_width * 0.5 +
+                                    (static_cast<double>(point[0]) - candidate.center[0]) * zoom)),
+                                 static_cast<int>(std::lround(99.0 -
+                                    (static_cast<double>(point[1]) - candidate.center[1]) * zoom)));
+            };
+            drawSectorGeometry(tile, candidate, project);
+            std::string angles;
+            if (!candidate.sector_applied) {
+                angles = sector.omega_valid ? "sector OFF: r~0" : "sector OFF: w unknown";
+            } else if (std::isfinite(candidate.half_angle) && std::isfinite(candidate.center_angle)) {
+                angles = cv::format("theta %.1f / a %.1f deg", candidate.half_angle * 180.0 / M_PI,
+                                     candidate.center_angle * 180.0 / M_PI);
+            } else {
+                angles = "sector geometry invalid";
+            }
+            cv::putText(tile, angles, cv::Point(6, 167), cv::FONT_HERSHEY_SIMPLEX, 0.32, ink, 1, cv::LINE_AA);
+            cv::putText(tile, cv::format("r %.3f / s %.2f m", candidate.radius, candidate.distance),
+                        cv::Point(6, 184), cv::FONT_HERSHEY_SIMPLEX, 0.34, ink, 1, cv::LINE_AA);
+            cv::putText(tile, cv::format("impact +%.1f ms", candidate.predict_time * 1000.0),
+                        cv::Point(6, 201), cv::FONT_HERSHEY_SIMPLEX, 0.34, ink, 1, cv::LINE_AA);
+        } else {
+            cv::putText(tile, "No solved geometry", cv::Point(9, 102), cv::FONT_HERSHEY_SIMPLEX,
+                        0.36, cv::Scalar(130, 130, 130), 1, cv::LINE_AA);
+        }
+    }
+    line("+X right / +Y up; arrow points to muzzle", 822, 0.38);
+    line("Magenta: selected | green: eligible", 841, 0.40);
+    line("Red: excluded | gray: masked / unsolved", 860, 0.38);
+    line("Impact time is relative to EKF snapshot", 879, 0.38);
+}
+} // namespace
+
 void ArmorVisualizer::render(cv::Mat& image,
                                const ArmorVisualizationData& data,
                                const RobotTfTree& tf_tree,
@@ -216,7 +352,8 @@ bool ArmorVisualizer::xyWindowOpen() const {
 void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
     if (!xy_window_open_) return;
 
-    constexpr int kSize = 900;              // 窗口尺寸（像素）
+    constexpr int kSize = 900;              // 主图尺寸（像素）
+    constexpr int kSectorPanelWidth = 360;  // 逐板扇区放大图，不遮挡原有 EKF 主图
     constexpr int kMargin = 70;             // 绘制边距（像素）
     constexpr float kDefaultRange = 5.0f;   // 无点/范围过小时默认半边长（米）
     const cv::Scalar kBg(248, 248, 248);          // 白底（仿照 RMM 顶视图）
@@ -232,7 +369,7 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
     // 观测装甲板法线短线固定长度（米）：本体 -y 方向（外法线）投影到 XY 平面后的长度
     constexpr float kNormalLenM = 0.5f;
 
-    xy_buf_.create(kSize, kSize, CV_8UC3);
+    xy_buf_.create(kSize, kSize + kSectorPanelWidth, CV_8UC3);
     xy_buf_.setTo(kBg);
 
     // ── 收集待绘制点（world 系 x/y，米）──
@@ -270,6 +407,22 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
                                wp[1] + dir.second * kNormalLenM});
             }
         }
+    }
+
+    // 主图优先叠加选中板的真实扇区；首点失败时展示一个有解的候选用于排查。
+    // 右侧始终逐板展示，避免用单一扇区代表不同半径/不同命中时刻的全部装甲板。
+    const SectorCandidate* sector_reference = nullptr;
+    for (const auto& candidate : data.sector.candidates) {
+        if (!hasSectorGeometry(candidate)) continue;
+        if (!sector_reference || candidate.selected) sector_reference = &candidate;
+        if (candidate.selected) break;
+    }
+    if (sector_reference) {
+        const auto& sector = *sector_reference;
+        const float radius = static_cast<float>(sector.radius);
+        pts.push_back({sector.center[0] - radius, sector.center[1] - radius});
+        pts.push_back({sector.center[0] + radius, sector.center[1] + radius});
+        pts.push_back({sector.muzzle[0], sector.muzzle[1]});
     }
 
     // ── 自动缩放：包围盒 + 边距（无有效点或范围过小时用默认半边长）──
@@ -335,6 +488,21 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
         const int py = w2p(0, 0).y;
         cv::line(xy_buf_, cv::Point(kMargin, py), cv::Point(kSize - kMargin, py),
                  kAxis, 1);
+    }
+
+    // ── 首个精确点的真实选板扇区：浅绿填色 + 边界，命中时刻数据用 S 标记 ──
+    if (sector_reference) {
+        const auto project = [&](const cv::Vec3f& point) { return w2p(point[0], point[1]); };
+        // 限定绘制范围为左侧主图，右侧面板由最后一步独立绘制。
+        cv::Mat main_plot = xy_buf_(cv::Rect(0, 0, kSize, kSize));
+        drawSectorGeometry(main_plot, *sector_reference, project);
+        const cv::Point muzzle = project(sector_reference->muzzle);
+        cv::drawMarker(main_plot, muzzle, cv::Scalar(120, 110, 30), cv::MARKER_DIAMOND, 12, 1, cv::LINE_AA);
+        cv::putText(main_plot, "muzzle", muzzle + cv::Point(8, 14), cv::FONT_HERSHEY_SIMPLEX,
+                    0.4, cv::Scalar(120, 110, 30), 1, cv::LINE_AA);
+        cv::putText(main_plot, cv::format("S A%d (impact)", sector_reference->target_index),
+                    project(sector_reference->point) + cv::Point(13, 24), cv::FONT_HERSHEY_SIMPLEX,
+                    0.42, sectorPointColor(*sector_reference), 1, cv::LINE_AA);
     }
 
     // ── chassis → 瞄准目标连线（先画，避免压住标记）──
@@ -466,6 +634,7 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
                 cv::Point(14, kSize - 18), cv::FONT_HERSHEY_SIMPLEX, 0.45,
                 kTextColor, 1, cv::LINE_AA);
 
+    drawSectorPanel(xy_buf_, data.sector, kSize);
     cv::imshow(XY_WINDOW_NAME, xy_buf_);
 }
 

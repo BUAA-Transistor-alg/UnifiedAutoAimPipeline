@@ -292,9 +292,23 @@ SequencePredictor::SelectedSamples SequencePredictor::selectArmorTargets(
         double best_distance = std::numeric_limits<double>::infinity();
         double sticky_distance = best_distance;
         bool any_solved = false;
+        const bool record_sector = frame.samples[u].origin == SampleOrigin::FIXED &&
+                                   frame.samples[u].fixed_output_index == 0;
+        std::vector<SectorCandidateDiagnostic> sector_candidates;
+        if (record_sector) sector_candidates.reserve(solved[u].size());
         for (const auto& candidate : solved[u]) {
-            if (!usable(candidate) || frame.predictor.isIndexMasked(candidate.target_index)) continue;
+            // 只记录首个控制时刻，且在每个提前 continue 前保留失败原因。
+            SectorCandidateDiagnostic* diagnostic = nullptr;
+            const bool masked = candidate.masked || frame.predictor.isIndexMasked(candidate.target_index);
+            if (record_sector) {
+                sector_candidates.emplace_back();
+                diagnostic = &sector_candidates.back();
+                diagnostic->target_index = candidate.target_index;
+                if (masked) diagnostic->status = SectorCandidateStatus::MASKED;
+            }
+            if (!usable(candidate) || masked) continue;
             any_solved = true;
+            if (diagnostic) diagnostic->status = SectorCandidateStatus::INVALID_GEOMETRY;
             const auto launch = GimbalSolver::evaluateLaunchState(
                 frame.launch_geometries[u], candidate.gimbal.yaw, candidate.gimbal.pitch);
             if (!launch.position.allFinite()) continue;
@@ -308,6 +322,16 @@ SequencePredictor::SelectedSamples SequencePredictor::selectArmorTargets(
             const auto center = asVec(predicted.first);
             const double radius = horizontalDistance(center, candidate.predicted_point);
             if (!std::isfinite(radius)) continue;
+            if (diagnostic) {
+                diagnostic->geometry_valid = true;
+                diagnostic->center = center;
+                diagnostic->point = candidate.predicted_point;
+                diagnostic->muzzle = current.launch_muzzle;
+                diagnostic->predict_time = candidate.predict_time;
+                diagnostic->radius = radius;
+                diagnostic->distance = horizontalDistance(center, current.launch_muzzle);
+                diagnostic->sector_applied = frame.use_sector && radius > kGeometryEpsilon;
+            }
             // 已确定：基地等中心点目标 r≈0 时不使用旋转扇区。
             if (frame.use_sector && radius > kGeometryEpsilon) {
                 const double distance = horizontalDistance(center, current.launch_muzzle);
@@ -316,8 +340,14 @@ SequencePredictor::SelectedSamples SequencePredictor::selectArmorTargets(
                 if (!theta) continue;
                 current.center_angle = centerAngle(center, candidate.predicted_point, current.launch_muzzle);
                 current.allowed_half_angle = *theta;
+                if (diagnostic) {
+                    diagnostic->center_angle = current.center_angle;
+                    diagnostic->half_angle = *theta;
+                    if (std::isfinite(current.center_angle)) diagnostic->status = SectorCandidateStatus::OUTSIDE;
+                }
                 if (!std::isfinite(current.center_angle) || std::fabs(current.center_angle) > *theta) continue;
             }
+            if (diagnostic) diagnostic->status = SectorCandidateStatus::ELIGIBLE;
             current.status = SampleStatus::SELECTED;
             // 当前采用：按距离最小选取；距离使用该候选自己的发射枪口。
             // 相同距离时保持输入索引顺序；后续粘滞规则另行判断。
@@ -340,7 +370,9 @@ SequencePredictor::SelectedSamples SequencePredictor::selectArmorTargets(
         } else if (frame.use_sticky) {
             sticky_index = best.selected.target_index;
         }
-        selected.push_back(best);
+        // 即使首点没有选中结果，也把候选诊断传给 UI；result.valid=false 不丢失诊断。
+        best.sector_candidates = std::move(sector_candidates);
+        selected.push_back(std::move(best));
     }
     return selected;
 }

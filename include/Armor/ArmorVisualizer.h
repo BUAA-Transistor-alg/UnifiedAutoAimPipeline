@@ -59,6 +59,33 @@ struct ArmorVisualizationData {
         cv::Vec3f aim_point = cv::Vec3f(0, 0, 0);          // 瞄准目标位置（world，米）
     } xy;
 
+    // ---- 首个精确采样时刻的选板扇区（来自 SequencePredictor 的实际判定诊断）----
+    // 每个候选使用自己的命中时刻/枪口/半径，不与主图的 t=0 EKF 板位置混作同一时刻。
+    struct SectorViewData {
+        struct Candidate {
+            int target_index = -1;
+            std::string status;
+            bool geometry_valid = false;
+            bool sector_applied = false;
+            bool eligible = false;
+            bool selected = false;
+            cv::Vec3f center{0.0f, 0.0f, 0.0f};
+            cv::Vec3f point{0.0f, 0.0f, 0.0f};
+            cv::Vec3f muzzle{0.0f, 0.0f, 0.0f};
+            double predict_time = 0.0;
+            double radius = 0.0;
+            double distance = 0.0;
+            double center_angle = 0.0;
+            double half_angle = 0.0;
+        };
+        bool sample_available = false;
+        bool omega_valid = false;
+        double omega = 0.0;
+        double control_time = 0.0;
+        std::string status = "NO FIRST-SAMPLE DATA";
+        std::vector<Candidate> candidates;
+    } sector;
+
     // ---- 大小 yaw 构型数据（仅 config common.big_small_yaw.mode = big_small 时填充）----
     // XY 平面窗口据此绘制两段固定长度线段：大 yaw 线段（绿，起点 = 大 yaw 轴在 XY 平面的
     // 位置）与小 yaw 线段（青，起点 = 大 yaw 起点 + Rz(θ_big)·小 yaw 轴偏移的 xy 分量），
@@ -130,6 +157,7 @@ public:
     /// 每帧绘制 XY 平面（车体中心 / 装甲板位置（预测函数 t=0 快照）/
     /// 观测装甲板（PnP 原始位姿，橙小圆，绘制于预测装甲板上层）+ 本体 -y 方向法线短线 /
     /// 瞄准目标位置 / 自身 chassis 位置 + chassis→瞄准目标连线）并刷新窗口；
+    /// 同时叠加首个精确点的选板扇区，右侧逐板放大显示真实几何和筛选结果；
     /// 窗口未开启或已被用户手动关闭时直接返回。仅可视化线程调用。
     void renderXY(const ArmorVisualizationData& data);
 

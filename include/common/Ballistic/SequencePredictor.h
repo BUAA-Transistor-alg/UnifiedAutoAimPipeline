@@ -101,6 +101,23 @@ public:
         NO_ELIGIBLE_TARGET,                     // 有成功解，但没有通过选取规则
         SELECTED
     };
+    // 首个固定精确点的逐板选取诊断。可视化直接使用实际判定数据，
+    // 包括被扇区排除的成功弹道候选；不重新解算、不改变选板结果。
+    enum class SectorCandidateStatus { MASKED, SOLVE_FAILED, INVALID_GEOMETRY, OUTSIDE, ELIGIBLE };
+    struct SectorCandidateDiagnostic {
+        int target_index = -1;
+        SectorCandidateStatus status = SectorCandidateStatus::SOLVE_FAILED;
+        bool geometry_valid = false;
+        bool sector_applied = false;           // omega 不可用或 r≈0 时为 false
+        cv::Vec3f center{0.0f, 0.0f, 0.0f};    // 该候选自己的命中时刻下的目标中心
+        cv::Vec3f point{0.0f, 0.0f, 0.0f};
+        cv::Vec3f muzzle{0.0f, 0.0f, 0.0f};    // 该候选解对应的发射枪口
+        double predict_time = 0.0;             // 相对 EKF 快照的命中时刻
+        double radius = 0.0;
+        double distance = 0.0;
+        double center_angle = std::numeric_limits<double>::quiet_NaN();
+        double half_angle = std::numeric_limits<double>::quiet_NaN();
+    };
     struct SelectedSample {
         SamplePoint point;
         Candidate selected;
@@ -108,6 +125,7 @@ public:
         cv::Vec3f launch_muzzle{0.0f, 0.0f, 0.0f};
         double center_angle = std::numeric_limits<double>::quiet_NaN();
         double allowed_half_angle = std::numeric_limits<double>::quiet_NaN();
+        std::vector<SectorCandidateDiagnostic> sector_candidates; // 仅首个固定点填充，控制诊断开销
     };
     enum class FillKind { EXACT, INTERPOLATED, EXTRAPOLATED, COPIED };
     struct OutputPointInfo {

@@ -5,9 +5,11 @@
 #include "Armor/ArmorModel.h"
 #include "PowerRune/TargetPositionCalculator.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <iostream>
 #include <cmath>
+#include <utility>
 
 namespace {
 
@@ -217,6 +219,53 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, tcs::RobotContro
                                         (float)result.extra_info.chassis_z);
     vis.xy.aim_valid = seq.valid;
     vis.xy.aim_point = seq.first_point;
+
+    // 即使整帧无效也显示首点候选的扇区，便于区分解算失败与被扇区排除。
+    // 直接使用弹道线程同一帧的判定快照，不在可视化线程重新预测或求解。
+    vis.sector.omega_valid = result.predictor.omega_valid && std::isfinite(result.predictor.target_omega);
+    vis.sector.omega = result.predictor.target_omega;
+    const auto first_sample = std::find_if(seq.samples.begin(), seq.samples.end(), [](const auto& sample) {
+        return sample.point.origin == SequencePredictor::SampleOrigin::FIXED &&
+               sample.point.fixed_output_index == 0;
+    });
+    if (first_sample != seq.samples.end()) {
+        vis.sector.sample_available = true;
+        vis.sector.control_time = first_sample->point.control_time;
+        using SampleStatus = SequencePredictor::SampleStatus;
+        if (first_sample->status == SampleStatus::SELECTED) {
+            vis.sector.status = cv::format("SELECTED A%d", first_sample->selected.target_index);
+        } else if (first_sample->status == SampleStatus::NO_ELIGIBLE_TARGET) {
+            vis.sector.status = "NO ELIGIBLE PLATE";
+        } else {
+            vis.sector.status = "NO BALLISTIC SOLUTION";
+        }
+        for (const auto& diagnostic : first_sample->sector_candidates) {
+            ArmorVisualizationData::SectorViewData::Candidate candidate;
+            candidate.target_index = diagnostic.target_index;
+            candidate.geometry_valid = diagnostic.geometry_valid;
+            candidate.sector_applied = diagnostic.sector_applied;
+            candidate.center = diagnostic.center;
+            candidate.point = diagnostic.point;
+            candidate.muzzle = diagnostic.muzzle;
+            candidate.predict_time = diagnostic.predict_time;
+            candidate.radius = diagnostic.radius;
+            candidate.distance = diagnostic.distance;
+            candidate.center_angle = diagnostic.center_angle;
+            candidate.half_angle = diagnostic.half_angle;
+            using Status = SequencePredictor::SectorCandidateStatus;
+            candidate.eligible = diagnostic.status == Status::ELIGIBLE;
+            candidate.selected = first_sample->status == SampleStatus::SELECTED &&
+                                 diagnostic.target_index == first_sample->selected.target_index;
+            switch (diagnostic.status) {
+            case Status::MASKED: candidate.status = "MASKED"; break;
+            case Status::SOLVE_FAILED: candidate.status = "SOLVE FAILED"; break;
+            case Status::INVALID_GEOMETRY: candidate.status = "BAD GEOMETRY"; break;
+            case Status::OUTSIDE: candidate.status = "OUTSIDE SECTOR"; break;
+            case Status::ELIGIBLE: candidate.status = candidate.selected ? "SELECTED" : "ELIGIBLE"; break;
+            }
+            vis.sector.candidates.push_back(std::move(candidate));
+        }
+    }
 
     vis.robot_state = rc ? rc->getState() : tcs::RobotController::State{};
 
