@@ -473,9 +473,9 @@ void ArmorPipeline::processStage5(DataDeque& data)
     //   esekf → getYawRate()（绕世界系 z，rad/s）；ClassEKF → state_.w（rad/s），
     //   两者均带正负，此时角速度有效标志 = true。
     // 基地（label 7/8）无角速度属性、角速度当前不可用（EKF 未初始化 / 无 state）
-    //   → 角速度填 0 且有效标志 = false（下游据此不判定慢目标）。
-    // 慢目标判定（施密特触发器）已移入 SequencePredictor::predict：本流水线只
-    // 提供角速度原始值与其有效标志，不再自行判定 slow_target。
+    //   → 角速度填 0 且有效标志 = false（下游据此关闭旋转扇区、补点与选板粘滞）。
+    // 本流水线只提供角速度原始值与其有效标志，SequencePredictor 用 |w| 连续调节
+    // 选板参数，不再划分快慢弹道路径。
     double target_omega = 0.0;
     bool   target_omega_valid = false;
     if (best_label == ArmorDetect::OUTPOST_CLASS && esekf_initialized) {

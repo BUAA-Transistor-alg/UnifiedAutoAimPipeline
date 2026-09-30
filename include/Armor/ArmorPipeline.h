@@ -125,9 +125,8 @@ struct ArmorPipelineData {
         // 与 ClassEKF（label 0~5，w）有该属性，此时 target_omega_valid = true；
         // 基地（label 7/8）等无该属性、或角速度当前不可用（EKF 未初始化/无 state）
         // 时 target_omega_valid = false（角速度填 0）。
-        // 慢目标判定（施密特触发器）不在此处进行：本值随预测器下发，
-        // 由 SequencePredictor::predict 依据 config armor.target_selection 的
-        // 上下阈值判定（仅当有效标志为 true 时判定）。
+        // 本值随预测器下发，由 SequencePredictor 按 |w| 连续调节候选扇区和选板粘滞。
+        // 不再在下游划分快慢弹道路径；角速度不可用时关闭扇区、补点与选板粘滞。
         double target_omega = 0.0;
         bool   target_omega_valid = false;
     } stage5;
@@ -202,9 +201,8 @@ private:
     float nms_threshold_   = 0.45f;
 
     // ── 目标选取滞回（取自 config armor.target_selection）──
-    // L1：stage5 目标级滞回固定优先度（米）。L2 慢目标施密特触发阈值不再由本类
-    // 读取（判定已移入 SequencePredictor::predict，本类只下发原始角速度及其
-    // 可用标志）。
+    // L1：stage5 目标级滞回固定优先度（米）。本类只下发原始角速度及其可用标志，
+    // 板级粘滞由 SequencePredictor 根据 |w| 连续衰减，不再使用快慢施密特阈值。
     double stage5_stick_priority_m_ = 0.0;  // L1：stage5 目标级滞回固定优先度（米）
 
     // ── stage5 目标选取跨帧状态（仅 stage5 worker 线程访问，单帧串行）──

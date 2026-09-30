@@ -46,7 +46,6 @@ GimbalOutputForBigSmallYaw::GimbalOutputForBigSmallYaw(RobotControllerAdapter& c
       fire_angle_lower_limit_(RobotConfig::instance().common.predictSequence.fireAngleLowerLimit),
       fire_angle_length_(RobotConfig::instance().common.predictSequence.fireAngleLength),
       dt_control_(RobotConfig::instance().common.dtControl()),
-      extra_predict_time_(RobotConfig::instance().common.predictedBallistic.extraPredictTime),
       sentry_(RobotConfig::instance().common.sentryController),
       scan_seq_points_((RobotConfig::instance().common.predictSequence.predictionPoints - 1)
                            * RobotConfig::instance().common.predictSequence.interpolationRefine
@@ -121,11 +120,8 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                 // 条件1：MPC 预测轨迹与目标轨迹（参考）误差在动态角度阈值内
                 const bool track_ok = computeFire(st.ref_small_azimuth_seq[k],
                                                   st.pred_small_azimuth_seq[k], threshold);
-                // 条件2（需求5，仅 fast_target 帧）：该火控点命中时刻有目标（装甲板）在
-                // 枪线上（匀速旋转模型；非 fast_target 时恒 true，保持原行为）
-                const bool line_ok = SequencePredictor::fastGunLineOk(
-                    seq, (int)k, extra_predict_time_, dt_control_);
-                fire_seq.push_back(track_ok && line_ok);   // 两个条件都满足才开火
+                // 删除旧 Armor 枪线门控；此输出分支继续使用小 yaw 跟踪误差判定。
+                fire_seq.push_back(track_ok);
             }
         }
 

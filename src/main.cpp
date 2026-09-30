@@ -1236,9 +1236,9 @@ int main(int argc, char** argv) {
                 // ── 弹道解算：目标预测器（Predictor）已由两条流水线在输出结果
                 //    时组装完成并随 PipelineResult 输出（result.predictor：预测
                 //    函数快照 + 来源标注 + 快照时间戳 + 屏蔽索引），此处直接调
-                //    SequencePredictor::predict —— 内部依据来源自动选择目标策略
-                //    （Armor→NEAREST / PowerRune→LOWEST_Z）、跳过屏蔽的瞄准点、
-                //    在来源切换时重置其自身状态；当帧预测结果写入 OutputContext
+                //    SequencePredictor::predict —— 按来源执行准备、解算、选取、生成四阶段：
+                //    Armor 使用旋转扇区与距离粘滞，PowerRune 使用独立选点状态机；
+                //    来源切换时重置选板状态；含采样诊断的当帧结果写入 OutputContext
                 //    供输出模式消费 ──
                 //    predictor_valid == false（本帧无可用目标预测器）时调
                 //    invalidate() 重置 SequencePredictor 内部状态；

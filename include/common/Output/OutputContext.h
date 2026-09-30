@@ -55,7 +55,7 @@ struct OutputContext {
     struct FireGateStatus {
         bool valid = false;
         bool track_ok = false;
-        bool second_ok = false;  // 该输出分支实际使用的第二门控
+        bool second_ok = false;  // PowerRune 激活时间门控；Armor 无第二门控，记录为 true
     } fire_gate_front;
     bool gimbal_enabled = false;  // 是否开启 gimbal 输出模式
 

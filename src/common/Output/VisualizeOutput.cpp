@@ -31,7 +31,8 @@ void drawAimPointOverlay(cv::Mat& img, const cv::Vec3f& aim_world, double aim_t,
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1);
 }
 
-// 井形叉丝右侧固定两槽：上红 = track 未通过，下蓝 = 第二门控未通过。
+// 井形叉丝右侧固定两槽：上红 = track 未通过，下蓝 = PowerRune 时间门控未通过。
+// Armor 已移除第二门控，不显示蓝色失败指示。
 // 只有已计算出的失败门控才画；通过或无判定数据时留空。
 void drawFireGateIndicators(cv::Mat& img, const cv::Point2f& p,
                             const OutputContext::FireGateStatus& gates) {

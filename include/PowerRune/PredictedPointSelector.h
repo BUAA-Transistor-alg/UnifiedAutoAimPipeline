@@ -20,7 +20,7 @@
 //   点立即置为 UNOBSERVED。两个计时状态被任何其它转移打断即计时清零；
 //   计时一律使用调用方传入的 timestamp（内部不读系统时间）。
 //
-// ── 选取（每次 select() 调用；每帧一次，见 SequencePredictor::predictImpl）──
+// ── 选取（每次 select() 调用；每帧一次，见 SequencePredictor::selectPowerRuneTarget）──
 //   候选 = 状态为 OBSERVED 或 TEMPORARILY_LOST 的点；
 //   上一次选中的目标仍在候选中且本步有可用解算结果 → 继续选它（粘滞）；
 //   否则在候选中取**预测高度 z 最低**者；无可用候选 → 返回 -1（并清空粘滞目标）。
@@ -30,7 +30,7 @@
 //   的点索引：这些点即使本帧被 mask 也应参与弹道解算——已观测点可能在本步被 mask
 //   转为临时丢失并被粘滞选中；临时丢失点也可能被继续选中（否则它们在本步的解算
 //   序列里只是 masked 占位符，选到后没有可用结果）。调用方据此从解算 mask 中解除
-//   对应屏蔽（见 SequencePredictor::predictImpl 的 solve_masked_indices）。
+//   对应屏蔽（见 SequencePredictor::preparePowerRune 的 solve_masked_indices）。
 #ifndef PREDICTED_POINT_SELECTOR_H
 #define PREDICTED_POINT_SELECTOR_H
 

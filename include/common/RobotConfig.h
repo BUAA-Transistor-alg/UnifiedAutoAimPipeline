@@ -169,16 +169,11 @@ public:
         double yawBias;             // yaw 轴偏置（弧度）
         double fireAngleLowerLimit; // fire 判定角度阈值下限（弧度）
         double fireAngleLength;     // fire 判定弧长（米）
-        double aimStickRatio;       // 瞄准点滞回幅度系数（无单位，>=0）：SequencePredictor
-                                    // 在“慢目标”帧启用瞄准点滞回时，滞回量 =
-                                    // aim_stick_ratio × (t=0 全部瞄准点到预测车体中心的
-                                    // 平均距离)。0 = 关闭瞄准点滞回。
-        double minRotationToleranceAngle;  // 旋转容差角下限（弧度，>=0）：fast_target 帧下
-                                    // 每个预测瞄准点的旋转容差角 =
-                                    // max(本值, fire_angle_length / 该点的旋转半径)
-                                    // （旋转半径 = 中心位置−瞄准点 的 xy 投影长度）。
-                                    // 半径很小时容差角趋于无穷，用本值兜底（同时给出
-                                    // “最小可打角度窗口”）。
+        double aimStickRatio;       // 基础板级粘滞比例，>=0；0 关闭。
+                                    // 基础余量 = ratio × t=0 板到中心的平均距离；
+                                    // SequencePredictor 再按 |w| 衰减；角速度不可用时关闭。
+        // 仅为兼容旧机器 YAML 保留解析；统一真实板路径已不使用这个枪线容差参数。
+        double minRotationToleranceAngle;
     };
 
     // ══════════════════════════════════════════════════════════════════════
@@ -431,26 +426,13 @@ public:
         // Armor 目标选取滞回参数（config: armor.target_selection）
         //   stage5 目标级滞回：上一帧选中的目标（filter/label）在再次选取时获得
         //   固定优先度，避免距底盘原点相近的多个候选来回切换（与角速度无关）；
-        //   慢目标（施密特触发器）阈值：目标自身角速度 |ω| 低于下阈值视为慢目标
-        //   （瞄准点滞回允许），高于上阈值视为快目标，介于两阈值之间保持上一帧
-        //   判定（施密特触发器防抖，无连续帧计数）。判定本身由
-        //   SequencePredictor::predict 依据预测器下发的目标角速度（带正负）与其
-        //   可用标志（Predictor::omega_valid）完成，本段只提供阈值；
-        //   角速度不可用的目标（PowerRune / 基地 label 7/8 / EKF 未就绪：
-        //   omega_valid = false，角速度填 0）不判定、不启用瞄准点滞回。
+        //   旧快慢施密特阈值仅为兼容已有机器配置保留解析，SequencePredictor 不再使用。
         struct TargetSelectionParams {
             double stage5StickPriorityM;      // stage5 目标级滞回固定优先度（米，>=0）
-            double slowAngularVelocityLower;  // 慢目标施密特触发下阈值（rad/s，>=0）
-            double slowAngularVelocityUpper;  // 慢目标施密特触发上阈值（rad/s，> lower）
-            // ── 快目标（fast_target）施密特触发阈值（rad/s，两者均 > slow_angular_velocity_upper）──
-            // 目标自身角速度 |ω| 高于 upper 判定为 fast_target（整条预测序列改为对
-            // “即将与枪线对齐的那块板”做单点解算，火控数组额外做枪线判定），低于
-            // lower 取消 fast_target，介于两者之间保持上一帧判定（与慢目标同一套
-            // 施密特防抖逻辑，判定同样在 SequencePredictor::predict 内完成）；
-            // 角速度不可用的目标（PowerRune / 基地 label 7/8 / EKF 未就绪）不判定、
-            // 不进入 fast_target 分支。
-            double fastAngularVelocityLower;  // 快目标施密特触发下阈值（rad/s，> slow upper）
-            double fastAngularVelocityUpper;  // 快目标施密特触发上阈值（rad/s，> lower）
+            double slowAngularVelocityLower;  // 旧配置兼容字段
+            double slowAngularVelocityUpper;
+            double fastAngularVelocityLower;
+            double fastAngularVelocityUpper;
         };
         TargetSelectionParams targetSelection;
     };

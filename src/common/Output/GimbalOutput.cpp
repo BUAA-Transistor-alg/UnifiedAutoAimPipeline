@@ -44,7 +44,6 @@ GimbalOutput::GimbalOutput(tcs::RobotController& rc)
       fire_seq_lead_(RobotConfig::instance().common.predictSequence.fireSeqLead),
       fire_angle_lower_limit_(RobotConfig::instance().common.predictSequence.fireAngleLowerLimit),
       fire_angle_length_(RobotConfig::instance().common.predictSequence.fireAngleLength),
-      extra_predict_time_(RobotConfig::instance().common.predictedBallistic.extraPredictTime),
       dt_control_(RobotConfig::instance().common.dtControl()),
       sentry_(RobotConfig::instance().common.sentryController),
       scan_seq_points_((RobotConfig::instance().common.predictSequence.predictionPoints - 1)
@@ -99,13 +98,11 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
                 // 条件1：MPC 预测轨迹与目标轨迹（参考）误差在动态角度阈值内
                 const bool track_ok = computeFire(st.mpc.ref_sequence[k], st.mpc.pred_sequence[k],
                                                   threshold);
-                // 条件2（需求5，仅 fast_target 帧）：该火控点命中时刻有目标（装甲板）在
-                // 枪线上（匀速旋转模型；非 fast_target 时恒 true，保持原行为）
-                const bool line_ok = SequencePredictor::fastGunLineOk(
-                    seq, (int)k, extra_predict_time_, dt_control_);
                 if (result.predictor.source.kind == Kind::ARMOR){
-                    fire_seq.push_back(track_ok && line_ok);   // 两个条件都满足才开火
-                    gate_seq.push_back({true, track_ok, line_ok});
+                    // Armor 仅保留 MPC 跟踪误差门控；不再做枪线对齐判定。
+                    // 合成点的 success 只作精确解诊断，不额外阻止下发或开火。
+                    fire_seq.push_back(track_ok);
+                    gate_seq.push_back({true, track_ok, true}); // 无第二门控，不显示失败指示
                 }
                 else if (result.predictor.source.kind == Kind::POWER_RUNE){
                     const bool time_ok = (k < seq.items.size() &&
@@ -122,6 +119,7 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
         std::vector<double> yaw_seq, pitch_seq;
         yaw_seq.reserve(seq.items.size());
         pitch_seq.reserve(seq.items.size());
+        // Result.valid 已保证首点有效；插值/外推/复制参考点全部交给控制器。
         for (const auto& item : seq.items) {
             yaw_seq.push_back(item.yaw);
             pitch_seq.push_back(item.pitch);
