@@ -250,6 +250,7 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, tcs::RobotContro
             candidate.predict_time = diagnostic.predict_time;
             candidate.radius = diagnostic.radius;
             candidate.distance = diagnostic.distance;
+            candidate.axis_offset = diagnostic.axis_offset;
             candidate.center_angle = diagnostic.center_angle;
             candidate.half_angle = diagnostic.half_angle;
             using Status = SequencePredictor::SectorCandidateStatus;

@@ -75,7 +75,8 @@ struct ArmorVisualizationData {
             double predict_time = 0.0;
             double radius = 0.0;
             double distance = 0.0;
-            double center_angle = 0.0;
+            double axis_offset = 0.0;          // phi，rad，顺时针为正
+            double center_angle = 0.0;         // 板相对偏转后扇区轴的夹角
             double half_angle = 0.0;
         };
         bool sample_available = false;

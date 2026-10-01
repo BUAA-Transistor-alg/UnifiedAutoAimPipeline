@@ -46,6 +46,7 @@ SequencePredictor::SequencePredictor(const Options& options)
       aim_stick_ratio_(RobotConfig::instance().common.predictSequence.aimStickRatio) {
     // 这里只校验参数合法性，不把演示参数写入生产配置。
     if (!std::isfinite(options_.sector_w0) || options_.sector_w0 <= 0.0 ||
+        !std::isfinite(options_.sector_phi_w0) || options_.sector_phi_w0 <= 0.0 ||
         !std::isfinite(options_.w_stick) || options_.w_stick <= 0.0 ||
         !std::isfinite(options_.armor_width_override) || options_.armor_width_override < 0.0 ||
         options_.max_prior_probes_per_plate < 1 || options_.boundary_refine_iterations < 0 ||
@@ -180,6 +181,8 @@ std::optional<SequencePredictor::PreparedFrame> SequencePredictor::prepareArmor(
     // 这与有效的 w=0 不同：后者仍启用扇区，使用 theta 的低速极限。
     const bool omega_available = predictor.omega_valid && std::isfinite(predictor.target_omega);
     frame->use_sector = omega_available;
+    frame->sector_axis_offset = omega_available
+        ? sectorAxisOffset(predictor.target_omega, options_.sector_phi_w0) : 0.0;
     frame->use_sticky = options_.enable_sticky_selection && omega_available &&
                         std::isfinite(frame->base_stick_delta) && frame->base_stick_delta > 0.0;
     if (frame->use_sticky) {
@@ -331,6 +334,7 @@ SequencePredictor::SelectedSamples SequencePredictor::selectArmorTargets(
                 diagnostic->radius = radius;
                 diagnostic->distance = horizontalDistance(center, current.launch_muzzle);
                 diagnostic->sector_applied = frame.use_sector && radius > kGeometryEpsilon;
+                diagnostic->axis_offset = diagnostic->sector_applied ? frame.sector_axis_offset : 0.0;
             }
             // 已确定：基地等中心点目标 r≈0 时不使用旋转扇区。
             if (frame.use_sector && radius > kGeometryEpsilon) {
@@ -338,7 +342,9 @@ SequencePredictor::SelectedSamples SequencePredictor::selectArmorTargets(
                 const auto theta = sectorHalfAngle(frame.predictor.target_omega, distance,
                                                     radius, frame.plate_width, options_.sector_w0);
                 if (!theta) continue;
-                current.center_angle = centerAngle(center, candidate.predicted_point, current.launch_muzzle);
+                current.axis_offset = frame.sector_axis_offset;
+                current.center_angle = sectorRelativeAngle(center, candidate.predicted_point,
+                                                           current.launch_muzzle, current.axis_offset);
                 current.allowed_half_angle = *theta;
                 if (diagnostic) {
                     diagnostic->center_angle = current.center_angle;
@@ -574,7 +580,7 @@ std::optional<double> SequencePredictor::sectorHalfAngle(
     // theta(w,s) = theta_min + (theta_max-theta_min)/(1+(|w|/w0)^2)。
     // s 是枪口到敌方中心的水平距离，r 是当前板半径，L 是板宽。
     // theta_max=acos(r/s)：低速极限对应圆的可见切点；
-    // theta_min=atan(L/(2r))：高速极限保留正面一块板宽的中心角范围。
+    // theta_min=atan(L/(2r))：高速极限保留一块板宽的中心角范围；轴方向由 phi 单独决定。
     const double maximum = std::acos(std::clamp(radius / distance, 0.0, 1.0));
     // 当前规则：极近距离时板宽角可能大于可见弧角，裁剪到可见弧上限。
     const double minimum = std::min(maximum, std::atan2(width / 2.0, radius));
@@ -582,8 +588,17 @@ std::optional<double> SequencePredictor::sectorHalfAngle(
     return minimum + (maximum - minimum) / (1.0 + ratio * ratio);
 }
 
-double SequencePredictor::centerAngle(
-    const cv::Vec3f& center, const cv::Vec3f& plate, const cv::Vec3f& muzzle) {
+double SequencePredictor::sectorAxisOffset(double omega, double w_phi) {
+    if (!std::isfinite(omega) || !std::isfinite(w_phi) || w_phi <= 0.0)
+        return std::numeric_limits<double>::quiet_NaN();
+    // 等价于 0.5*atan(omega/w_phi)；atan2 避免极大有限 w 的除法溢出。
+    // EKF 的 w>0 在 world XY 中为逆时针；将轴顺时针偏转可更早覆盖来板侧。
+    return 0.5 * std::atan2(omega, w_phi);
+}
+
+double SequencePredictor::sectorRelativeAngle(
+    const cv::Vec3f& center, const cv::Vec3f& plate, const cv::Vec3f& muzzle,
+    double clockwise_offset) {
     // 两个向量都以敌方中心为起点，只投影到 world XY，不投影到枪口自身 XY。
     const double mx = static_cast<double>(muzzle[0]) - center[0];
     const double my = static_cast<double>(muzzle[1]) - center[1];
@@ -591,7 +606,10 @@ double SequencePredictor::centerAngle(
     const double py = static_cast<double>(plate[1]) - center[1];
     if (std::hypot(mx, my) <= kGeometryEpsilon || std::hypot(px, py) <= kGeometryEpsilon)
         return std::numeric_limits<double>::quiet_NaN();
-    return std::atan2(mx * py - my * px, mx * px + my * py);
+    // alpha 是板相对枪口连线的逆时针角；扇区轴为 muzzle_axis-phi，
+    // 因此板相对新轴的角为 wrap(alpha+phi)。统一处理跨越 ±pi 的情况。
+    const double relative = std::atan2(mx * py - my * px, mx * px + my * py) + clockwise_offset;
+    return std::atan2(std::sin(relative), std::cos(relative));
 }
 
 bool SequencePredictor::usable(const Candidate& candidate) {
@@ -613,7 +631,7 @@ bool SequencePredictor::priorInsideSector(
     const auto theta = sectorHalfAngle(frame.predictor.target_omega,
         horizontalDistance(center, frame.current_muzzle), horizontalDistance(center, point),
         frame.plate_width, options_.sector_w0);
-    const double angle = centerAngle(center, point, frame.current_muzzle);
+    const double angle = sectorRelativeAngle(center, point, frame.current_muzzle, frame.sector_axis_offset);
     return theta && std::isfinite(angle) && std::fabs(angle) <= *theta;
 }
 

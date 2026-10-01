@@ -3,7 +3,8 @@
 // SequencePredictor：按来源分流的四阶段序列预测器。
 // predict() 适配控制器状态，SequenceStageProcessor 依次执行准备、预测解算、选板、序列生成。
 // Armor：全部未屏蔽真实板统一 Newton 解算；固定点与几何补点按时间合并；
-// 在目标中心处以目标到枪口方向为扇区轴，按 |w| 收窄扇区并衰减选板粘滞。
+// 在目标中心处以目标到枪口方向为基准，按带符号 w 向来板侧偏转扇区轴；
+// 按 |w| 收窄扇区并衰减选板粘滞。
 // 首个输出时刻必须是有效固定精确点；后续允许同板插值/外推，缺同板参考时复制。
 // PowerRune：保留独立解算器和选点状态机，所有固定精确点必须成功。
 // Result.valid 表示控制参考可用；Armor 合成点的 success=false 不阻止其下发。
@@ -77,6 +78,9 @@ public:
     struct Options {
         // TODO(CONFIG): 演示值，不是实车推荐值。|w|=w0 时半角为上下限均值。
         double sector_w0 = 2.0;                 // rad/s，必须 > 0
+        // TODO(CONFIG): phi(w)=0.5*atan(w/w_phi)，独立于半角收窄速度；
+        // |w|=w_phi 时偏转 22.5 度，正 phi 表示从目标到枪口方向顺时针偏转。
+        double sector_phi_w0 = 2.0;             // rad/s，必须有限且 > 0，待实测
         double armor_width_override = 0.0;      // m；0 表示使用 ArmorModel 板宽
         // 补点预算只限制新增的 Newton 采样时刻数，固定点不会被裁掉。
         std::size_t max_geometry_points = 8;
@@ -115,6 +119,8 @@ public:
         double predict_time = 0.0;             // 相对 EKF 快照的命中时刻
         double radius = 0.0;
         double distance = 0.0;
+        double axis_offset = 0.0;              // phi，rad，顺时针为正；扇区停用时为 0
+        // 板相对偏转后扇区轴的有符号夹角，逆时针为正，已归一化到 [-pi,pi]。
         double center_angle = std::numeric_limits<double>::quiet_NaN();
         double half_angle = std::numeric_limits<double>::quiet_NaN();
     };
@@ -125,6 +131,7 @@ public:
         cv::Vec3f launch_muzzle{0.0f, 0.0f, 0.0f};
         double center_angle = std::numeric_limits<double>::quiet_NaN();
         double allowed_half_angle = std::numeric_limits<double>::quiet_NaN();
+        double axis_offset = 0.0;              // 与诊断一致的顺时针轴偏移 phi
         std::vector<SectorCandidateDiagnostic> sector_candidates; // 仅首个固定点填充，控制诊断开销
     };
     enum class FillKind { EXACT, INTERPOLATED, EXTRAPOLATED, COPIED };
@@ -163,6 +170,10 @@ public:
         double omega, double muzzle_center_distance, double plate_radius,
         double plate_width, double w0);
 
+    // 顺时针为正的轴偏移 phi：w>0 为逆时针旋转，来板侧位于枪口连线顺时针侧。
+    // phi(0)=0，phi(w) 在 w→±∞ 时趋于 ±pi/4；非法输入返回 NaN。
+    static double sectorAxisOffset(double omega, double w_phi);
+
 private:
     struct InputSnapshot {
         bool big_small = false;
@@ -183,6 +194,7 @@ private:
         int output_count = 0;
         bool all_aims_masked = false;
         bool use_sector = false;
+        double sector_axis_offset = 0.0;       // 每帧统一计算；补点与最终选板共用
         double plate_width = 0.0;
         bool use_sticky = false;               // 本帧是否启用选板粘滞
         double base_stick_delta = 0.0;          // 原比例参数 × 平均板中心距离，m
@@ -225,8 +237,8 @@ private:
     float yawBigAtTime(const InputSnapshot&, double control_time) const;
     static InputSnapshot snapshotFromSingle(const tcs::RobotController::State&);
     static InputSnapshot snapshotFromBigSmall(const bsy::RobotState&);
-    static double centerAngle(const cv::Vec3f& center, const cv::Vec3f& plate,
-                              const cv::Vec3f& muzzle);
+    static double sectorRelativeAngle(const cv::Vec3f& center, const cv::Vec3f& plate,
+                                      const cv::Vec3f& muzzle, double clockwise_offset);
     static bool usable(const Candidate&);
     Item makeItem(const PreparedFrame&, const Candidate&) const;
     static Item blendItem(const Item&, const Item&, double fraction);

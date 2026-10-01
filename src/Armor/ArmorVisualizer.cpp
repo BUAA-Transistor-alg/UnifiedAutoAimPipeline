@@ -40,8 +40,10 @@ void drawSectorGeometry(cv::Mat& image, const SectorCandidate& candidate, const 
             static_cast<float>(candidate.center[1] + multiplier * candidate.radius * std::sin(angle)),
             candidate.center[2]));
     };
-    const double axis = std::atan2(static_cast<double>(candidate.muzzle[1]) - candidate.center[1],
-                                   static_cast<double>(candidate.muzzle[0]) - candidate.center[0]);
+    const double muzzle_axis = std::atan2(static_cast<double>(candidate.muzzle[1]) - candidate.center[1],
+                                          static_cast<double>(candidate.muzzle[0]) - candidate.center[0]);
+    // phi 顺时针为正；可视化直接使用最终筛选诊断中的偏移，不另算 phi。
+    const double axis = muzzle_axis - candidate.axis_offset;
     const int radius_px = std::max(1, static_cast<int>(std::lround(cv::norm(onCircle(0.0) - center))));
     if (candidate.radius > 1e-6) {
         cv::circle(image, center, radius_px, cv::Scalar(180, 180, 180), 1, cv::LINE_AA);
@@ -65,9 +67,11 @@ void drawSectorGeometry(cv::Mat& image, const SectorCandidate& candidate, const 
             }
             const std::vector<std::vector<cv::Point>> outline{fan};
             cv::polylines(image, outline, true, cv::Scalar(45, 145, 35), 1, cv::LINE_AA);
+            cv::arrowedLine(image, center, onCircle(axis, 1.10), cv::Scalar(45, 145, 35),
+                            2, cv::LINE_AA, 0, 0.15);
         }
         // 短箭头只表示目标中心到枪口的方向，长度不是枪口距离。
-        cv::arrowedLine(image, center, onCircle(axis, 1.25), cv::Scalar(120, 110, 30),
+        cv::arrowedLine(image, center, onCircle(muzzle_axis, 1.25), cv::Scalar(120, 110, 30),
                         1, cv::LINE_AA, 0, 0.15);
     }
     cv::drawMarker(image, center, cv::Scalar(40, 40, 180), cv::MARKER_CROSS, 9, 1, cv::LINE_AA);
@@ -88,7 +92,11 @@ void drawSectorPanel(cv::Mat& image, const ArmorVisualizationData::SectorViewDat
                                  : "Launch offset: --", 70);
     line(sector.status, 93);
     line("Green area: allowed sector (+/- theta)", 115, 0.40);
-    line("Each tile uses its own impact time", 133, 0.40);
+    const auto applied = std::find_if(sector.candidates.begin(), sector.candidates.end(),
+                                      [](const auto& c) { return c.sector_applied; });
+    line(applied != sector.candidates.end()
+             ? cv::format("phi = %+.1f deg (clockwise +)", applied->axis_offset * 180.0 / M_PI)
+             : "phi: -- (no applied sector)", 133, 0.40);
 
     constexpr int gap = 8;
     const int tile_width = (image.cols - x0 - 28 - gap) / 2;
@@ -138,10 +146,10 @@ void drawSectorPanel(cv::Mat& image, const ArmorVisualizationData::SectorViewDat
                         0.36, cv::Scalar(130, 130, 130), 1, cv::LINE_AA);
         }
     }
-    line("+X right / +Y up; arrow points to muzzle", 822, 0.38);
+    line("Arrows: olive=muzzle / green=sector axis", 822, 0.38);
     line("Magenta: selected | green: eligible", 841, 0.40);
     line("Red: excluded | gray: masked / unsolved", 860, 0.38);
-    line("Impact time is relative to EKF snapshot", 879, 0.38);
+    line("Per-plate impact time from EKF; +X right/+Y up", 879, 0.35);
 }
 } // namespace
 
