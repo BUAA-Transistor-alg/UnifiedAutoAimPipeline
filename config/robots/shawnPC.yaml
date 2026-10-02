@@ -112,13 +112,15 @@ common:
   #   **只需填写当前 mode 那一支**（另一支可以整段省略，不必写）；
   #   当前构型那一支内的字段依旧全部必填——缺字段直接报错退出，不设代码默认值。
   #   mode = single    ：单 yaw（旧，TorqueController 子模组）：chassis -> yaw -> pitch
-  #   mode = big_small ：大/小双 yaw（新，TorqueControllerForBigSmallYaw 子模组）：
+  #   mode = big_small ：大/小双 yaw（新，TorqueControllerForBigSmallYaw_v2 子模组）：
   #                      chassis -> yaw_big -> yaw_small -> pitch
   # 本段内容按构型不同而异：
   #   tf               ：变换树各节点偏移（big_small 额外含小 yaw 轴相对大 yaw 轴的偏移）
   #   robot_controller ：控制器构造参数（single = tcs::RobotController；
-  #                      big_small = tcbs::RobotController：model/mpc/estimator/mcu_linear/controller）
-  #   joints / splitter：仅 big_small（关节行程与回中、大小 yaw 拆分器的大 yaw 平滑规划器）
+  #                      big_small = tcbs::RobotController：imu_location / dt_control /
+  #                      mpc_loop_period / yaw_torque_only_mode_b,s / model / mpc /
+  #                      dual_yaw_mpc / mcu_linear）
+  #   joints / splitter：仅 big_small（小 yaw 行程与回中、拆分器的软限位比例与大 yaw 规划器）
   big_small_yaw:
     mode: single                  # 构型开关：single（旧单 yaw）| big_small（大/小双 yaw）
 

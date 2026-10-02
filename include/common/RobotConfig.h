@@ -43,7 +43,7 @@
 
 // yaw 构型（config: common.big_small_yaw.mode；**初始化时定型，运行中不可切换**）：
 //   SINGLE    ：单 yaw（旧，TorqueController 子模组）：chassis -> yaw -> pitch -> ...
-//   BIG_SMALL ：大/小双 yaw（新，TorqueControllerForBigSmallYaw 子模组）：
+//   BIG_SMALL ：大/小双 yaw（新，TorqueControllerForBigSmallYaw_v2 子模组）：
 //               chassis -> yaw_big -> yaw_small -> pitch -> ...
 // 构型决定变换树节点结构、ExtraInputInfo 使用哪一包关节角、瞄准解算几何与输出模式，
 // 因此两边（树 / 输入信息 / 状态包）都按本构型只填自己那一包，另一包整体置 NaN，
@@ -68,8 +68,8 @@ public:
         float cameraOffsetX, cameraOffsetY, cameraOffsetZ;  // camera 相对 head
         float muzzleOffsetX, muzzleOffsetY, muzzleOffsetZ;  // muzzle 相对 head
         // ── 仅 big_small 分支必填：小 yaw 轴相对大 yaw 轴的偏移（**大 yaw 系**，米）──
-        // 同时作为变换树里 yaw_small 节点相对 yaw_big 节点的位置与双级 yaw 平面模型的
-        // 平面偏置 dx/dy（z 分量只进变换树，不进平面模型）。改机械后必须同步修改。
+        // **机械几何**：作为变换树里 yaw_small 节点相对 yaw_big 节点的位置。
+        // ⚠ 动力学模型（dm::Params）的 Dx/Dy 是**辨识量**，另有配置，不要用这里的值替换。
         float smallYawOffsetX = 0.0f;
         float smallYawOffsetY = 0.0f;
         float smallYawOffsetZ = 0.0f;
@@ -192,20 +192,29 @@ public:
     //
     //   mode = single    → 只填 single 支：tf（单 yaw 链）+ robot_controller（tcs 子模组）
     //   mode = big_small → 只填 big_small 支：tf（含小 yaw 偏移）+ robot_controller
-    //                      （tcbs 子模组：model / mpc / estimator / mcu_linear / controller）
-    //                      + joints（行程/回中）+ splitter（大 yaw 平滑轨迹规划器）
+    //                      （tcbs 子模组：imu_location / dt_control / mpc_loop_period /
+    //                        yaw_torque_only_mode_b,s / model / mpc / dual_yaw_mpc /
+    //                        mcu_linear）+ joints（小 yaw 行程/回中）+ splitter
     //
-    // 参数来源约定（Sentry1.yaml 即按此填写）：
-    //   - big_small.robot_controller.model / mpc / estimator / mcu_linear / controller
-    //     与子模组的 tcbs::dual_yaw::ModelParams、tcbs::dual_yaw::DualYawMpcConfig、
-    //     tcbs::YawStateEstimator::Config、tcbs::McuDataPreprocessor::LinearParams、
-    //     tcbs::McuMpcController::Config 一一对应（子模组默认值见
-    //     sub_module/TorqueControllerForBigSmallYaw/include/tcbs/mpc/planar_yaw_params.h 等）；
-    //   - 小 yaw 轴相对大 yaw 轴的偏移只配置一处（big_small.tf.small_yaw_offset_*），
-    //     同时作为变换树 yaw_small 节点位置与模型平面偏置 dx/dy；
-    //   - big_small.joints 的行程 / 回中目标是 MPC 与拆分器**共用**的同一份配置，
-    //     mpc.small_limit_soft_ratio 亦为二者共用的软限位比例（避免“拆分器以为能瞄准、
-    //     MPC 却已进软限位”这类不一致）。
+    // 参数来源约定（Sentry1.yaml 即按此填写，取值 = 子模组 tools/control_demo.cpp
+    // 及其调用链上用到的默认值）：
+    //   - big_small.robot_controller.model      ↔ tcbs::dm::Params
+    //   - big_small.robot_controller.mpc        ↔ tcbs::mpc::MPCController::Options
+    //                                             （dt 取 dt_control）
+    //   - big_small.robot_controller.dual_yaw_mpc ↔ tcbs::mpc::DualYawMpcController::Options
+    //   - big_small.robot_controller.mcu_linear ↔ tcbs::com::McuDataPreprocessor::LinearParams
+    //   - big_small.robot_controller.imu_location ↔
+    //       tcbs::com::FullStrictPoseBuilder::ImuLocation（0 = ON_BIG_YAW / 1 = ON_HEAD）
+    //   - big_small.robot_controller.dt_control / mpc_loop_period / sequence_mode /
+    //     yaw_torque_only_mode_b,s ↔ tcbs::RobotController 构造实参与其 set() 实参
+    //     （v2 起两个 yaw 的力矩模式位各自独立；积分开关是 set() 的运行期实参，
+    //      由输出模式每帧传入，不在此配置）；
+    //   - 小 yaw 轴相对大 yaw 轴的偏移只配置一处（big_small.tf.small_yaw_offset_*，
+    //     **机械几何**，供变换树 yaw_small 节点用）；动力学模型里的 Dx/Dy 是辨识量，
+    //     单独配置在 model 段（两者口径不同，禁止互相替代）；
+    //   - big_small.joints 只保留小 yaw 行程与回中目标：v2 的 MPC 已无关节限位，
+    //     它是**拆分器专用**参数；splitter.small_soft_limit_ratio 同为拆分器专用
+    //     （软限位 = 硬限位向内收 (1−ratio)·行程）。
     // ══════════════════════════════════════════════════════════════════════
     struct BigSmallYawParams {
         YawMode mode;   // 构型开关（config: mode；single | big_small）
@@ -219,101 +228,91 @@ public:
         bool singlePresent = false;   // 配置文件中是否写了 single 支（写了就严格校验）
 
         // ── 大小 yaw 构型分支（mode = big_small 时必填；single 下可整段省略）──
+        // 对应子模组 TorqueControllerForBigSmallYaw_v2 的 tcbs::RobotController 构造参数
+        // （imu_location / model / mpc / dual_yaw_mpc / mpc_loop_period / mcu_linear /
+        //   sequence_mode）与其 set() 的整机参数（yaw_torque_only_mode_b,s）。
         struct BigSmallBranch {
             TfOffsets tf;   // 含 smallYawOffsetX/Y/Z（小 yaw 轴相对大 yaw 轴的偏移）
 
-            // tcbs::RobotController 构造参数（**仅本构型使用**）
+            // tcbs::RobotController 构造参数与整机模式位（**仅本构型使用**）
             struct RobotControllerParamsBS {
-                bool   sequenceMode;  // 必须为 true（大/小 yaw 输出按序列下发）
-                double dtControl;     // 控制周期（秒）：序列间隔 / MPC 步长 / 后台 loop 周期
+                // ── 构造期标量实参 ──
+                bool   sequenceMode;   // 必须为 true（大/小 yaw 输出按序列下发）
+                int    imuLocation;    // IMU 安装构型：0 = ON_BIG_YAW；1 = ON_HEAD
+                                       // （tcbs::com::FullStrictPoseBuilder::ImuLocation）
+                double dtControl;      // 控制周期（秒）：预测序列间隔 / MPC 步长
+                                       // → MPCController::Options::dt
+                double mpcLoopPeriod;  // McuMpcController 后台发送线程周期（秒）→ 构造实参
+                // ── set() 的整机模式位（运行期每帧下发；v2 起两个 yaw 各自独立）──
+                bool   yawTorqueOnlyModeB;   // 大 yaw：true = 仅力矩（电控不加位置/速度内环）
+                bool   yawTorqueOnlyModeS;   // 小 yaw：同上
+                // 注：积分补偿开关（integral_enable_b / _s）是 set() 的运行期实参，由云台输出
+                //     模式每帧传入（本工程当前两轴传同一个值），**不在此配置**。
 
-                // 双级 yaw 平面模型（tcbs::dual_yaw::ModelParams）
+                // 双连杆动力学（tcbs::dm::Params；★ 该结构无默认构造，必须逐项显式给定）
                 struct ModelParams {
-                    double gravity;            // 重力加速度
-                    double mUKnown;            // 上装质量（未知则 0）
-                    double JbigEff;            // 大 yaw 侧惯量（含 m_u|d|²）
-                    double Js;                 // 上装绕小 yaw 轴总惯量
-                    double Px, Py;             // 上装一阶矩（kg·m；相对小 yaw 轴，随 θ_s 转）
-                    // 大 yaw 侧一阶矩 Pb = (Pbx, Pby)（kg·m）: "只随大 yaw 转、不随小 yaw 转"
-                    // 的那部分质量偏心；只进大 yaw 行，重力矩
-                    //   Gb = (Pbx + m_u_known·dx)·gy − (Pby + m_u_known·dy)·gx + Gs。
-                    // ⚠ 只在倾斜数据里可辨识（水平底盘 g_⊥≡0 ⇒ 梯度恒 0），0 = 未标定。
-                    double Pbx, Pby;
-                    double fcBig, fvBig;       // 大 yaw 库仑/粘滞摩擦
-                    double fcSmall, fvSmall;   // 小 yaw 库仑/粘滞摩擦
-                    double frictionLambda;     // 库仑摩擦软符号系数 λ
-                    double tauOffsetBig;       // 可选常数负载
-                    double tauOffsetSmall;
-                    // 大 yaw 传动背隙（tcbs 3-DOF 模型 eomBacklash 用；2-DOF 的 eom 不受影响）
-                    //   τ_t = k·[dz(Δ) + γ·Δ] + c·Δ̇,  Δ = θ_motor − θ_platform − β
-                    //   ★ β（死区中心）由子模组估计器在线给出，不在此配置。
-                    double backlashDelta;      // 背隙总宽度 δ（rad）
-                    double backlashK;          // 接触刚度 k（N·m/rad）
-                    double backlashC;          // 接触阻尼 c（N·m·s/rad）
-                    double backlashSmoothEps;  // 平滑死区的过渡半宽 ε（rad）
-                    double backlashThrough;    // 直通线性项 γ（死区内梯度引导；0 = 严格物理）
-                    double Jmotor;             // 电机侧惯量（折算到关节侧，kg·m²）
-                    double fcMotor;            // 电机侧库仑摩擦
-                    double fvMotor;            // 电机侧粘滞摩擦
-                    double tauOffsetMotor;     // 电机侧可选常数负载（0 = 关闭）
+                    // 连杆 b（大 yaw 侧）
+                    double mb;      // 质量（kg）
+                    double Ib;      // 绕质心转动惯量（kg·m²）
+                    double Pbx;     // 质心在连杆 b 局部系的 x（m）
+                    double Pby;     // 质心在连杆 b 局部系的 y（m）
+                    // 连杆 s（小 yaw 侧）
+                    double ms;      // 质量（kg）
+                    double Is;      // 绕质心转动惯量（kg·m²）
+                    double Psx;     // 质心在连杆 s 局部系的 x（m）
+                    double Psy;     // 质心在连杆 s 局部系的 y（m）
+                    // 关节偏移与重力场
+                    // ⚠ Dx/Dy 是**动力学模型辨识量**（dm::Params 的关节 s 相对关节 b 的
+                    //   平面偏移），与机械 tf 的小 yaw 轴偏移（smallYawOffsetX/Y，供变换树
+                    //   用）**不是同一口径**——辨识把质量偏心等折算进了这两个量，因此按
+                    //   子模组辨识别结果原样填写，不要用 tf 的机械值替换。
+                    double Dx, Dy;  // 关节 s 相对关节 b 的平面偏移（m）
+                    double gx, gy;  // 旋转平面内重力分量（m/s²）**初值**：运行期由
+                                    // FullStrictPoseBuilder 反解出的实测值每步覆盖；
+                                    // 底盘水平时二者恒为 0（重力全在 z 轴）。
+                    // 摩擦
+                    double fbc, fbv;  // 关节 b 库仑 / 粘滞摩擦系数
+                    double fsc, fsv;  // 关节 s 库仑 / 粘滞摩擦系数
+                    double lambda;    // 摩擦软符号系数（通常 100）
+                    // 控制力矩通道增益（"下发指令值 → 实际电机力矩"的比例，N·m/指令单位）
+                    double kb, ks;
                 };
                 ModelParams model;
 
-                // MPC（tcbs::dual_yaw::DualYawMpcConfig；dt_control 取本结构的 dtControl）
+                // MPC 求解器（tcbs::mpc::MPCController::Options；dt 取本结构的 dtControl）
                 struct MpcParams {
-                    int    n;                  // 预测步数 N
-                    int    substeps;           // 每控制步 RK4 子步
-                    bool   useRk4;             // true: RK4；false: 半隐式欧拉
-                    int    maxIter;            // 求解迭代上限
-                    double wBigAzimuth;        // 大 yaw 世界方位角跟踪权重（子模组为**平方**误差）
-                    double wSmallAzimuth;      // 小 yaw 世界方位角跟踪权重（子模组为**绝对**误差）
-                    // 速度惩罚权重（tcbs 子模组 2026-09-21 新增）：代价项 = w_v·θ̇²，
-                    // θ̇ 取**云台/关节侧**角速度（不是电机侧），用于压换向/穿越背隙时的
-                    // 速度尖峰（平方跟踪项本身对速度无约束）。0 = 关闭该项；
-                    // 量纲上 0.1 与跟踪权重 1.0 同量级（θ̇ = 1 rad/s 时贡献 0.1）。
-                    double wBigRate;           // 大 yaw 云台角速度惩罚权重（子模组默认 0.1）
-                    double wSmallRate;         // 小 yaw 关节角速度惩罚权重（子模组默认 0 = 关）
-                    double wSmallCenter;       // 小 yaw 回中权重
-                    double wSmallLimit;        // 小 yaw 软限位权重
-                    double smallLimitSoftRatio;  // 软限位比例（拆分器判界与 MPC 代价共用）
-                    double rBigTorque, rSmallTorque;    // 力矩惩罚
-                    double rdBigRate, rdSmallRate;      // 力矩变化率惩罚
-                    double smoothEps;          // 位置误差平滑常数
-                    int    refDelaySteps;      // 参考延迟步数（0 = 不延迟）
-                    double bigMaxTorque;       // 大 yaw 力矩上限（N·m）
-                    double bigMaxTorqueRate;   // 大 yaw 力矩变化率上限（N·m/s）
-                    double smallMaxTorque;     // 小 yaw 力矩上限（N·m）
-                    double smallMaxTorqueRate; // 小 yaw 力矩变化率上限（N·m/s）
+                    int    n;          // 预测步数 N（>= 1）
+                    // 每控制步的 RK4 子步数（[1, 4096]）：子步长 h = dt/refinement 必须
+                    // 小到让 RK4 稳定地线性化库仑摩擦的刚性项，否则解析梯度会数值发散
+                    // （表现为恒输出 0 力矩）；子模组 control_demo 的稳定取值为 16。
+                    int    refinement;
+                    int    maxIter;            // Ceres LBFGS 最大迭代次数
+                    double maxTorqueB;         // 大 yaw tanh 软限幅（|τ_b| < 该值，N·m）
+                    double maxTorqueS;         // 小 yaw tanh 软限幅（|τ_s| < 该值，N·m）
+                    // ── 内层 loss 权重（均为该通道 N 步时间均值形式）──
+                    double wPsiB, wPsiS;       // 世界方位角跟踪
+                    double wDpsiB, wDpsiS;     // 世界角速度跟踪
+                    double wTauB, wTauS;       // 力矩幅值
+                    // ── 外层 L2 惩罚权重（作用在**预 tanh 力矩**上）──
+                    // w_x_* 建议必须 > 0：把预 tanh 量约束在 tanh 线性区、保住解析梯度；
+                    // w_dx_* 只惩罚相邻两步增量（v2 已无 max_torque_rate 硬限速）。
+                    double wXB, wXS;
+                    double wDxB, wDxS;
+                    // 实测 gx/gy 是否真正送进动力学模型（默认 true = 使用重力；
+                    // false = 对照模式，求解器内部恒按 (0,0) 处理）。
+                    bool   useGravity;
                 };
                 MpcParams mpc;
 
-                // 状态估计（tcbs::YawStateEstimator::Config）
-                struct EstimatorParams {
-                    int    imuLocation;         // 0 = ON_BIG_YAW（IMU 在大 yaw 转子上）；1 = ON_HEAD
-                    double mountYaw, mountPitch, mountRoll;            // R_A_IMU（ZXY）
-                    double headMountYaw, headMountPitch, headMountRoll; // R_H_IMU（ZXY）
-                    double transportDelayS;     // 链路传输时延（s）
-                    double bigEncMaxJump;       // 大 yaw 单次测量最大修正幅度（rad）
-                    double staleAgeS;           // 过旧判定阈值（s）
-                    double chassisImuTimeoutS;  // 底盘 IMU 可用超时（s）
-                    double maxExtrapS;          // 可信量外推上限（s）
-                    // 角速度低通（分轴；α = 1 表示直通不滤波）
-                    double smallRateLpfAlpha;   // 小 yaw 关节角速度低通系数
-                    double bigRateLpfAlpha;     // 大 yaw 平台/关节角速度低通系数
-                    // 大 yaw 电机侧角速度低通（来源 = MCU 编码器角速度）
-                    double bigMotorRateTauS;    // 低通时间常数（s）
-                    double bigMotorRateAlpha;   // 拿不到采样间隔时的兜底系数
-                    double backlashCenterTauS;  // 背隙中心 β 在线估计的遗忘时间常数（s；<=0 关闭）
-                    double pitchRateLpfAlpha;   // pitch 角速度低通系数
-                    double pitchAccLpfAlpha;    // pitch 角加速度低通系数（0 = 不用）
-                    double boreX, boreY, boreZ; // 视轴方向（head 系单位矢量）
-                    double gravity;             // 估计器内重力
-                    bool   useChassisImu;       // 是否用底盘 IMU 分离大 yaw 关节角速度
-                    double sourceTimeoutS;      // 数据源超时（s）
+                // 双级 yaw MPC 实车封装（tcbs::mpc::DualYawMpcController::Options；
+                // 积分补偿两轴各自独立：累积量、增益、开关都分开）
+                struct DualYawMpcParams {
+                    double integralGainB;   // 大 yaw 积分补偿比例系数（>= 0）
+                    double integralGainS;   // 小 yaw 积分补偿比例系数（>= 0）
                 };
-                EstimatorParams estimator;
+                DualYawMpcParams dualYawMpc;
 
-                // MCU 数据线性映射（tcbs::McuDataPreprocessor::LinearParams）
+                // MCU 数据线性映射（tcbs::com::McuDataPreprocessor::LinearParams）
                 struct McuLinearParams {
                     double sendPitchScale, sendPitchOffset;   // 关节角 → 电控 pitch 目标值
                     double recvPitchScale, recvPitchOffset;   // 电控原始 pitch → 关节角
@@ -327,34 +326,26 @@ public:
                     double sendSmallVelocityScale, sendSmallTorqueScale;
                 };
                 McuLinearParams mcuLinear;
-
-                // 控制器（tcbs::McuMpcController::Config；loop 周期取 dtControl）
-                struct ControllerParams {
-                    bool   bigTorqueOnly;      // 大 yaw 仅力矩模式位（发送给电控）
-                    bool   smallTorqueOnly;    // 小 yaw 仅力矩模式位
-                    double integralGainBig, integralGainSmall;    // 逐关节积分补偿增益
-                    double integralLimitBig, integralLimitSmall;  // 逐关节积分限幅
-                    bool   integralOnBig;      // 是否允许大 yaw 积分补偿
-                };
-                ControllerParams controller;
             };
             RobotControllerParamsBS robotController;
 
-            // 关节行程与回中目标（rad；MPC JointLimits / small_center_angle 与拆分器共用）
+            // 小 yaw 关节行程与回中目标（rad）：**仅大小 yaw 拆分器使用**
+            // （v2 的 MPC 已无关节限位，只对力矩做 tanh 软限幅；拆分器据此判断
+            //  “小 yaw 是否已到限位、需要让大 yaw 无限幅跟进”）。
             struct JointParams {
-                double bigMinAngle;       // 大 yaw 行程下界（多圈，通常 -1e9 = 不限位）
-                double bigMaxAngle;       // 大 yaw 行程上界
-                double smallMinAngle;     // 小 yaw 行程下界（非对称，例：-25°）
-                double smallMaxAngle;     // 小 yaw 行程上界（例：+20°）
-                double smallCenterAngle;  // 小 yaw 回中目标关节角（0 = 关节零位；拆分器与
-                                          // 小 yaw MPC 代价项共用，非对称行程下 0 不是行程中心）
+                double smallMinAngle;     // 小 yaw 行程下界（非对称，例：-35°）
+                double smallMaxAngle;     // 小 yaw 行程上界（例：+35°）
+                double smallCenterAngle;  // 小 yaw 回中目标关节角（0 = 关节零位；
+                                          // 非对称行程下 0 不是行程中心）
             };
             JointParams joints;
 
-            // 大小 yaw 拆分器（common/BigSmallYaw/BigSmallYawSplitter）的大 yaw 平滑轨迹规划器
-            // （同时满足最大速度/加速度/加加速度限制；移植自子模组
-            //   python/scripts/trajectory_planner.py）
+            // 大小 yaw 拆分器（common/BigSmallYaw/BigSmallYawSplitter）参数：
+            // 软限位比例 + 大 yaw 平滑轨迹规划器（同时满足最大速度/加速度/加加速度限制；
+            // 移植自子模组 python/scripts/trajectory_planner.py）
             struct SplitterParams {
+                double smallSoftLimitRatio;     // 小 yaw 软限位比例，落在 (0, 1]：
+                                                // soft = 行程端点向内收 (1−ratio)·总行程
                 double plannerMaxVelocity;      // 大 yaw 平滑轨迹最大角速度（rad/s）
                 double plannerMaxAcceleration;  // 最大角加速度（rad/s²）
                 double plannerMaxJerk;          // 最大角加加速度（rad/s³）

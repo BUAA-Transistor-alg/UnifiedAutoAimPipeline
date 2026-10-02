@@ -352,7 +352,6 @@ int main() {
         bst.pitch_joint = 0.0;
         bst.yaw_big_azimuth = 0.0;
         bst.yaw_small_azimuth = 0.0;
-        bst.chassis_azimuth = 0.0;
         bst.info_chassis_yaw = 0.0;
         bst.info_chassis_pitch = 0.0;
         bst.info_chassis_roll = 0.0;

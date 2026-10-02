@@ -1,4 +1,4 @@
-// RobotStateForBigSmallYaw.cpp — 新控制器适配器实现
+// RobotStateForBigSmallYaw.cpp — 新控制器（TorqueControllerForBigSmallYaw_v2）适配器实现
 #include "common/BigSmallYaw/RobotStateForBigSmallYaw.h"
 
 #include <cmath>
@@ -9,153 +9,51 @@ namespace bsy {
 RobotState toRobotState(const tcbs::RobotController::State& st) {
     RobotState s;
     s.valid = st.mcu.valid;
-    s.estimator_valid = st.est.valid;
+    s.ready = st.mcu.valid && st.imu.valid;   // v2 里“数据就绪”= MCU 与 IMU 都有样本
 
-    // ── 底盘姿态：优先用严格反解包（IMU 为准确值 → 反解底盘）──
-    // 注意：strict_pose 的角度已 wrap 到 (−π, π]；chassis_euler_* 是 ZXY 欧拉角，
-    // 与变换树的底盘欧拉角同一约定（流水线内部就用它同步树与算 item.yaw 的底盘修正）。
-    s.info_chassis_yaw   = st.strict_pose.chassis_euler_yaw;
-    s.info_chassis_pitch = st.strict_pose.chassis_euler_pitch;
-    s.info_chassis_roll  = st.strict_pose.chassis_euler_roll;
-    s.chassis_azimuth    = st.strict_pose.chassis_azimuth;
+    // ── 底盘姿态：严格反解包（IMU 为准确值 → 反解底盘）──
+    // strict 的角度已 wrap 到 (−π, π]；chassis_euler_* 是 ZXY 欧拉角，与变换树的底盘
+    // 欧拉角同一约定（流水线内部就用它同步树与算 item.yaw 的底盘修正）。
+    const tcbs::com::FullStrictPoseBuilder::StrictPose& sp = st.strict;
+    s.info_chassis_yaw   = sp.chassis_euler_yaw;
+    s.info_chassis_pitch = sp.chassis_euler_pitch;
+    s.info_chassis_roll  = sp.chassis_euler_roll;
 
-    // ── 关节角：★ 取自 strict_pose（严格反解所用关节角）──
-    //   θ_big 用**云台侧**角（strict_pose.big_joint_angle = big_platform_angle），
-    //   与上面 chassis_euler_* 同源 —— 二者配合才能让变换树复现 IMU 实测头姿态；
-    //   用 est 的电机侧角会差一个背隙 Δ（这正是本次改口径要消除的）。
-    //   θ_small / pitch 同样是反解所用的可信编码器值（strict_pose 内 wrap 到 (−π,π]，两者行程均 < π，等价）。
-    s.yaw_big_joint    = st.strict_pose.big_joint_angle;
-    s.yaw_small_joint  = st.strict_pose.small_joint_angle;
-    s.pitch_joint      = st.strict_pose.pitch_joint_angle;
-    // 速率类 strict_pose 不提供，保持 est（仅覆盖层显示，不参与解算/下发）
-    s.yaw_big_rate     = st.est.big_joint_rate;
-    s.yaw_small_rate   = st.est.small_joint_rate;
+    // ── 关节角：★ 取自 strict（严格反解所用关节角）──
+    //   θ_big 用**云台侧**角（strict.yaw_big_angle），与 chassis_euler_* 同源 ——
+    //   二者配合才能让变换树复现 IMU 实测头姿态；
+    //   θ_small / pitch 同样是反解所用的可信编码器值（strict 内 wrap 到 (−π,π]，
+    //   两者行程均 < π，等价）。
+    s.yaw_big_joint   = sp.yaw_big_angle;
+    s.yaw_small_joint = sp.yaw_small_angle;
+    s.pitch_joint     = sp.pitch_angle;
 
-    // ── 世界方位角：★ 取自 strict_pose（wrap 值；多圈连续由 unwrapAzimuths 恢复）──
-    //   ψ_big = strict_pose.platform_azimuth（大 yaw 平台 x 轴）
-    //   ψ_small = strict_pose.head_azimuth（头 x 轴；= 小 yaw 输出 x 轴，Rx(pitch) 不改 x 轴）
-    s.yaw_big_azimuth   = st.strict_pose.platform_azimuth;
-    s.yaw_small_azimuth = st.strict_pose.head_azimuth;
-    s.platform_rate     = st.est.platform_rate;   // 速率：仅覆盖层显示
+    // ── 世界方位角：★ 取自 strict（wrap 值；多圈连续由 unwrapAzimuths 恢复）──
+    //   ψ_big = strict.big_azimuth（大 yaw 平台 x 轴）
+    //   ψ_small = strict.small_azimuth（小 yaw 输出 x 轴）
+    s.yaw_big_azimuth   = sp.big_azimuth;
+    s.yaw_small_azimuth = sp.small_azimuth;
 
-    // ── IMU 欧拉角：★ 取自 strict_pose（同一份 IMU 快照 + 标定，不依赖 imu.valid）──
-    s.imu_location     = st.strict_pose.imu_location;
-    s.imu_euler_yaw    = st.strict_pose.imu_euler_yaw;
-    s.imu_euler_pitch  = st.strict_pose.imu_euler_pitch;
-    s.imu_euler_roll   = st.strict_pose.imu_euler_roll;
+    // ── IMU 欧拉角：取 IMU 原始包（v2 的 StrictPose 不再携带 IMU 欧拉角）──
+    s.imu_euler_yaw   = st.imu.euler_yaw;
+    s.imu_euler_pitch = st.imu.euler_pitch;
+    s.imu_euler_roll  = st.imu.euler_roll;
 
-    // ── MCU ──
-    s.bullet_velocity  = st.mcu.bullet_velocity;
-    s.auto_aim_switch  = st.mcu.auto_aim_switch;
+    // ── MCU 概览 ──
+    s.bullet_velocity = st.mcu.bullet_velocity;
+    s.auto_aim_switch = st.mcu.auto_aim_switch;
 
-    // ── 完整原始输入（左侧信息块用；与单 yaw 覆盖层各块一一对应）──
-    // MCU 原始反馈
-    s.mcu.valid               = st.mcu.valid;
-    s.mcu.bullet_velocity     = st.mcu.bullet_velocity;
-    s.mcu.pitch_angle         = st.mcu.pitch_angle;
-    s.mcu.yaw_big_angle       = st.mcu.yaw_big_angle;
-    s.mcu.yaw_big_omega       = st.mcu.yaw_big_omega;
-    s.mcu.yaw_small_angle     = st.mcu.yaw_small_angle;
-    s.mcu.yaw_small_omega     = st.mcu.yaw_small_omega;
-    s.mcu.chassis_imu_yaw     = st.mcu.chassis_imu_yaw;
-    s.mcu.chassis_imu_omega   = st.mcu.chassis_imu_omega;
-    s.mcu.mark                = st.mcu.mark;
-    s.mcu.color               = st.mcu.color;
-    s.mcu.auto_aim_switch     = st.mcu.auto_aim_switch;
-    s.mcu.yaw_big_temperature   = st.mcu.yaw_big_temperature;
-    s.mcu.yaw_small_temperature = st.mcu.yaw_small_temperature;
-    s.mcu.mcu2_seq            = st.mcu.mcu2_seq;
-    // IMU 原始数据
-    s.imu.valid              = st.imu.valid;
-    s.imu.gx = st.imu.gx;   s.imu.gy = st.imu.gy;   s.imu.gz = st.imu.gz;
-    s.imu.ax = st.imu.ax;   s.imu.ay = st.imu.ay;   s.imu.az = st.imu.az;
-    s.imu.euler_yaw   = st.imu.euler_yaw;
-    s.imu.euler_pitch = st.imu.euler_pitch;
-    s.imu.euler_roll  = st.imu.euler_roll;
-    s.imu.dt_one_tenth_ms = st.imu.dt_one_tenth_ms;
-    // 状态估计（可信量 + 延迟补偿 + 反解真实位姿）
-    s.est.valid               = st.est.valid;
-    s.est.imu_yaw             = st.est.imu_yaw;
-    s.est.imu_pitch           = st.est.imu_pitch;
-    s.est.imu_roll            = st.est.imu_roll;
-    s.est.platform_azimuth    = st.est.platform_azimuth;
-    s.est.platform_rate       = st.est.platform_rate;
-    s.est.small_joint_angle   = st.est.small_joint_angle;
-    s.est.small_joint_rate    = st.est.small_joint_rate;
-    s.est.pitch_joint_angle   = st.est.pitch_joint_angle;
-    s.est.pitch_joint_rate    = st.est.pitch_joint_rate;
-    s.est.big_joint_angle_meas= st.est.big_joint_angle_meas;
-    s.est.big_joint_angle     = st.est.big_joint_angle;
-    s.est.big_joint_rate      = st.est.big_joint_rate;
-    s.est.big_motor_angle     = st.est.big_motor_angle;
-    s.est.big_motor_rate      = st.est.big_motor_rate;
-    s.est.big_platform_angle  = st.est.big_platform_angle;
-    s.est.big_platform_rate   = st.est.big_platform_rate;
-    s.est.backlash_center     = st.est.backlash_center;
-    s.est.backlash_width_obs  = st.est.backlash_width_obs;
-    s.est.big_enc_age         = st.est.big_enc_age;
-    s.est.big_sample_interval = st.est.big_sample_interval;
-    s.est.chassis_imu_age     = st.est.chassis_imu_age;
-    s.est.big_enc_innovation  = st.est.big_enc_innovation;
-    s.est.big_has_encoder     = st.est.big_has_encoder;
-    s.est.head_world_yaw      = st.est.head_world_yaw;
-    s.est.head_world_pitch    = st.est.head_world_pitch;
-    s.est.head_world_roll     = st.est.head_world_roll;
-    s.est.small_output_azimuth= st.est.small_output_azimuth;
-    s.est.los_azimuth         = st.est.los_azimuth;
-    s.est.los_elevation       = st.est.los_elevation;
-    s.est.chassis_azimuth     = st.est.chassis_azimuth;
-    s.est.chassis_yaw_rate    = st.est.chassis_yaw_rate;
-    for (int i = 0; i < 3; ++i) {
-        s.est.base_omega[i] = st.est.base_omega[i];
-        s.est.gravity_a[i]  = st.est.gravity_a[i];
-    }
-    s.est.pitch_acc           = st.est.pitch_acc;
-    // 严格反解包
-    s.strict.imu_euler_yaw    = st.strict_pose.imu_euler_yaw;
-    s.strict.imu_euler_pitch  = st.strict_pose.imu_euler_pitch;
-    s.strict.imu_euler_roll   = st.strict_pose.imu_euler_roll;
-    s.strict.imu_location     = st.strict_pose.imu_location;
-    s.strict.big_joint_angle  = st.strict_pose.big_joint_angle;
-    s.strict.small_joint_angle= st.strict_pose.small_joint_angle;
-    s.strict.pitch_joint_angle= st.strict_pose.pitch_joint_angle;
-    s.strict.chassis_euler_yaw   = st.strict_pose.chassis_euler_yaw;
-    s.strict.chassis_euler_pitch = st.strict_pose.chassis_euler_pitch;
-    s.strict.chassis_euler_roll  = st.strict_pose.chassis_euler_roll;
-    s.strict.platform_azimuth = st.strict_pose.platform_azimuth;
-    s.strict.chassis_azimuth  = st.strict_pose.chassis_azimuth;
-    s.strict.head_azimuth     = st.strict_pose.head_azimuth;
-    s.strict.recon_err_rot    = st.strict_pose.recon_err_rot;
-    s.strict.big_joint_angle_age = st.strict_pose.big_joint_angle_age;
+    // ── MPC 预测 / 参考序列（世界方位角序列；供预测与火控使用）──
+    s.pred_big_azimuth_seq   = st.mpc.pred_psi_b_seq;
+    s.pred_small_azimuth_seq = st.mpc.pred_psi_s_seq;
+    s.ref_big_azimuth_seq    = st.mpc.ref_psi_b_seq;
+    s.ref_small_azimuth_seq  = st.mpc.ref_psi_s_seq;
 
-    // ── MPC：控制输出、参考与预测序列（世界方位角序列，{0}=大 yaw，{1}=小 yaw）──
-    s.torque_big          = st.mpc.torque[0];
-    s.torque_small        = st.mpc.torque[1];
-    s.torque_mpc_big      = st.mpc.torque_mpc[0];
-    s.torque_mpc_small    = st.mpc.torque_mpc[1];
-    s.integral_big        = st.mpc.integral[0];
-    s.integral_small      = st.mpc.integral[1];
-    s.target_joint_big    = st.mpc.target_joint[0];
-    s.target_joint_small  = st.mpc.target_joint[1];
-    s.target_joint_rate_big   = st.mpc.target_joint_rate[0];
-    s.target_joint_rate_small = st.mpc.target_joint_rate[1];
-    s.ref_azimuth_big     = st.mpc.ref_azimuth[0];
-    s.ref_azimuth_small   = st.mpc.ref_azimuth[1];
-    s.delayed_ref_azimuth_big   = st.mpc.delayed_ref_azimuth[0];
-    s.delayed_ref_azimuth_small = st.mpc.delayed_ref_azimuth[1];
-    s.pred_big_azimuth_seq   = st.mpc.pred_azimuth_seq[0];
-    s.pred_small_azimuth_seq = st.mpc.pred_azimuth_seq[1];
-    s.ref_big_azimuth_seq    = st.mpc.ref_azimuth_seq[0];
-    s.ref_small_azimuth_seq  = st.mpc.ref_azimuth_seq[1];
-    s.small_ref_over_limit   = st.mpc.small_ref_over_limit;
-    s.big_torque_only        = st.mpc.big_torque_only;
-    s.small_torque_only      = st.mpc.small_torque_only;
-    s.solve_ms               = st.mpc.solve_ms;
-    s.loop_fps               = st.mpc.loop_fps;
-    s.solve_count            = st.mpc.solve_count;
-    s.solve_fail_count       = st.mpc.solve_fail_count;
-    s.ticks_since_set        = st.mpc.ticks_since_set;
-    s.sent_ok                = st.mpc.sent_ok;
+    // ── 原始分组（左侧信息块 / 可视化用；原样透传）──
+    s.mcu    = st.mcu;
+    s.imu    = st.imu;
+    s.strict = st.strict;
+    s.mpc    = st.mpc;
     return s;
 }
 
@@ -188,153 +86,105 @@ RobotControllerAdapter::RobotControllerAdapter() {
             "bsy::RobotControllerAdapter: 只在 common.big_small_yaw.mode = big_small 时可用"
             "（单 yaw 构型请使用 tcs::RobotController）");
     }
-    params_ = cfg.common.bigSmallYaw.bigSmall;   // big_small 分支（tf / robot_controller / joints / splitter）
-    dt_control_ = params_.robotController.dtControl;
-
-    tcbs::RobotController::Config c;
+    params_ = cfg.common.bigSmallYaw.bigSmall;   // tf / robot_controller / joints / splitter
+    dt_control_   = params_.robotController.dtControl;
+    imu_location_ = params_.robotController.imuLocation;
     const auto& rc = params_.robotController;
-    // ── 双级 yaw 平面模型（dx/dy 与 tf 的小 yaw 轴偏移共用一份配置）──
-    c.model.dx             = params_.tf.smallYawOffsetX;
-    c.model.dy             = params_.tf.smallYawOffsetY;
-    c.model.gravity        = rc.model.gravity;
-    c.model.m_u_known      = rc.model.mUKnown;
-    c.model.Jbig_eff       = rc.model.JbigEff;
-    c.model.Js             = rc.model.Js;
-    c.model.Px             = rc.model.Px;
-    c.model.Py             = rc.model.Py;
-    c.model.Pbx            = rc.model.Pbx;
-    c.model.Pby            = rc.model.Pby;
-    c.model.fcBig          = rc.model.fcBig;
-    c.model.fvBig          = rc.model.fvBig;
-    c.model.fcSmall        = rc.model.fcSmall;
-    c.model.fvSmall        = rc.model.fvSmall;
-    c.model.frictionLambda = rc.model.frictionLambda;
-    c.model.tau_offset_big   = rc.model.tauOffsetBig;
-    c.model.tau_offset_small = rc.model.tauOffsetSmall;
-    // 大 yaw 传动背隙（3-DOF 模型；β 由子模组估计器在线给出，不在此配置）
-    c.model.backlash_delta      = rc.model.backlashDelta;
-    c.model.backlash_k          = rc.model.backlashK;
-    c.model.backlash_c          = rc.model.backlashC;
-    c.model.backlash_smooth_eps = rc.model.backlashSmoothEps;
-    c.model.backlash_through    = rc.model.backlashThrough;
-    c.model.Jmotor              = rc.model.Jmotor;
-    c.model.fcMotor             = rc.model.fcMotor;
-    c.model.fvMotor             = rc.model.fvMotor;
-    c.model.tau_offset_motor    = rc.model.tauOffsetMotor;
 
-    // ── MPC（控制周期 = 本构型分支的 robot_controller.dt_control，同时是流水线序列间隔）──
-    c.mpc.dt_control            = dt_control_;
-    c.mpc.N                     = rc.mpc.n;
-    c.mpc.substeps              = rc.mpc.substeps;
-    c.mpc.use_rk4               = rc.mpc.useRk4;
-    c.mpc.max_iter              = rc.mpc.maxIter;
-    c.mpc.w_big_azimuth         = rc.mpc.wBigAzimuth;
-    c.mpc.w_small_azimuth       = rc.mpc.wSmallAzimuth;
-    // 速度惩罚（子模组 2026-09-21 新增；θ̇ = 云台/关节侧角速度）
-    c.mpc.w_big_rate            = rc.mpc.wBigRate;
-    c.mpc.w_small_rate          = rc.mpc.wSmallRate;
-    c.mpc.w_small_center        = rc.mpc.wSmallCenter;
-    c.mpc.w_small_limit         = rc.mpc.wSmallLimit;
-    c.mpc.small_limit_soft_ratio = rc.mpc.smallLimitSoftRatio;
-    c.mpc.r_big_torque          = rc.mpc.rBigTorque;
-    c.mpc.r_small_torque        = rc.mpc.rSmallTorque;
-    c.mpc.rd_big_rate           = rc.mpc.rdBigRate;
-    c.mpc.rd_small_rate         = rc.mpc.rdSmallRate;
-    c.mpc.smooth_eps            = rc.mpc.smoothEps;
-    c.mpc.ref_delay_steps       = rc.mpc.refDelaySteps;
-    c.mpc.small_center_angle    = params_.joints.smallCenterAngle;
-    c.mpc.big.max_torque        = rc.mpc.bigMaxTorque;
-    c.mpc.big.max_torque_rate   = rc.mpc.bigMaxTorqueRate;
-    c.mpc.big.min_angle         = params_.joints.bigMinAngle;
-    c.mpc.big.max_angle         = params_.joints.bigMaxAngle;
-    c.mpc.small.max_torque      = rc.mpc.smallMaxTorque;
-    c.mpc.small.max_torque_rate = rc.mpc.smallMaxTorqueRate;
-    c.mpc.small.min_angle       = params_.joints.smallMinAngle;
-    c.mpc.small.max_angle       = params_.joints.smallMaxAngle;
+    // ── 双连杆动力学（tcbs::dm::Params；★ 无默认构造，逐项显式给出）──
+    //   Dx/Dy 取**模型辨识值**（子模组辨识结果的“估计”列），与 tf 的机械小 yaw 偏移
+    //   （smallYawOffsetX/Y，供变换树用）不是同一口径，故各自独立配置、互不替代。
+    const tcbs::dm::Params model(
+        /*mb=*/ rc.model.mb,   /*Ib=*/ rc.model.Ib,
+        /*Pbx=*/ rc.model.Pbx, /*Pby=*/ rc.model.Pby,
+        /*ms=*/ rc.model.ms,   /*Is=*/ rc.model.Is,
+        /*Psx=*/ rc.model.Psx, /*Psy=*/ rc.model.Psy,
+        /*Dx=*/ rc.model.Dx,   /*Dy=*/ rc.model.Dy,
+        /*gx=*/ rc.model.gx,   /*gy=*/ rc.model.gy,
+        /*fbc=*/ rc.model.fbc, /*fbv=*/ rc.model.fbv,
+        /*fsc=*/ rc.model.fsc, /*fsv=*/ rc.model.fsv,
+        /*lambda=*/ rc.model.lambda,
+        /*kb=*/ rc.model.kb,   /*ks=*/ rc.model.ks);
 
-    // ── 状态估计 ──
-    c.estimator.imu_location = (rc.estimator.imuLocation == 0)
-                                   ? tcbs::YawStateEstimator::Config::ImuLocation::ON_BIG_YAW
-                                   : tcbs::YawStateEstimator::Config::ImuLocation::ON_HEAD;
-    c.estimator.mount_yaw        = rc.estimator.mountYaw;
-    c.estimator.mount_pitch      = rc.estimator.mountPitch;
-    c.estimator.mount_roll       = rc.estimator.mountRoll;
-    c.estimator.head_mount_yaw   = rc.estimator.headMountYaw;
-    c.estimator.head_mount_pitch = rc.estimator.headMountPitch;
-    c.estimator.head_mount_roll  = rc.estimator.headMountRoll;
-    c.estimator.transport_delay_s    = rc.estimator.transportDelayS;
-    c.estimator.big_enc_max_jump     = rc.estimator.bigEncMaxJump;
-    c.estimator.stale_age_s          = rc.estimator.staleAgeS;
-    c.estimator.chassis_imu_timeout_s= rc.estimator.chassisImuTimeoutS;
-    c.estimator.max_extrap_s         = rc.estimator.maxExtrapS;
-    c.estimator.small_rate_lpf_alpha = rc.estimator.smallRateLpfAlpha;
-    c.estimator.big_rate_lpf_alpha   = rc.estimator.bigRateLpfAlpha;
-    c.estimator.big_motor_rate_tau_s = rc.estimator.bigMotorRateTauS;
-    c.estimator.big_motor_rate_alpha = rc.estimator.bigMotorRateAlpha;
-    c.estimator.backlash_center_tau_s= rc.estimator.backlashCenterTauS;
-    c.estimator.pitch_rate_lpf_alpha = rc.estimator.pitchRateLpfAlpha;
-    c.estimator.pitch_acc_lpf_alpha  = rc.estimator.pitchAccLpfAlpha;
-    c.estimator.bore[0] = rc.estimator.boreX;
-    c.estimator.bore[1] = rc.estimator.boreY;
-    c.estimator.bore[2] = rc.estimator.boreZ;
-    c.estimator.gravity          = rc.estimator.gravity;
-    c.estimator.use_chassis_imu  = rc.estimator.useChassisImu;
-    c.estimator.source_timeout_s = rc.estimator.sourceTimeoutS;
+    // ── MPC 求解器（tcbs::mpc::MPCController::Options；dt 取 dt_control）──
+    //   control_demo 把全部字段都显式写出；这里同样逐项来自配置（无代码默认值）。
+    tcbs::mpc::MPCController::Options mpc;
+    mpc.dt           = dt_control_;          // 预测步长 = 控制周期
+    mpc.refinement   = rc.mpc.refinement;    // 每控制步 RK4 子步（稳定性关键）
+    mpc.N            = rc.mpc.n;             // 预测步数
+    mpc.max_torque_b = rc.mpc.maxTorqueB;    // tanh 软限幅
+    mpc.max_torque_s = rc.mpc.maxTorqueS;
+    mpc.w_psi_b      = rc.mpc.wPsiB;         // 世界方位角跟踪
+    mpc.w_psi_s      = rc.mpc.wPsiS;
+    mpc.w_dpsi_b     = rc.mpc.wDpsiB;        // 世界角速度跟踪
+    mpc.w_dpsi_s     = rc.mpc.wDpsiS;
+    mpc.w_tau_b      = rc.mpc.wTauB;         // 力矩幅值
+    mpc.w_tau_s      = rc.mpc.wTauS;
+    mpc.w_x_b        = rc.mpc.wXB;           // 预 tanh 量 L2（保梯度）
+    mpc.w_x_s        = rc.mpc.wXS;
+    mpc.w_dx_b       = rc.mpc.wDxB;          // 预 tanh 增量 L2（代替硬限速）
+    mpc.w_dx_s       = rc.mpc.wDxS;
+    mpc.max_iter     = rc.mpc.maxIter;
+    mpc.use_gravity  = rc.mpc.useGravity;    // 实测 gx/gy 是否真正进模型
 
-    // ── MCU 数据线性映射 ──
-    c.mcu_linear.send_pitch_scale  = rc.mcuLinear.sendPitchScale;
-    c.mcu_linear.send_pitch_offset = rc.mcuLinear.sendPitchOffset;
-    c.mcu_linear.recv_pitch_scale  = rc.mcuLinear.recvPitchScale;
-    c.mcu_linear.recv_pitch_offset = rc.mcuLinear.recvPitchOffset;
-    c.mcu_linear.recv_big_yaw_scale   = rc.mcuLinear.recvBigYawScale;
-    c.mcu_linear.recv_big_yaw_offset  = rc.mcuLinear.recvBigYawOffset;
-    c.mcu_linear.recv_big_omega_scale = rc.mcuLinear.recvBigOmegaScale;
-    c.mcu_linear.send_big_yaw_scale   = rc.mcuLinear.sendBigYawScale;
-    c.mcu_linear.send_big_yaw_offset  = rc.mcuLinear.sendBigYawOffset;
-    c.mcu_linear.send_big_velocity_scale = rc.mcuLinear.sendBigVelocityScale;
-    c.mcu_linear.send_big_torque_scale   = rc.mcuLinear.sendBigTorqueScale;
-    c.mcu_linear.recv_small_yaw_scale   = rc.mcuLinear.recvSmallYawScale;
-    c.mcu_linear.recv_small_yaw_offset  = rc.mcuLinear.recvSmallYawOffset;
-    c.mcu_linear.recv_small_omega_scale = rc.mcuLinear.recvSmallOmegaScale;
-    c.mcu_linear.send_small_yaw_scale   = rc.mcuLinear.sendSmallYawScale;
-    c.mcu_linear.send_small_yaw_offset  = rc.mcuLinear.sendSmallYawOffset;
-    c.mcu_linear.send_small_velocity_scale = rc.mcuLinear.sendSmallVelocityScale;
-    c.mcu_linear.send_small_torque_scale   = rc.mcuLinear.sendSmallTorqueScale;
+    // ── 积分补偿（tcbs::mpc::DualYawMpcController::Options）──
+    //   两轴增益各自独立；**开关**（integral_enable_b / _s）是 set() 的运行期实参，
+    //   由云台输出模式每帧传入（本工程当前两轴传同一个值），不在这里配置。
+    tcbs::mpc::DualYawMpcController::Options wrapper;
+    wrapper.integral_gain_b = rc.dualYawMpc.integralGainB;
+    wrapper.integral_gain_s = rc.dualYawMpc.integralGainS;
 
-    // ── 控制器（后台 loop 周期 = 控制周期；模式位 / 积分补偿）──
-    c.controller.loop_period       = dt_control_;
-    c.controller.big_torque_only   = rc.controller.bigTorqueOnly;
-    c.controller.small_torque_only = rc.controller.smallTorqueOnly;
-    c.controller.ref_delay_steps   = rc.mpc.refDelaySteps;
-    c.controller.integral_gain[0]  = rc.controller.integralGainBig;
-    c.controller.integral_gain[1]  = rc.controller.integralGainSmall;
-    c.controller.integral_limit[0] = rc.controller.integralLimitBig;
-    c.controller.integral_limit[1] = rc.controller.integralLimitSmall;
-    c.controller.integral_on_big   = rc.controller.integralOnBig;
+    // ── MCU 数据线性映射（tcbs::com::McuDataPreprocessor::LinearParams）──
+    //   注意：LinearParams 的默认构造带子模组已标定值；本工程规定“不允许缺省用到的
+    //   参数”，因此这里**逐项覆盖**为配置值（Sentry1.yaml 与该默认值一致）。
+    tcbs::com::McuDataPreprocessor::LinearParams lin;
+    lin.send_pitch_scale  = rc.mcuLinear.sendPitchScale;
+    lin.send_pitch_offset = rc.mcuLinear.sendPitchOffset;
+    lin.recv_pitch_scale  = rc.mcuLinear.recvPitchScale;
+    lin.recv_pitch_offset = rc.mcuLinear.recvPitchOffset;
+    lin.recv_big_yaw_scale   = rc.mcuLinear.recvBigYawScale;
+    lin.recv_big_yaw_offset  = rc.mcuLinear.recvBigYawOffset;
+    lin.recv_big_omega_scale = rc.mcuLinear.recvBigOmegaScale;
+    lin.send_big_yaw_scale   = rc.mcuLinear.sendBigYawScale;
+    lin.send_big_yaw_offset  = rc.mcuLinear.sendBigYawOffset;
+    lin.send_big_velocity_scale = rc.mcuLinear.sendBigVelocityScale;
+    lin.send_big_torque_scale   = rc.mcuLinear.sendBigTorqueScale;
+    lin.recv_small_yaw_scale   = rc.mcuLinear.recvSmallYawScale;
+    lin.recv_small_yaw_offset  = rc.mcuLinear.recvSmallYawOffset;
+    lin.recv_small_omega_scale = rc.mcuLinear.recvSmallOmegaScale;
+    lin.send_small_yaw_scale   = rc.mcuLinear.sendSmallYawScale;
+    lin.send_small_yaw_offset  = rc.mcuLinear.sendSmallYawOffset;
+    lin.send_small_velocity_scale = rc.mcuLinear.sendSmallVelocityScale;
+    lin.send_small_torque_scale   = rc.mcuLinear.sendSmallTorqueScale;
 
-    // 序列模式：输出模式一次下发大/小 yaw 方位角序列 + pitch/fire 序列（构造时选定）
-    c.sequence_mode = true;
+    // ── IMU 安装构型（决定严格反解的运动学链）──
+    const auto imu_loc = (rc.imuLocation == 0)
+                             ? tcbs::com::FullStrictPoseBuilder::ImuLocation::ON_BIG_YAW
+                             : tcbs::com::FullStrictPoseBuilder::ImuLocation::ON_HEAD;
 
-    rc_ = std::make_unique<tcbs::RobotController>(c);
+    // ── 一体化封装：通信 + 严格反解 + 双级 yaw MPC + 后台发送线程 ──
+    //   序列模式（sequence_mode = true）由配置固定：大/小 yaw 输出按序列下发。
+    rc_ = std::make_unique<tcbs::RobotController>(
+        imu_loc, model, mpc, wrapper, rc.mpcLoopPeriod, lin, rc.sequenceMode);
 }
 
 RobotControllerAdapter::~RobotControllerAdapter() = default;
 
 RobotState RobotControllerAdapter::state() {
     RobotState s = toRobotState(rc_->getState());
-    unwrapAzimuths(s);   // strict_pose 只给 wrap 值 → 恢复多圈连续（保持/扫描参考需要）
+    s.imu_location = imu_location_;   // 构造实参（配置决定），strict 不再携带
+    unwrapAzimuths(s);   // strict 只给 wrap 值 → 恢复多圈连续（保持/扫描参考需要）
     return s;
 }
 
-// 把 strict_pose 的 wrap 方位角解卷绕成**多圈连续**量（原地修改 s.yaw_*_azimuth）。
+// 把 strict 的 wrap 方位角解卷绕成**多圈连续**量（原地修改 s.yaw_*_azimuth）。
 // 为什么必须做：非可视化消费方（GimbalOutputForBigSmallYaw 的保持/哨兵扫描）会把这两个
 // 方位角当作 MPC 参考下发，而子模组内部用于代价的 chassis_azimuth 是多圈量；若下发 wrap
 // 值，大 yaw 转过半圈后参考与状态会差整圈，MPC 会去追一个假目标。
-// 只以 strict_pose 的 wrap 值为输入（不读 est 的方位角）：取与上一拍输出最近的同圈值。
-// 起点一致性：适配器**拥有**这个 tcbs::RobotController（子模组估计器的解卷绕累加器与它
-//   同时创建），且 state() 在构造后立刻被采样线程/云台线程调用；首个样本的 |wrap 值| ≤ π，
-//   即使首个样本是未就绪的全零，随后第一个真实样本也只会落在同一圈 ⇒ 与子模组内部
-//   （多圈）chassis_azimuth 不会差整圈。
+// 只以 strict 的 wrap 值为输入：取与上一拍输出最近的同圈值。
+// 起点一致性：适配器**拥有**这个 tcbs::RobotController，且 state() 在构造后立刻被采样
+// 线程/云台线程调用；首个样本的 |wrap 值| ≤ π，即使首个样本是未就绪的全零，随后第一个
+// 真实样本也只会落在同一圈 ⇒ 不会与子模组内部（多圈）方位角差整圈。
 void RobotControllerAdapter::unwrapAzimuths(RobotState& s) {
     std::lock_guard<std::mutex> lock(az_mtx_);
     constexpr double kTwoPi = 2.0 * M_PI;

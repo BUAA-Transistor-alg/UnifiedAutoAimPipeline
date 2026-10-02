@@ -66,8 +66,10 @@ struct OutputContext {
         bool        valid = false;
         const char* kind = "";                 // 下发路径：predict / scan / hold
         bool        auto_aim_enable = false;
-        bool        big_torque_only = false, small_torque_only = false;
-        bool        integral_enable = false;
+        bool        big_torque_only = false, small_torque_only = false;  // 两轴各自的
+                                                                        // yaw_torque_only_mode
+        bool        integral_enable = false;   // 积分补偿开关（v2 分大小 yaw 两路，本工程
+                                               // 当前把同一值传给两轴，故只记一份）
         double      big_yaw_front = 0.0, small_yaw_front = 0.0;  // 世界方位角（rad）
         double      pitch_front = 0.0;                            // pitch（rad）
         bool        fire_front = false;

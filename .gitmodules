@@ -3,7 +3,7 @@
 	url = https://github.com/huhu23333/TorqueController.git
 	branch = main
 	
-[submodule "sub_module/TorqueControllerForBigSmallYaw"]
-	path = sub_module/TorqueControllerForBigSmallYaw
-	url = https://github.com/BUAA-Transistor-alg/TorqueControllerForBigSmallYaw.git
+[submodule "sub_module/TorqueControllerForBigSmallYaw_v2"]
+	path = sub_module/TorqueControllerForBigSmallYaw_v2
+	url = https://github.com/BUAA-Transistor-alg/TorqueControllerForBigSmallYaw_v2.git
 	branch = main

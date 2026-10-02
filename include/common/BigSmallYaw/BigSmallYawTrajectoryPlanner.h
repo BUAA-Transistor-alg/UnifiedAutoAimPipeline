@@ -1,6 +1,6 @@
 // BigSmallYawTrajectoryPlanner.h — 同时满足最大速度 / 最大加速度 / 最大加加速度
 // 限制的一维轨迹规划器（**移植自子模组
-// sub_module/TorqueControllerForBigSmallYaw/python/scripts/trajectory_planner.py，
+// sub_module/TorqueControllerForBigSmallYaw_v2/python/scripts/trajectory_planner.py，
 // 逐行对应，含 StepRefinementWrapper**）
 //
 // 用途：大小 yaw 拆分器用它把“瞄准方位角序列”（移动目标）扫描成平滑的大 yaw 目标轨迹：

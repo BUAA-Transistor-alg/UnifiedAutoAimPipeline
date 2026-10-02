@@ -34,13 +34,13 @@ GimbalOutputForBigSmallYaw::GimbalOutputForBigSmallYaw(RobotControllerAdapter& c
           RobotConfig::instance().common.bigSmallYaw.bigSmall.joints.smallMinAngle,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.joints.smallMaxAngle,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.joints.smallCenterAngle,
-          RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.mpc.smallLimitSoftRatio,
+          RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.smallSoftLimitRatio,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerMaxVelocity,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerMaxAcceleration,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerMaxJerk,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerSubsteps}),
-      big_torque_only_(RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.controller.bigTorqueOnly),
-      small_torque_only_(RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.controller.smallTorqueOnly),
+      big_torque_only_(RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.yawTorqueOnlyModeB),
+      small_torque_only_(RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.yawTorqueOnlyModeS),
       pitch_seq_lead_(RobotConfig::instance().common.predictSequence.pitchSeqLead),
       fire_seq_lead_(RobotConfig::instance().common.predictSequence.fireSeqLead),
       fire_angle_lower_limit_(RobotConfig::instance().common.predictSequence.fireAngleLowerLimit),
@@ -182,12 +182,15 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
         ctx.split_diag.small_ref_front  = sp.small_azimuth.empty() ? 0.0 : sp.small_azimuth.front();
 
         // 序列 set：{自动瞄准开, 大 yaw 仅力矩, 小 yaw 仅力矩, ψ_big 序列, ψ_small 序列,
-        //            pitch 序列, fire 序列, 积分补偿}
+        //            pitch 序列, fire 序列, 大 yaw 积分开关, 小 yaw 积分开关}
+        // 注：v2 起两轴的力矩模式位与积分开关都各自独立；本工程当前把流水线给出的
+        //     同一个 seq.integral_enable 传给两轴（需要分轴控制时再拆开配置）。
         recordSent("predict", /*auto_aim_enable=*/true, sp.big_azimuth, sp.small_azimuth,
                    pitch_out, fire_out, seq.integral_enable);
         ctrl_.controller().set(/*auto_aim_enable=*/true, big_torque_only_, small_torque_only_,
                                sp.big_azimuth, sp.small_azimuth, pitch_out, fire_out,
-                               /*integral_enable=*/seq.integral_enable);
+                               /*integral_enable_b=*/seq.integral_enable,
+                               /*integral_enable_s=*/seq.integral_enable);
     } else {
         // ── 预测不可用：自瞄关闭 ──
         //  - 哨兵扫描控制器关闭（enabled = false）：**原行为完全不变**——大/小 yaw
@@ -233,7 +236,7 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                        big_seq, small_seq, pitch_scan_out, fire_scan_out, /*integral_enable=*/false);
             ctrl_.controller().set(auto_aim, big_torque_only_, small_torque_only_,
                                    big_seq, small_seq, pitch_scan_out, fire_scan_out,
-                                   /*integral_enable=*/false);
+                                   /*integral_enable_b=*/false, /*integral_enable_s=*/false);
         } else {
             // 原行为（未开启哨兵控制器时与引入本功能前完全一致）
             const double hold_big   = st.yaw_big_azimuth;
@@ -248,7 +251,7 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                        hold_pitch_seq, hold_fire_seq, /*integral_enable=*/false);
             ctrl_.controller().set(/*auto_aim_enable=*/false, big_torque_only_, small_torque_only_,
                                    hold_big_seq, hold_small_seq, hold_pitch_seq, hold_fire_seq,
-                                   /*integral_enable=*/false);
+                                   /*integral_enable_b=*/false, /*integral_enable_s=*/false);
         }
 
         // 持续保持超过一个规划时域（一个序列时长）后，拆分器的“上一轮计划”已无参考价值：

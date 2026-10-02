@@ -8,8 +8,9 @@
 //   1) 适配器按 common.big_small_yaw 组装并构造 tcbs::RobotController（后台 MPC 线程启动）；
 //   2) GimbalOutputForBigSmallYaw::update 正常下发（大/小 yaw 序列长度 = 预测序列长度、
 //      fire 序列截取正确、拆分后每点 |θ_small| 在软限位内）；
-//   3) 控制器确实收到序列（MPC 参考序列长度、solve_count 增长、ticks_since_set 被消费）；
+//   3) 控制器确实收到序列（MPC 参考序列长度、后台 loop_fps / ticks_since_set 正常）；
 //   4) 预测不可用时进入保持模式（auto_aim 关闭 + 大/小 yaw 保持当前反解方位角）。
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -74,16 +75,15 @@ int main() {
     // 等一拍后台 loop 起来（无硬件时状态为 0，但 MPC 仍会求解）
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     const bsy::RobotState st0 = adapter.state();
-    std::printf("  state: valid=%d estimator_valid=%d pred_big_seq=%zu pred_small_seq=%zu\n",
-                (int)st0.valid, (int)st0.estimator_valid, st0.pred_big_azimuth_seq.size(),
+    std::printf("  state: valid=%d ready=%d pred_big_seq=%zu pred_small_seq=%zu\n",
+                (int)st0.valid, (int)st0.ready, st0.pred_big_azimuth_seq.size(),
                 st0.pred_small_azimuth_seq.size());
-    // ⚠ 无硬件（无串口）时状态估计 est.valid = false，子模组 MPC 按设计**不求解**
-    //   （退化为“仅力矩 + 零力矩”，避免电控内环追无意义目标角），因此预测序列为空、
-    //   solve_count = 0；此处按“估计就绪与否”分别校验，两种情形都算通过。
-    const size_t expect_seq = st0.estimator_valid ? (size_t)cfg.common.bigSmallYaw.bigSmall.robotController.mpc.n : 0;
-    std::cout << "  （无硬件环境：estimator_valid = " << (int)st0.estimator_valid
-              << " ⇒ MPC " << (st0.estimator_valid ? "求解" : "不求解（子模组设计如此）") << "）"
-              << std::endl;
+    // ⚠ v2 子模组没有状态估计器：McuMpcController 只要求 comm != nullptr 就照常求解
+    //   （无硬件时严格反解全 0，MPC 依然按 0 状态求解并给出 N 点序列），因此预测序列
+    //   长度恒为 mpc.pred_n，与是否收到串口数据无关。
+    const size_t expect_seq = (size_t)cfg.common.bigSmallYaw.bigSmall.robotController.mpc.n;
+    std::cout << "  （无硬件环境下 MPC 仍按全 0 状态求解 ⇒ 预测序列长度 = pred_n = "
+              << expect_seq << "）" << std::endl;
     check(st0.pred_big_azimuth_seq.size() == expect_seq, "MPC 大 yaw 预测序列长度符合预期");
     check(st0.pred_small_azimuth_seq.size() == expect_seq, "MPC 小 yaw 预测序列长度符合预期");
 
@@ -131,14 +131,13 @@ int main() {
     // ── 控制器侧确认收到序列并持续求解 ──
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
     const bsy::RobotState st1 = adapter.state();
-    std::printf("  MPC: solve_count=%u fail=%u solve_ms=%.3f loop_fps=%.1f ref_big#=%zu ref_small#=%zu\n",
-                st1.solve_fail_count, st1.solve_fail_count, st1.solve_ms, st1.loop_fps,
+    std::printf("  MPC: loop_fps=%.1f pred_psi_b/s=%.4f/%.4f ref_big#=%zu ref_small#=%zu\n",
+                st1.mpc.loop_fps, st1.mpc.pred_psi_b, st1.mpc.pred_psi_s,
                 st1.ref_big_azimuth_seq.size(), st1.ref_small_azimuth_seq.size());
     check(!st1.ref_big_azimuth_seq.empty() && !st1.ref_small_azimuth_seq.empty(),
           "控制器 MPC 已收到大/小 yaw 参考序列（序列被逐拍消费）");
-    check(st1.loop_fps > 0.0, "MPC 后台 loop 正在运行（loop_fps > 0）");
-    // 估计就绪时应当确实求解过（有硬件时生效）
-    check(!st1.estimator_valid || st1.solve_fail_count + 1 > 0, "估计就绪时求解计数可用");
+    check(st1.mpc.loop_fps > 0.0, "MPC 后台 loop 正在运行（loop_fps > 0）");
+    check(st1.mpc.ticks_since_set > 0, "后台 loop 持续运行（ticks_since_set 递增）");
 
     // ── 保持模式：预测不可用 ──
     {
@@ -153,8 +152,13 @@ int main() {
         // predict_result 保持默认无效
         out.update(res, nullptr, ctx);
         check(!out.lastOutput().auto_aim_enable, "预测不可用 → 保持模式（auto_aim 关闭）");
-        check(ctx.fire_out.size() == 1 && ctx.fire_out.front() == false,
-              "保持模式 fire 序列 = {false}");
+        // 预测不可用时 fire 必须全为 false：
+        //   - 未开启哨兵扫描（sentry_controller.enabled = false）⇒ 保持序列 = {false}；
+        //   - 开启（Sentry1 配置即如此）⇒ 保持段/扫描段都是长度 = 扫描序列点数 n 的全 false 序列。
+        const bool fire_all_false =
+            !ctx.fire_out.empty() &&
+            std::none_of(ctx.fire_out.begin(), ctx.fire_out.end(), [](bool b) { return b; });
+        check(fire_all_false, "保持模式 fire 序列全为 false");
         check(!ctx.split_diag.valid, "保持模式清空拆分器诊断");
     }
 

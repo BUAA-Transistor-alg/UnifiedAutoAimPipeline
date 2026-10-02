@@ -203,9 +203,10 @@ static Options parseArgs(int argc, char** argv) {
 //      （--- MCU --- / --- IMU --- / --- FUSED --- / --- STRICT --- / --- MPC ---），
 //      MCU 块含温度行（按温度区间变色）。
 //      ★ 大/小双 yaw 构型（BIG_SMALL）在**同一位置、同一分块顺序**显示完整输入信息
-//      （--- MCU --- / --- IMU --- / --- EST --- / --- STRICT --- / --- MPC (big/small) ---），
+//      （--- MCU --- / --- IMU --- / --- STRICT --- / --- MPC (big/small) ---；
+//        v2 子模组已取消 YawStateEstimator，故没有 EST 块），
 //      只是字段按双级 yaw 语义展开（θ_big/θ_small、ψ_big/ψ_small、电机侧/云台侧、
-//      背隙 β、LOS 等），见 drawOverlay 的 bsy_state 分支；
+//      旋转平面重力分量等），见 drawOverlay 的 bsy_state 分支；
 //      末尾另加两栏：--- SENT to tcbs [rad] ---（本帧**实际下发**给子模组的 set() 实参，
 //      序列取首元素 + 长度）与 --- TF world euler [rad] ---（当前变换树**所有节点**在
 //      世界系下的欧拉角，ZXY；节点按链序，另一构型不存在的节点自动跳过）。
@@ -278,8 +279,8 @@ static void drawOverlay(cv::Mat& img,
     // 第 4 块串口信息区同样使用该状态（此处统一获取一次，避免重复加锁）
     const tcs::RobotController::State st =
         (rc != nullptr) ? rc->getState() : tcs::RobotController::State{};
-    // 新构型（大小 yaw）下 MPC 后台循环帧率取自适配器状态包
-    const double mpc_loop_fps = bsy_state ? bsy_state->loop_fps : st.mpc.loop_fps;
+    // 新构型（大小 yaw）下 MPC 后台循环帧率取自适配器状态包的 MPC 分组
+    const double mpc_loop_fps = bsy_state ? bsy_state->mpc.loop_fps : st.mpc.loop_fps;
 
     // 1. 热键提醒（顶部）
     if (options.status) cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
@@ -334,12 +335,14 @@ static void drawOverlay(cv::Mat& img,
     };
     if (bsy_state != nullptr) {
         // ── 新构型（大/小双 yaw）：与单 yaw 相同的分块顺序
-        //    （--- MCU --- / --- IMU --- / --- EST --- / --- STRICT --- / --- MPC ---），
+        //    （--- MCU --- / --- IMU --- / --- STRICT --- / --- MPC ---），
         //    字段按双级 yaw 语义展开（θ_big/θ_small、ψ_big/ψ_small、电机侧/云台侧、
-        //    背隙 β、LOS 等），保证两种构型下左侧输入信息块一一对应 ──
+        //    旋转平面重力分量等），保证两种构型下左侧输入信息块一一对应。
+        //    注：v2 子模组已取消 YawStateEstimator，故没有旧版的 --- EST --- 块。 ──
         const bsy::RobotState& bs = *bsy_state;
         // 控制器未构造 / 尚未收到数据时给出与单 yaw 构型 "Serial: N/A" 对应的提示
-        if (!bs.valid && !bs.estimator_valid) {
+        // （ready = MCU 与 IMU 都收到过有效样本，与子模组 control_demo 的就绪判据一致）
+        if (!bs.valid && !bs.ready) {
             put("BigSmall: N/A (controller not constructed / no data)");
         }
 
@@ -388,51 +391,8 @@ static void drawOverlay(cv::Mat& img,
                              << bs.imu.euler_pitch << " " << bs.imu.euler_roll;
             put(oss.str());
             oss.str(""); oss << "dt: " << bs.imu.dt_one_tenth_ms
-                             << "  loc: " << bs.strict.imu_location
+                             << "  loc: " << bs.imu_location
                              << " (0=big_yaw 1=head)";
-            put(oss.str());
-        } else {
-            put("(no data)");
-        }
-
-        // ── EST（可信量 + 大 yaw 延迟补偿 + 反解真实位姿；对应单 yaw 的 --- FUSED ---）──
-        put("--- EST ---");
-        if (bs.est.valid) {
-            oss.str(""); oss << std::fixed << std::setprecision(4);
-            oss << "imu_euler: " << bs.est.imu_yaw << " " << bs.est.imu_pitch
-                << " " << bs.est.imu_roll;
-            put(oss.str());
-            oss.str(""); oss << "psi_big: " << bs.est.platform_azimuth
-                             << "  rate: " << bs.est.platform_rate;
-            put(oss.str());
-            oss.str(""); oss << "theta_small: " << bs.est.small_joint_angle
-                             << "  rate: " << bs.est.small_joint_rate;
-            put(oss.str());
-            oss.str(""); oss << "pitch: " << bs.est.pitch_joint_angle
-                             << "  rate: " << bs.est.pitch_joint_rate;
-            put(oss.str());
-            oss.str(""); oss << "theta_big: " << bs.est.big_joint_angle
-                             << "  meas: " << bs.est.big_joint_angle_meas
-                             << "  rate: " << bs.est.big_joint_rate;
-            put(oss.str());
-            oss.str(""); oss << "big motor: " << bs.est.big_motor_angle
-                             << "  platform: " << bs.est.big_platform_angle;
-            put(oss.str());
-            oss.str(""); oss << "backlash beta: " << bs.est.backlash_center
-                             << "  width: " << bs.est.backlash_width_obs;
-            put(oss.str());
-            oss.str(""); oss << "psi_small: " << bs.est.small_output_azimuth
-                             << "  psi_chassis: " << bs.est.chassis_azimuth;
-            put(oss.str());
-            oss.str(""); oss << "LOS az/el: " << bs.est.los_azimuth
-                             << " / " << bs.est.los_elevation;
-            put(oss.str());
-            oss.str(""); oss << "head euler: " << bs.est.head_world_yaw << " "
-                             << bs.est.head_world_pitch << " " << bs.est.head_world_roll;
-            put(oss.str());
-            oss.str(""); oss << "enc_age: " << bs.est.big_enc_age
-                             << "  ch_imu_age: " << bs.est.chassis_imu_age
-                             << "  innov: " << bs.est.big_enc_innovation;
             put(oss.str());
         } else {
             put("(no data)");
@@ -442,23 +402,28 @@ static void drawOverlay(cv::Mat& img,
         put("--- STRICT ---");
         {
             oss.str(""); oss << std::fixed << std::setprecision(4);
-            oss << "imu_euler: " << bs.strict.imu_euler_yaw << " "
-                << bs.strict.imu_euler_pitch << " " << bs.strict.imu_euler_roll;
+            // IMU 欧拉角取自 IMU 原始包（v2 的 StrictPose 不再携带）
+            oss << "imu_euler: " << bs.imu_euler_yaw << " "
+                << bs.imu_euler_pitch << " " << bs.imu_euler_roll;
             put(oss.str());
-            oss.str(""); oss << "theta: big " << bs.strict.big_joint_angle
-                             << "  small " << bs.strict.small_joint_angle
-                             << "  pitch " << bs.strict.pitch_joint_angle;
+            oss.str(""); oss << "yaw joint: big " << bs.strict.yaw_big_angle
+                             << "  small " << bs.strict.yaw_small_angle
+                             << "  pitch " << bs.strict.pitch_angle;
             put(oss.str());
             oss.str(""); oss << "chassis: " << bs.strict.chassis_euler_yaw << " "
                              << bs.strict.chassis_euler_pitch << " "
                              << bs.strict.chassis_euler_roll;
             put(oss.str());
-            oss.str(""); oss << "psi: platform " << bs.strict.platform_azimuth
+            oss.str(""); oss << "psi: big " << bs.strict.big_azimuth
                              << "  chassis " << bs.strict.chassis_azimuth
-                             << "  head " << bs.strict.head_azimuth;
+                             << "  small " << bs.strict.small_azimuth;
             put(oss.str());
-            oss.str(""); oss << "recon_err: " << bs.strict.recon_err_rot
-                             << "  big_age: " << bs.strict.big_joint_angle_age;
+            oss.str(""); oss << "omega: big " << bs.strict.big_motor_omega
+                             << "  small " << bs.strict.small_motor_omega
+                             << "  chassis " << bs.strict.chassis_omega;
+            put(oss.str());
+            oss.str(""); oss << "gravity plane: gx " << bs.strict.gx
+                             << "  gy " << bs.strict.gy;
             put(oss.str());
         }
 
@@ -466,44 +431,39 @@ static void drawOverlay(cv::Mat& img,
         put("--- MPC (big/small) ---");
         {
             oss.str(""); oss << std::fixed << std::setprecision(4);
-            oss << "tau mpc: " << bs.torque_mpc_big << " / " << bs.torque_mpc_small
-                << "  integral: " << bs.integral_big << " / " << bs.integral_small;
+            oss << "tau mpc: " << bs.mpc.yaw_big_torque << " / " << bs.mpc.yaw_small_torque
+                << "  integral: " << bs.mpc.integral_b << " / " << bs.mpc.integral_s;
             put(oss.str());
-            oss.str(""); oss << "tau out: " << bs.torque_big << " / " << bs.torque_small
-                             << "  mode: " << (bs.big_torque_only ? "T" : "TPID") << " / "
-                             << (bs.small_torque_only ? "T" : "TPID");
+            oss.str(""); oss << "target joint: " << bs.mpc.yaw_big_target_angle << " / "
+                             << bs.mpc.yaw_small_target_angle
+                             << "  vel: " << bs.mpc.yaw_big_target_velocity << " / "
+                             << bs.mpc.yaw_small_target_velocity;
             put(oss.str());
-            oss.str(""); oss << "target_joint: " << bs.target_joint_big << " / "
-                             << bs.target_joint_small
-                             << "  vel: " << bs.target_joint_rate_big << " / "
-                             << bs.target_joint_rate_small;
-            put(oss.str());
-            oss.str(""); oss << "ref now: " << bs.ref_azimuth_big << " / "
-                             << bs.ref_azimuth_small
-                             << "  delayed: " << bs.delayed_ref_azimuth_big << " / "
-                             << bs.delayed_ref_azimuth_small;
+            oss.str(""); oss << "ref now(delayed): " << bs.mpc.delayed_target_b << " / "
+                             << bs.mpc.delayed_target_s
+                             << "  set: " << bs.mpc.set_target_b << " / "
+                             << bs.mpc.set_target_s;
             put(oss.str());
             oss.str(""); oss << "ref front: "
-                             << (bs.ref_big_azimuth_seq.empty() ? 0.0
-                                                                : bs.ref_big_azimuth_seq.front())
+                             << (bs.mpc.ref_psi_b_seq.empty() ? 0.0
+                                                              : bs.mpc.ref_psi_b_seq.front())
                              << " / "
-                             << (bs.ref_small_azimuth_seq.empty() ? 0.0
-                                                                  : bs.ref_small_azimuth_seq.front())
+                             << (bs.mpc.ref_psi_s_seq.empty() ? 0.0
+                                                              : bs.mpc.ref_psi_s_seq.front())
                              << "  pred front: "
-                             << (bs.pred_big_azimuth_seq.empty() ? 0.0
-                                                                 : bs.pred_big_azimuth_seq.front())
+                             << (bs.mpc.pred_psi_b_seq.empty() ? 0.0
+                                                               : bs.mpc.pred_psi_b_seq.front())
                              << " / "
-                             << (bs.pred_small_azimuth_seq.empty() ? 0.0
-                                                                   : bs.pred_small_azimuth_seq.front());
+                             << (bs.mpc.pred_psi_s_seq.empty() ? 0.0
+                                                               : bs.mpc.pred_psi_s_seq.front());
             put(oss.str());
-            oss.str(""); oss << "small over_soft_limit: " << (bs.small_ref_over_limit ? "YES" : "no")
-                             << "  solve: " << bs.solve_ms << " ms"
-                             << "  fail: " << bs.solve_fail_count << "/" << bs.solve_count
-                             << "  loop: " << bs.loop_fps << " fps"
-                             << "  sent: " << (bs.sent_ok ? 1 : 0)
-                             << "  ticks: " << bs.ticks_since_set;
-            put(oss.str(), bs.small_ref_over_limit ? cv::Scalar(0, 0, 255)
-                                                   : cv::Scalar(0, 255, 0));
+            // 注：v2 的 MpcData 不再有 solve_ms / solve_count / solve_fail_count /
+            //     sent_ok / small_ref_over_limit；越软限位由拆分器诊断给出（见可视化叠加）。
+            oss.str(""); oss << "pred psi_b/s: " << bs.mpc.pred_psi_b << " / "
+                             << bs.mpc.pred_psi_s
+                             << "  loop: " << bs.mpc.loop_fps << " fps"
+                             << "  ticks: " << bs.mpc.ticks_since_set;
+            put(oss.str());
         }
 
         // ── 本帧**实际下发给子模组**的信息（tcbs 序列 set() 的实参；序列取首元素）──

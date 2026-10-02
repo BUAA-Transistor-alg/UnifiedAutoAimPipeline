@@ -227,7 +227,9 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, tcs::RobotContro
         vis.big_small.yaw_small_joint   = bs.yaw_small_joint;
         vis.big_small.yaw_big_azimuth   = bs.yaw_big_azimuth;
         vis.big_small.yaw_small_azimuth = bs.yaw_small_azimuth;
-        vis.big_small.small_ref_over_limit = bs.small_ref_over_limit;
+        // v2 的 MpcData 已无 small_ref_over_limit 字段：越软限位由**拆分器**判定，
+        // 取本帧拆分器诊断（见 BigSmallYawSplitter::Output::over_limit）。
+        vis.big_small.small_ref_over_limit = ctx.split_diag.over_limit;
         vis.big_small.big_ref_front     = bs.ref_big_azimuth_seq.empty()
                                               ? bs.yaw_big_azimuth : bs.ref_big_azimuth_seq.front();
         vis.big_small.small_ref_front   = bs.ref_small_azimuth_seq.empty()

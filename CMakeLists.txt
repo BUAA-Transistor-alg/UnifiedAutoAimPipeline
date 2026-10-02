@@ -63,16 +63,17 @@ include_directories(
 # 仅链接其 RobotController 动态库（tcs::robot_comm_c），不构建子模组内的演示程序
 add_subdirectory(sub_module/TorqueController ${CMAKE_BINARY_DIR}/torque_controller EXCLUDE_FROM_ALL)
 
-# ── TorqueControllerForBigSmallYaw 子模组（双级 yaw）：与上面的单 yaw 子模组共存 ──
-# 同样遵循命名隔离约定，用 tcbs_ / tcbs:: 前缀（头文件 tcbs/...，命名空间 tcbs），
-# 因此两个子模组的 target / 产物 / 头文件路径互不冲突。
-# 当前主程序暂不使用（不链接其库），但随工程一起完整编译，便于后续切换接入。
-# 注：父工程把 CMAKE_RUNTIME_OUTPUT_DIRECTORY 指向根目录 bin/（部署目录），子目录会
-#     继承；这里临时改到子模组自己的构建目录，避免 tcbs_* 可执行文件混进 bin/。
-set(_uap_runtime_out_backup "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/torque_controller_bigsmallyaw/bin")
-add_subdirectory(sub_module/TorqueControllerForBigSmallYaw ${CMAKE_BINARY_DIR}/torque_controller_bigsmallyaw)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${_uap_runtime_out_backup}")
+# ── TorqueControllerForBigSmallYaw_v2 子模组（双级 yaw）：与上面的单 yaw 子模组共存 ──
+# 命名：头文件放在 include/ 顶层（RobotController.hpp + dm/ com/ mpc/ capi/ common/），
+# C++ 命名空间 tcbs（其下再分 dm / com / mpc 三个子命名空间），CMake 目标名 **tcbs**
+# （动态库 libtcbs.so）；与单 yaw 子模组的 tcs:: 前缀 / tcs_* 目标互不冲突。
+# 注：该子模组的 CMakeLists 是**按顶层工程**写的（自行 project()、自行把 tcbs 产物放到
+#     其 CMAKE_BINARY_DIR），这里以 EXCLUDE_FROM_ALL 引入：只构建 unified_auto_aim 依赖的
+#     tcbs 动态库，不构建其 tools/ 下的 tcbs_test_serial / tcbs_pitch_calibration /
+#     tcbs_control_demo（需要时在子模组目录下单独执行 bash build.sh 即可）。
+add_subdirectory(sub_module/TorqueControllerForBigSmallYaw_v2
+                 ${CMAKE_BINARY_DIR}/torque_controller_bigsmallyaw
+                 EXCLUDE_FROM_ALL)
 
 # ── 公共源文件（通用类：基础设施 / 输入模式 / tf 树 / 弹道 / 输出模式）──
 set(COMMON_SOURCES
@@ -95,7 +96,7 @@ set(COMMON_SOURCES
     src/common/TransformTree/TransformNode.cpp
     src/common/TransformTree/TransformTreeManager.cpp
     src/common/TransformTree/RobotTfTree.cpp
-    # 新构型（大/小双 yaw，TorqueControllerForBigSmallYaw 子模组）适配器：
+    # 新构型（大/小双 yaw，TorqueControllerForBigSmallYaw_v2 子模组）适配器：
     # 状态包/转换、大 yaw 平滑轨迹规划器、大小 yaw 拆分器、新构型云台输出模式
     src/common/BigSmallYaw/RobotStateForBigSmallYaw.cpp
     src/common/BigSmallYaw/BigSmallYawTrajectoryPlanner.cpp
@@ -155,7 +156,7 @@ target_link_libraries(unified_auto_aim PRIVATE
     ${OpenCV_LIBS}
     openvino::runtime
     tcs::robot_comm_c     # TorqueController 子模组（tcs::RobotController 一体化封装，单 yaw 构型）
-    tcbs::robot_comm_c    # TorqueControllerForBigSmallYaw 子模组（大小 yaw 构型，见 common/BigSmallYaw/）
+    tcbs                  # TorqueControllerForBigSmallYaw_v2 子模组（大小 yaw 构型，见 common/BigSmallYaw/）
     ${UDEV_LIBRARY}
     Threads::Threads
     ${MVCAMERA_LIB}
