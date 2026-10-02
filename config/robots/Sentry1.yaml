@@ -220,7 +220,7 @@ common:
         # MPC 求解器（tcbs::mpc::MPCController::Options；dt 取上面的 dt_control）
         # ★ 取值 = control_demo.cpp 的 makeMpcOptions()（权重语义见子模组 mpc_controller.hpp）
         mpc:
-          pred_n: 24                  # 预测步数 N（control_demo: int(DELAY_TIME/DT_CTRL) = 0.2/0.01）
+          pred_n: 20                  # 预测步数 N（control_demo: int(DELAY_TIME/DT_CTRL) = 0.2/0.01）
           refinement: 16              # 每控制步 RK4 子步数（稳定性关键，control_demo: MPC_REFINE）
           max_iter: 16                # Ceres LBFGS 最大迭代次数（control_demo: MAX_ITER）
           max_torque_b: 1.0           # 大 yaw tanh 软限幅 |τ_b| < 1.0 N·m（control_demo: MAX_TORQUE_B）

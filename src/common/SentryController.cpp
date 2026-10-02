@@ -39,10 +39,19 @@ double SentryController::scanElapsed(const TimePoint& now) const {
     return std::chrono::duration<double>(now - scan_start_).count();
 }
 
-double SentryController::clampYawToMeasured(double target, double current) const {
+void SentryController::clampYawToMeasured(std::vector<double>& targets, double current) {
+    if (targets.empty()) return;
     const double lo = current - params_.yawScanMaxDeviation;
     const double hi = current + params_.yawScanMaxDeviation;
-    return std::min(std::max(target, lo), hi);
+    double first_tar = targets[0];
+    if (first_tar < lo) {
+        clamp_yaw_bias_ = lo - first_tar;
+    } else if (first_tar > hi) {
+        clamp_yaw_bias_ = hi - first_tar;
+    }
+    for (double& tar : targets) {
+        tar += clamp_yaw_bias_;
+    }
 }
 
 double SentryController::pitchTargetAt(double t) const {
@@ -70,6 +79,7 @@ void SentryController::buildYawSequence(int n, double dt, double current_yaw,
     // 参考速度恒为 ω（实测角只用于限幅，不参与参考位置的计算）。
     if (!scan_ref_valid_) {
         scan_ref_yaw_   = current_yaw;
+        clamp_yaw_bias_ = 0.0;
         scan_ref_valid_ = true;
     }
     const double ref_now =
@@ -79,8 +89,9 @@ void SentryController::buildYawSequence(int n, double dt, double current_yaw,
     for (int k = 0; k < n; ++k) {
         const double target =
             ref_now + params_.yawScanAngularVelocity * (double)(k + 1) * dt;
-        out.push_back(clampYawToMeasured(target, current_yaw));
+        out.push_back(target);
     }
+    clampYawToMeasured(out, current_yaw);
 }
 
 void SentryController::buildPitchSequence(int n, double dt, const TimePoint& now,

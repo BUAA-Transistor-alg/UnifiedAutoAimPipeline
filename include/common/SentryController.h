@@ -57,9 +57,9 @@ public:
     /// 距进入扫描的秒数（未进入扫描时为 0）
     double scanElapsed(const TimePoint& now) const;
 
-    /// yaw 目标限幅：把 target 限制在本帧实测角 current ± yaw_scan_max_deviation 内。
-    /// 序列每个点都按此限幅，只约束“参考相对实机的超前量”，不影响参考本身的速度。
-    double clampYawToMeasured(double target, double current) const;
+    /// yaw 目标限幅：把 target 第一点限制在本帧实测角 current ± yaw_scan_max_deviation 内。
+    /// 并将这个移动应用于后续的点及后续的帧上
+    void clampYawToMeasured(std::vector<double>& targets, double current);
 
     /// pitch 扫描目标（t = 距进入扫描的秒数）：rise / fall 两段线性锯齿波
     double pitchTargetAt(double t) const;
@@ -93,6 +93,8 @@ private:
     // scanRefValid 为 false 时，下一次 buildYawSequence 用它收到的实测角锁存初值。
     bool   scan_ref_valid_ = false;
     double scan_ref_yaw_   = 0.0;
+
+    double clamp_yaw_bias_ = 0.0;
 };
 
 } // namespace sentry
