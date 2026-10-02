@@ -76,7 +76,7 @@ common:
     # ── 以下仅在 enabled = true 时必需 ──
     idle_timeout_sec: 2.0          # 无有效预测持续多久后进入扫描模式（秒，>= 0）
     yaw_scan_angular_velocity: 2.0 # 扫描 yaw 角速度（rad/s，!= 0；正/负 = 两个相反的扫描方向）
-    yaw_scan_max_deviation: 0.5  # 扫描 yaw 序列每点相对本帧实测角度的最大偏离
+    yaw_scan_max_deviation: 0.2  # 扫描 yaw 序列每点相对本帧实测角度的最大偏离
                                    # （rad，> 0，防止下发序列把枪线甩出过远）
     pitch_scan_min: -0.2618        # 扫描 pitch 下界（rad，示例 -30°）
     pitch_scan_max: 0.2618         # 扫描 pitch 上界（rad，示例 +15°；须 > pitch_scan_min）

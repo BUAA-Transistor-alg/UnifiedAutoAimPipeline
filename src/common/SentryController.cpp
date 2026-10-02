@@ -43,15 +43,16 @@ void SentryController::clampYawToMeasured(std::vector<double>& targets, double c
     if (targets.empty()) return;
     const double lo = current - params_.yawScanMaxDeviation;
     const double hi = current + params_.yawScanMaxDeviation;
-    double first_tar = targets[0];
-    if (first_tar < lo) {
-        clamp_yaw_bias_ = lo - first_tar;
-    } else if (first_tar > hi) {
-        clamp_yaw_bias_ = hi - first_tar;
+    double old_first_tar = targets[0] + clamp_yaw_bias_;
+    if (old_first_tar < lo) {
+        clamp_yaw_bias_ = lo - targets[0];
+    } else if (old_first_tar > hi) {
+        clamp_yaw_bias_ = hi - targets[0];
     }
     for (double& tar : targets) {
         tar += clamp_yaw_bias_;
     }
+std::cout << current << "\t" << clamp_yaw_bias_ << "\t" << targets[0] << std::endl;
 }
 
 double SentryController::pitchTargetAt(double t) const {
