@@ -75,7 +75,7 @@ common:
     enabled: true                 # 总开关（true 启用扫描；false 时以下字段可不填）
     # ── 以下仅在 enabled = true 时必需 ──
     idle_timeout_sec: 2.0          # 无有效预测持续多久后进入扫描模式（秒，>= 0）
-    yaw_scan_angular_velocity: 1.0 # 扫描 yaw 角速度（rad/s，!= 0；正/负 = 两个相反的扫描方向）
+    yaw_scan_angular_velocity: 2.0 # 扫描 yaw 角速度（rad/s，!= 0；正/负 = 两个相反的扫描方向）
     yaw_scan_max_deviation: 0.5  # 扫描 yaw 序列每点相对本帧实测角度的最大偏离
                                    # （rad，> 0，防止下发序列把枪线甩出过远）
     pitch_scan_min: -0.2618        # 扫描 pitch 下界（rad，示例 -30°）
@@ -222,13 +222,13 @@ common:
         mpc:
           pred_n: 24                  # 预测步数 N（control_demo: int(DELAY_TIME/DT_CTRL) = 0.2/0.01）
           refinement: 16              # 每控制步 RK4 子步数（稳定性关键，control_demo: MPC_REFINE）
-          max_iter: 30                # Ceres LBFGS 最大迭代次数（control_demo: MAX_ITER）
+          max_iter: 16                # Ceres LBFGS 最大迭代次数（control_demo: MAX_ITER）
           max_torque_b: 1.0           # 大 yaw tanh 软限幅 |τ_b| < 1.0 N·m（control_demo: MAX_TORQUE_B）
           max_torque_s: 1.0           # 小 yaw tanh 软限幅 |τ_s| < 1.0 N·m（control_demo: MAX_TORQUE_S）
           # ── 内层 loss 权重（均为该通道 N 步时间均值）──
           w_psi_b: 1.0                # 大 yaw 世界方位角跟踪（control_demo: W_PSI_B，原 Q）
           w_psi_s: 1.0                # 小 yaw 世界方位角跟踪（control_demo: W_PSI_S）
-          w_dpsi_b: 0.0               # 大 yaw 世界角速度跟踪（control_demo: W_DPSI_B）
+          w_dpsi_b: 0.01               # 大 yaw 世界角速度跟踪（control_demo: W_DPSI_B）
           w_dpsi_s: 0.0               # 小 yaw 世界角速度跟踪（control_demo: W_DPSI_S）
           w_tau_b: 0.0                # 大 yaw 力矩幅值（control_demo: W_TAU_B，原 R）
           w_tau_s: 0.0                # 小 yaw 力矩幅值（control_demo: W_TAU_S）
@@ -297,9 +297,9 @@ common:
         # 0.9285714285714286 ⇔ 软限位 ±30°（35° − 0.0714·70° = 30°）。
         small_soft_limit_ratio: 0.9285714285714286
         planner_max_velocity: 3.0     # 大 yaw 平滑轨迹最大角速度（rad/s）
-        planner_max_acceleration: 20.0  # 最大角加速度（rad/s²）
-        planner_max_jerk: 300.0       # 最大角加速度变化率（rad/s³）
-        planner_substeps: 1           # 单步细化倍数（≥ 1；1 = 与子模组 Python 实现一致）
+        planner_max_acceleration: 10.0  # 最大角加速度（rad/s²）
+        planner_max_jerk: 50.0       # 最大角加速度变化率（rad/s³）
+        planner_substeps: 30           # 单步细化倍数（≥ 1；1 = 与子模组 Python 实现一致）
 
 
   # ── 云台解算参数 ──
