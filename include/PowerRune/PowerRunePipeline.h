@@ -152,7 +152,13 @@ public:
 
     // ---- IPipeline ----
     PipelineMode mode() const override { return PipelineMode::POWER_RUNE; }
-    std::string name() const override { return "PowerRune"; }
+    std::string name() const override {
+        return fitMethod() == RollPredictor::FitMethod::BIG ? "PowerRune/BIG" : "PowerRune/SMALL";
+    }
+
+    /// 与 addFrame/tryPopFrame 一样，由调用方的 pipeline_mtx 串行化。
+    void setFitMethod(RollPredictor::FitMethod method);
+    RollPredictor::FitMethod fitMethod() const { return requested_fit_method_.load(); }
 
     /// 输入帧：队列满时抛弃新帧。
     /// @return true 成功加入输入缓冲队列；false 队列满被抛弃（未进入流水线）
@@ -172,6 +178,7 @@ private:
     std::array<int, NUM_QUEUES> queue_max_sizes_;
     float min_delay_seconds_;
     float conf_threshold_ = 0.5f;
+    std::atomic<RollPredictor::FitMethod> requested_fit_method_{RollPredictor::FitMethod::BIG};
 
     // ==================== 缓冲队列 ====================
     DataDeque input_queue_;

@@ -16,7 +16,7 @@
  * @brief 基于历史 roll 角数据的预测器，用于预测未来绕物体 Y 轴的旋转角度。
  *
  * 输入：欧拉角中的 roll 分量（范围 [-π, π]），内部自动做相位连续化 (unwrap)。
- * 支持两种拟合模型，自动选择 MSE 更小者：
+ * 支持两种拟合模型，由外部指定（默认 BIG），不按误差自动切换：
  *   - "big"   : r(t) = sign * (-a/omega * cos(omega*(t+o_t))
  *                              + (big_linear_coefficient - a)*(t+o_t))
  *   - "small" : r(t) = sign * k * (t + o_t)，k 固定为配置的 small_slope_fixed，
@@ -129,6 +129,9 @@ public:
      *        若已处于重置状态则自动跳过。
      */
     void reset();
+
+    /// 指定模型；发生变化时清空历史并重新建立拟合。reset() 保留所选模型。
+    void setFitMethod(FitMethod method);
 
     /**
      * @brief 当前拟合是否有效

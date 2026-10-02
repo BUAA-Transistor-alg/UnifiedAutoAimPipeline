@@ -33,7 +33,6 @@ void RollPredictor::resetState()
     big_params_   = BigParams();
     small_params_ = SmallParams();
     fit_valid_    = false;
-    fit_method_   = FitMethod::BIG;
     correction_bias_ = 0.0f;
     first_update_ = true;
     continuous_roll_ = 0.0f;
@@ -43,6 +42,13 @@ void RollPredictor::resetState()
     last_grid_search_timestamp_ = std::chrono::steady_clock::time_point();
     posi_ = cv::Vec3f();
     y_axis_R_ = cv::Mat();
+}
+
+void RollPredictor::setFitMethod(FitMethod method)
+{
+    if (fit_method_ == method) return;
+    fit_method_ = method;
+    resetState();
 }
 
 void RollPredictor::reset()
@@ -393,14 +399,6 @@ void RollPredictor::performFit()
         small_o_t = small_ot_fixed_slope();
     }
 
-    double small_sum_sq = 0.0;
-    for (size_t i = 0; i < N; ++i) {
-        const double r_pred = small_slope * (t_values[i] + small_o_t);
-        const double err = r_values[i] - r_pred;
-        small_sum_sq += err * err;
-    }
-    const double small_rmse = std::sqrt(small_sum_sq / static_cast<double>(N));
-
     // ============================================================
     // 3. 判断是否需要完整网格搜索
     // ============================================================
@@ -419,7 +417,7 @@ void RollPredictor::performFit()
     double big_refined_rmse = std::numeric_limits<double>::max();
     bool big_found = false;
 
-    if (do_grid_search) {
+    if (fit_method_ == FitMethod::BIG && do_grid_search) {
         // ============================================================
         // 3a. BIG 网格搜索 — 通过持久线程池并行执行
         // ============================================================
@@ -550,7 +548,7 @@ void RollPredictor::performFit()
         // 记录本次网格搜索时间
         last_grid_search_timestamp_ = now;
 
-    } else {
+    } else if (fit_method_ == FitMethod::BIG) {
         // ============================================================
         // 3c. Warm‑start Ceres：从上一帧优化结果出发，仅做局部精化
         //     o_t 按时间差平移（无界），a / omega 在全局范围内限位
@@ -618,21 +616,25 @@ void RollPredictor::performFit()
     }
 
     // ============================================================
-    // 4. 模型选择
+    // 4. 写入指定模型的结果（不自动切换，也不跨模型回退）
     // ============================================================
-    if (!big_found || small_rmse < big_refined_rmse) {
-        fit_method_         = FitMethod::SMALL;
+    if (fit_method_ == FitMethod::SMALL) {
         // 非宽松时写回固定的 π/3（float 表达，与旧实现一致）
         small_params_.slope = loose_fit_ ? static_cast<float>(small_slope)
                                             : static_cast<float>(small_slope_fixed_);
         small_params_.o_t   = static_cast<float>(small_o_t);
         fit_valid_          = true;
-    } else {
-        fit_method_      = FitMethod::BIG;
+    } else if (big_found && std::isfinite(big_refined_rmse) &&
+               std::isfinite(big_final_a) && std::isfinite(big_final_omega) &&
+               big_final_omega > 0.0 && std::isfinite(big_final_ot)) {
         big_params_.a    = static_cast<float>(big_final_a);
         big_params_.omega = static_cast<float>(big_final_omega);
         big_params_.o_t  = static_cast<float>(big_final_ot);
         fit_valid_       = true;
+    } else {
+        fit_valid_ = false;
+        correction_bias_ = 0.0f;
+        return;
     }
 
     // ============================================================

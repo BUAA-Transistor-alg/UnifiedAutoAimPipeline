@@ -603,6 +603,12 @@ PipelineResult PowerRunePipeline::tryPopFrame(const std::chrono::steady_clock::t
     return result;
 }
 
+void PowerRunePipeline::setFitMethod(RollPredictor::FitMethod method)
+{
+    if (requested_fit_method_.exchange(method) == method) return;
+    clear();
+}
+
 void PowerRunePipeline::clear()
 {
     {
@@ -636,6 +642,7 @@ void PowerRunePipeline::clear()
 
         // 重置滤波与预测状态（stage5 已空闲，无竞争）
         s5_.y_axis_filter.reset();
+        s5_.roll_predictor.setFitMethod(requested_fit_method_.load());
         s5_.roll_predictor.reset();
         s5_.last_valid_timestamp = std::chrono::steady_clock::time_point();
         s5_.last_frame_timestamp = std::chrono::steady_clock::time_point();

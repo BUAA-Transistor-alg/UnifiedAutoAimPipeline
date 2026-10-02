@@ -115,7 +115,8 @@ static void printUsage(const char* prog) {
               << "    (车体中心 / 四块装甲板 t+0 预测 / 瞄准目标 / 自身底盘 + 连线)，\n"
               << "    切换出 Armor 模式或关闭可视化时自动关闭\n"
               << "热键 (窗口内):\n"
-              << "  '1'/'2' 切换流水线  'v' 开关可视化  'g' 开关云台输出  'n' 关闭全部输出  'q'/ESC 退出\n";
+              << "  '1'/'2' 切换流水线  'v' 开关可视化  'g' 开关云台输出  'n' 关闭全部输出  'q'/ESC 退出\n"
+              << "  PowerRune: 'b' 大符 BIG / 's' 小符 SMALL（默认 BIG，切换后重新建立拟合）\n";
 }
 
 static PipelineMode parsePipeline(const std::string& s) {
@@ -282,7 +283,7 @@ static void drawOverlay(cv::Mat& img,
     const double mpc_loop_fps = bsy_state ? bsy_state->loop_fps : st.mpc.loop_fps;
 
     // 1. 热键提醒（顶部）
-    if (options.status) cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
+    if (options.status) cv::putText(img, "Keys: 1/2 pipeline | b/s rune BIG/SMALL | v visualize | g gimbal | n none | q quit",
                 cv::Point(10, 20), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
 
     // 2. 当前流水线各缓存积压长度（与原来 main info 的 Q[...] 格式一致）；
@@ -1231,6 +1232,7 @@ int main(int argc, char** argv) {
     std::thread ballistic_thread([&]() {
         FrameRateCounter fps(60);
         BallisticRequest req;
+        std::string last_rune_fit_method;
         while (ballistic_slot.take(req)) {
             if (req.result) {
                 // ── 弹道解算：目标预测器（Predictor）已由两条流水线在输出结果
@@ -1249,6 +1251,17 @@ int main(int argc, char** argv) {
                     // 新构型：写当帧控制器状态快照（供云台输出/可视化），并用大小 yaw
                     // 状态包版本解算（逐预测点的大 yaw 关节角取自该包里的 MPC 预测序列）
                     req.ctx->bsy_state = req.st_bsy;
+                }
+                if (req.result->power_rune.valid) {
+                    const auto& method = req.result->power_rune.fit_method;
+                    const char* requested = power_rune_pipeline.fitMethod() == RollPredictor::FitMethod::BIG
+                        ? "big" : "small";
+                    // 旧模型的在途快照不可再生成控制序列；新模型不继承旧选靶状态。
+                    if (method != requested) req.result->predictor_valid = false;
+                    if (method != last_rune_fit_method) {
+                        sequence_predictor.invalidate();
+                        last_rune_fit_method = method;
+                    }
                 }
                 if (req.result->predictor_valid) {
                     req.ctx->predict_result = (yaw_mode == YawMode::BIG_SMALL)
@@ -1306,6 +1319,14 @@ int main(int argc, char** argv) {
             FrameRateCounter fps(60);
             GimbalRequest req;
             while (gimbal_stage.slot.take(req)) {
+                if (req.result && req.result->power_rune.valid) {
+                    const char* requested = power_rune_pipeline.fitMethod() == RollPredictor::FitMethod::BIG
+                        ? "big" : "small";
+                    if (req.result->power_rune.fit_method != requested) {
+                        req.result->predictor_valid = false;
+                        req.ctx->predict_result = {};
+                    }
+                }
                 if (req.gimbal) {
                     // GimbalOutput 读取 result.valid 与 ctx.predict_result（当帧预测
                     // 序列/瞄准点）；完整结果仍需转发给可视化，故此处也传完整结果
@@ -1422,6 +1443,14 @@ int main(int argc, char** argv) {
                     switchPipeline(PipelineMode::ARMOR);
                 } else if (key == '2') {
                     switchPipeline(PipelineMode::POWER_RUNE);
+                } else if (key == 'b' || key == 'B' || key == 's' || key == 'S') {
+                    std::lock_guard<std::mutex> lock(pipeline_mtx);
+                    if (active_pipeline->mode() == PipelineMode::POWER_RUNE) {
+                        const auto method = (key == 'b' || key == 'B')
+                            ? RollPredictor::FitMethod::BIG : RollPredictor::FitMethod::SMALL;
+                        power_rune_pipeline.setFitMethod(method);
+                        std::cout << "[main] Rune model -> " << power_rune_pipeline.name() << std::endl;
+                    }
                 } else if (key == 'n') {
                     // 全部关闭（窗口保留，仅显示原始画面）
                     std::shared_ptr<VisualizeOutput> vis_to_close;
