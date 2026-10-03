@@ -52,7 +52,6 @@ void SentryController::clampYawToMeasured(std::vector<double>& targets, double c
     for (double& tar : targets) {
         tar += clamp_yaw_bias_;
     }
-std::cout << current << "\t" << clamp_yaw_bias_ << "\t" << targets[0] << std::endl;
 }
 
 double SentryController::pitchTargetAt(double t) const {
