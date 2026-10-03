@@ -51,6 +51,7 @@
 #include "common/Record/FrameRecorder.h"
 #include "common/Infer/InferProcessManager.h"
 #include "common/Debug/AimSwitchLog.h"
+#include "common/Debug/WatchdogFeed.h"
 
 #include <opencv2/opencv.hpp>
 #include <iostream>
@@ -627,6 +628,16 @@ void signalHandler(int) {
 
 int main(int argc, char** argv) {
     signal(SIGINT, signalHandler);
+    // SIGTERM 与 SIGINT 同语义：systemd 停服务、看门狗/launch_all.py 关闭进程组时发的
+    // 是 SIGTERM，不注册则走默认动作直接杀死进程，跳过下面的收尾（录制尾帧、
+    // 共享内存/信号量清理、串口线程退出等）
+    signal(SIGTERM, signalHandler);
+
+    // ── 看门狗喂狗通道（可选，见 common/Debug/WatchdogFeed.h）──
+    // 仅当环境变量 WATCHDOG_SOCKET_PATH 存在（即由 auto_launch/watchdog.py 启动）时
+    // 才真正开启；平时手动运行（launch_all.py / 直接跑 bin/unified_auto_aim）为空操作。
+    // 处理线程每处理完一帧调用 tick() 上报；帧停滞或启动超时则停止上报，由看门狗重启。
+    WatchdogFeed::instance().start();
 
     // ── 无参数运行：显示帮助 ──
     if (argc <= 1) {
@@ -1177,6 +1188,9 @@ int main(int argc, char** argv) {
                 ballistic_slot.publish(std::move(req));
                 fps.tick();
                 pipeline_fps.store(fps.fps(), std::memory_order_relaxed);
+                // 看门狗喂狗：以「流水线真正产出了有效帧」为健康信号——相机断流、
+                // 队列停滞、阶段线程死锁都会让这里停止推进，看门狗据此重启进程组
+                WatchdogFeed::instance().tick();
             }
 
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -1452,5 +1466,7 @@ int main(int argc, char** argv) {
     infer_manager->shutdown();
     // robot_controller 析构时自动停止串口线程与 MPC 后台发送线程
     cv::destroyAllWindows();
+    // 停止看门狗上报线程（幂等；未启用时为空操作）
+    WatchdogFeed::instance().stop();
     return 0;
 }

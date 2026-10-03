@@ -83,6 +83,8 @@ set(COMMON_SOURCES
     src/common/RobotConfig.cpp
     src/common/BacklogAdaptiveDelay.cpp
     src/common/SentryController.cpp
+    # 看门狗喂狗通道（可选功能：仅当设置 WATCHDOG_SOCKET_PATH 时生效，见 auto_launch/）
+    src/common/Debug/WatchdogFeed.cpp
     # 相机投影 + Ceres 位姿优化/精化（common/pose/，二者打包在一起）
     src/common/pose/CameraProjection.cpp
     src/common/pose/CeresPoseEstimator.cpp
