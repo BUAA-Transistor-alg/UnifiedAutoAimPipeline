@@ -197,6 +197,25 @@ systemd 下也可以 `install_service.py logs`，或 `journalctl -u unified_auto
 ② 推理进程编译模型太慢（把 `connect_timeout_sec` 调大，或确认模型路径正确）；
 ③ 用 `--log-level debug` 看子进程输出。
 
+**Q: `systemctl status` 显示 `masked`（服务明明装过）？**
+两种成因，`install_service.py status` 会直接指出是哪一种：
+① 目标是**指向 `/dev/null` 的符号链接**（`systemctl mask` 的产物，可能在 `/etc/systemd/system/`
+   或 `/run/systemd/system/`）；
+② 目标是 **0 字节文件** —— systemd 对空 unit 文件同样按 `masked` 处理。最常见的来源是
+   **装完/改完立刻断电**：ext4 的 delayed allocation 还没把数据块写盘，只落了 inode 元数据
+   （权限、属主、mtime 都在），日志恢复后文件内容为空。真机踩过一次：14:19:17 装完、
+   14:19:21 掉电，重启后 unit 就是 0 字节。
+
+修复（新版安装器会自动做这三步，并在装完后 `sync` + 回读校验内容）：
+```bash
+sudo systemctl unmask unified_auto_aim.service
+sudo rm -f /etc/systemd/system/unified_auto_aim.service /run/systemd/system/unified_auto_aim.service
+sudo systemctl daemon-reload
+auto_launch/install_service.py            # 重新安装
+```
+**通用教训：改完配置 / 装完服务、构建完二进制，断电前敲一次 `sync`。**
+机器人经常直接断电，这一条能省掉很多"文件莫名变空/内容丢失"的排查。
+
 **Q: 报告「已有看门狗实例在运行」？**
 防止两套程序同时抢相机/串口。用 `ps -ef | grep watchdog.py` 确认；确认没有残留后可删除
 `<socket_path>.lock` 再启动。
