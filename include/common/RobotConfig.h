@@ -38,6 +38,7 @@
 #include <cstdint>
 #include <string>
 #include <array>
+#include <vector>
 
 #include <opencv2/opencv.hpp>
 
@@ -377,6 +378,23 @@ public:
         int inputHeight;                    // YOLO 推理输入高度（像素，须与模型输入一致）
         int maxBatch;                       // 推理最大批量（动态 batch 1..max_batch）
         int shmKey;                         // 共享内存 Key（推理进程通信，见 InferShm.h）
+
+        // ── 类别处理（config: armor.inference.class_handling）──
+        // 对模型直接检测出的类别（label 0~8）在解码（后处理）阶段做两步处理，
+        // 顺序固定，先忽略后映射：
+        //   ignore  —— 忽略列表：直接检测出的类别命中该列表时整条检测框被丢弃，
+        //              等价于该类"从未被检测到"（不参与 NMS，也不进入下游
+        //              stage4/stage5，不影响下游任何按 label 分类的逻辑）；
+        //   mapping —— 映射列表：忽略过滤之后，类别命中键的物体把类别改为对应值。
+        //              映射只做一次、不链式传递；映射结果即使落在 ignore 中也不会
+        //              被再次忽略（忽略只对"直接检测出"的类别生效）。
+        // 两个列表都可以为空（空 = 该步不生效，即当前默认行为）。
+        struct ClassHandlingParams {
+            std::vector<bool> ignore;   // 忽略类别位图（索引 = label；长度恒为类别数 9）
+            std::vector<int>  mapping;  // 类别映射表（索引 = 原 label，值 = 新 label；长度恒为 9）
+        };
+        ClassHandlingParams classHandling;
+
         double observationLostTimeoutSec;   // 连续观测丢失多久后重置滤波器（秒）
         // 禁火阈值（秒，config armor.fire_observation_timeout，>= 0；0 = 关闭该保护）：
         // 每一类目标（label 0~5 各类 EKF / 6 前哨站 / 7~8 基地）各自记录**最近一次真正

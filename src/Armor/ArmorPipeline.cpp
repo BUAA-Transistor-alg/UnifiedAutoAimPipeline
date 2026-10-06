@@ -124,8 +124,14 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
     // 推理挂死强制重启时限取自 config common.infer_force_restart_timeout_sec
     s2_.client = std::make_unique<Infer::InferShmClient>(cfg.armor.shmKey,
                                                          cfg.common.inferForceRestartTimeoutSec);
+    // ── 类别处理规则（config armor.inference.class_handling）──
+    // 由 RobotConfig 的位图/映射表转换为后处理器使用的规则（忽略列表 + 映射列表）：
+    // 模型直接检测出的类别先按忽略列表丢弃，再按映射列表做一次类别替换。
+    ArmorDetect::ClassHandling class_handling;
+    class_handling.ignore  = cfg.armor.classHandling.ignore;
+    class_handling.mapping = cfg.armor.classHandling.mapping;
     s3_.postprocessor = std::make_unique<ArmorDetect::ArmorPostprocessor>(
-        cfg.armor.inputWidth, cfg.armor.inputHeight, 0, cfg.armor.modelName);
+        cfg.armor.inputWidth, cfg.armor.inputHeight, 0, cfg.armor.modelName, class_handling);
 
     // 模型路径（仅用于打印 banner；推理器构造见 createInfer，由 main 调用）
     std::string model_path = (!cfg.armor.modelPath.empty() && cfg.armor.modelPath[0] == '/')
@@ -148,6 +154,23 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
     std::cout << std::endl;
     std::cout << "    Confidence threshold: " << conf_threshold_ << std::endl;
     std::cout << "    NMS threshold: " << nms_threshold_ << std::endl;
+    // 类别处理（忽略列表 + 映射列表）：只打印非空项，便于运行时核对配置是否生效
+    {
+        std::string ignore_list, mapping_list;
+        for (size_t i = 0; i < cfg.armor.classHandling.ignore.size(); ++i) {
+            if (!cfg.armor.classHandling.ignore[i]) continue;
+            if (!ignore_list.empty()) ignore_list += ", ";
+            ignore_list += std::to_string(i);
+        }
+        for (size_t i = 0; i < cfg.armor.classHandling.mapping.size(); ++i) {
+            const int to = cfg.armor.classHandling.mapping[i];
+            if (to == (int)i) continue;   // 恒等项（未配置映射）不打印
+            if (!mapping_list.empty()) mapping_list += ", ";
+            mapping_list += std::to_string(i) + "->" + std::to_string(to);
+        }
+        std::cout << "    Class handling: ignore=[" << ignore_list << "] mapping={"
+                  << mapping_list << "}" << std::endl;
+    }
     std::cout << "    Min delay: " << min_delay_seconds_ << "s" << std::endl;
     std::cout << "========================================" << std::endl;
 

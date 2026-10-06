@@ -11,6 +11,10 @@
 
 namespace {
 
+// armor 模型类别数（须与 include/Armor/ArmorInfer.h 的 NUM_CLASSES 一致）：
+// 0~5 = 哨兵 / 1~5 号机器人，6 = 装甲板，7 = 基地，8 = 基地大装甲。
+constexpr int kArmorNumClasses = 9;
+
 // 读取 section[key] 为标量 T；缺失或类型错误抛出 std::runtime_error。
 template <typename T>
 T requireScalar(const YAML::Node& section, const std::string& key, const std::string& sectionName) {
@@ -72,6 +76,82 @@ void parseCameraParams(const YAML::Node& camNode, const std::string& name,
     } else {
         // 视频/交互模式（测试最大帧率开关）
         out.testMaxFps = requireScalar<bool>(camNode, "test_max_fps", name);
+    }
+}
+
+// ── 解析 armor.inference.class_handling（类别处理：忽略列表 + 映射列表）──
+//   ignore  ：类别列表，模型直接检测出的这些类别在解码阶段即被丢弃；
+//   mapping ：键值对（原类别 -> 新类别），忽略过滤之后做一次类别映射。
+// 两个列表都必须显式出现在配置文件中（可为空列表 / 空映射）；类别取值必须落在
+// [0, kArmorNumClasses) 内（与 ArmorInfer.h 的 NUM_CLASSES 一致），重复项视为配置错误。
+void parseClassHandling(const YAML::Node& node, const std::string& name,
+                        RobotConfig::ArmorParams::ClassHandlingParams& out) {
+    if (!node || !node.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 '" + name + "' 配置段");
+
+    // ---- ignore：忽略列表（类别列表，可为空） ----
+    const YAML::Node& ign = node["ignore"];
+    if (!ign || !ign.IsDefined())
+        throw std::runtime_error("RobotConfig: 配置段 '" + name + "' 缺少配置项 'ignore'");
+    if (!ign.IsSequence())
+        throw std::runtime_error("RobotConfig: 配置项 '" + name + ".ignore' 必须是类别列表"
+                                 "（如 [6, 8]，空列表 [] 表示不忽略任何类别）");
+    out.ignore.assign(kArmorNumClasses, false);
+    for (size_t i = 0; i < ign.size(); ++i) {
+        int label = 0;
+        try {
+            label = ign[i].as<int>();
+        } catch (const YAML::Exception& e) {
+            throw std::runtime_error("RobotConfig: 配置项 '" + name + ".ignore[" +
+                                     std::to_string(i) + "]' 类型错误（须为整数类别）: " + e.what());
+        }
+        if (label < 0 || label >= kArmorNumClasses) {
+            throw std::runtime_error("RobotConfig: 配置项 '" + name + ".ignore[" +
+                                     std::to_string(i) + "]' = " + std::to_string(label) +
+                                     " 越界，类别必须在 [0, " + std::to_string(kArmorNumClasses - 1) + "] 内");
+        }
+        if (out.ignore[label]) {
+            throw std::runtime_error("RobotConfig: 配置项 '" + name + ".ignore' 中类别 " +
+                                     std::to_string(label) + " 重复");
+        }
+        out.ignore[label] = true;
+    }
+
+    // ---- mapping：映射列表（原类别 -> 新类别 的键值对，可为空；未命中的类别保持原样） ----
+    const YAML::Node& map = node["mapping"];
+    if (!map || !map.IsDefined())
+        throw std::runtime_error("RobotConfig: 配置段 '" + name + "' 缺少配置项 'mapping'");
+    if (!map.IsMap())
+        throw std::runtime_error("RobotConfig: 配置项 '" + name + ".mapping' 必须是键值对映射"
+                                 "（如 {6: 0}，空映射 {} 表示不做类别映射）");
+    out.mapping.resize(kArmorNumClasses);
+    for (int i = 0; i < kArmorNumClasses; ++i) out.mapping[i] = i;   // 默认恒等映射
+    std::vector<bool> seen(kArmorNumClasses, false);
+    for (const auto& kv : map) {
+        int from = 0, to = 0;
+        try {
+            from = kv.first.as<int>();
+            to   = kv.second.as<int>();
+        } catch (const YAML::Exception& e) {
+            throw std::runtime_error("RobotConfig: 配置项 '" + name + ".mapping' 的键/值类型错误"
+                                     "（须为整数类别）: " + e.what());
+        }
+        if (from < 0 || from >= kArmorNumClasses) {
+            throw std::runtime_error("RobotConfig: 配置项 '" + name + ".mapping' 的键 " +
+                                     std::to_string(from) + " 越界，类别必须在 [0, " +
+                                     std::to_string(kArmorNumClasses - 1) + "] 内");
+        }
+        if (to < 0 || to >= kArmorNumClasses) {
+            throw std::runtime_error("RobotConfig: 配置项 '" + name + ".mapping' 中 " +
+                                     std::to_string(from) + " 的值 " + std::to_string(to) +
+                                     " 越界，类别必须在 [0, " + std::to_string(kArmorNumClasses - 1) + "] 内");
+        }
+        if (seen[from]) {
+            throw std::runtime_error("RobotConfig: 配置项 '" + name + ".mapping' 中键 " +
+                                     std::to_string(from) + " 重复");
+        }
+        seen[from] = true;
+        out.mapping[from] = to;
     }
 }
 
@@ -676,6 +756,9 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
             throw std::runtime_error("RobotConfig: 0726 resolution exceeds shared-memory input capacity (W*H <= 640*640)");
     }
     cfg.armor.shmKey   = requireScalar<int>(oinf, "shm_key", "armor.inference");
+    // ── armor.inference.class_handling（类别处理：忽略列表 + 映射列表）──
+    parseClassHandling(oinf["class_handling"], "armor.inference.class_handling",
+                       cfg.armor.classHandling);
     cfg.armor.observationLostTimeoutSec = requireScalar<double>(op, "observation_lost_timeout", "armor");
     // ── armor.fire_observation_timeout（禁火阈值）──
     // 所选目标距"最近一次真正观测到该类实体"超过该时长即禁止开火（见
