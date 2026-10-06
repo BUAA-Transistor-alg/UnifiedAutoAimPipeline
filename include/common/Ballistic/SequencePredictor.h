@@ -302,6 +302,23 @@ public:
     static bool fastGunLineOk(const Result& seq, int index,
                               double extra_predict_time, double dt_control);
 
+    /// 能量机关（PowerRune）靶点"仍在激活窗口内"判定——火控第二条件的 PowerRune 版
+    /// （供两个云台输出模式共用，与 fastGunLineOk 同一角色；Armor 分支不调用本函数）。
+    ///   - 火控点 index 对应瞄准点 items[index]（下标即发给控制器的 fire 序列下标）；
+    ///   - 要求 target_age_valid == true（该靶点本轮的"首次观测"时刻已知）且
+    ///     flight_time + target_age < kPowerRuneActiveWindowSec：
+    ///     target_age 为「本轮首次观测 → 该控制序列时刻」的秒数（含 extra_predict_time
+    ///     与 (i+1)·dt_control，不含飞行时间，见 Item::target_age / predictImpl），
+    ///     加上弹道飞行时间即"命中时刻的靶点年龄"，超过窗口即不再开火——
+    ///     保证打出去的一发一定落在正在激活的靶点上；
+    ///   - index 越界 / target_age 无效（非 PowerRune 来源、first_seen 已清）→ false
+    ///     （不开火，安全侧）。
+    static bool powerRuneActiveTimeOk(const Result& seq, int index);
+
+    /// 能量机关靶点激活窗口（秒）：powerRuneActiveTimeOk 的硬编码阈值。
+    /// 已知超出窗口的靶点不再值得开火（能量机关任务语义），故不做成配置项。
+    static constexpr double kPowerRuneActiveWindowSec = 2.5;
+
     /// 任一内部云台解算器（仅弹道线程内使用；外部请勿直接访问）
     std::shared_ptr<GimbalSolver> gimbal() const { return gimbals_.front(); }
 

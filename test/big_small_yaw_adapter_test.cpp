@@ -14,7 +14,9 @@
 //   5) 哨兵控制器开启且无预测超过 idle_timeout_sec 时进入扫描段
 //      （auto_aim_enable = 配置 scan_auto_aim_enable、fire 全 false）；
 //   6) Armor 观测太旧禁火：预测有效但 ArmorPerception::fire_forbidden = true 时
-//      fire 序列整条为 false（瞄准序列照常下发，门控状态带出该标志）。
+//      fire 序列整条为 false（瞄准序列照常下发，门控状态带出该标志）；
+//   7) 能量机关激活窗口门控：命中时刻靶点年龄超 2.5 s 或 target_age 无效 ⇒
+//      fire 全 false（大小 yaw 也具备该门控）。
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -143,6 +145,8 @@ int main() {
             res.frame = frame;
             res.extra_info.fillCurrentPackZeros(YawMode::BIG_SMALL);
             res.frame_timestamp = ts;
+            // 本帧为 Armor 目标（fire 第二条件走 Armor 分支）
+            res.predictor.source = SequencePredictor::PredictorSource::armor(0);
             res.armor.fire_forbidden = forbidden;
             res.armor.since_observation_s = forbidden ? 9.0 : 0.0;
             ctx.yaw_mode = YawMode::BIG_SMALL;
@@ -170,6 +174,77 @@ int main() {
               "门控状态带出 fire_forbidden（可视化橙色指示灯）");
         check(!out.lastOutput().big_yaw_seq.empty() && !out.lastOutput().small_yaw_seq.empty(),
               "被禁火时仍照常下发大/小 yaw 瞄准序列（只禁止开火）");
+    }
+
+    // ── 能量机关激活窗口门控（PowerRune 第二条件，大小 yaw 与单 yaw 共用
+    //    SequencePredictor::powerRuneActiveTimeOk，窗口 2.5 s）──
+    // 命中时刻的靶点年龄 = 弹道飞行时间 + target_age：超窗口 / 年龄无效 ⇒ fire 全 false。
+    {
+        const auto count_true = [](const std::vector<bool>& v) {
+            return (int)std::count(v.begin(), v.end(), true);
+        };
+        auto drive_pr = [&](double flight_time, double target_age, bool age_valid,
+                            OutputContext& ctx) {
+            PipelineResult res;
+            res.valid = true;
+            res.frame = frame;
+            res.extra_info.fillCurrentPackZeros(YawMode::BIG_SMALL);
+            res.frame_timestamp = ts;
+            res.predictor.source = SequencePredictor::PredictorSource::powerRune();
+            ctx.yaw_mode = YawMode::BIG_SMALL;
+            ctx.bsy_state = adapter.state();
+            ctx.predict_result = makeSeq(N, 0.2, 1.0, dt);
+            for (auto& it : ctx.predict_result.items) {
+                it.flight_time      = flight_time;
+                it.target_age       = target_age;
+                it.target_age_valid = age_valid;
+            }
+            out.update(res, nullptr, ctx);
+        };
+
+        OutputContext fresh;   // 命中年龄 0.10 + 0.20 = 0.30 s < 2.5
+        drive_pr(0.10, 0.20, true, fresh);
+        OutputContext stale;   // 命中年龄 0.10 + 2.45 = 2.55 s > 2.5
+        drive_pr(0.10, 2.45, true, stale);
+        OutputContext no_age;  // 首次观测记录缺失 → 安全侧不开火
+        drive_pr(0.10, 0.20, false, no_age);
+
+        std::printf("  PowerRune fire true 数：窗口内=%d  超窗口=%d  年龄无效=%d\n",
+                    count_true(fresh.fire_out), count_true(stale.fire_out),
+                    count_true(no_age.fire_out));
+        check(count_true(stale.fire_out) == 0,
+              "能量机关：命中时刻超出激活窗口 ⇒ fire 全 false");
+        check(count_true(no_age.fire_out) == 0,
+              "能量机关：target_age 无效 ⇒ fire 全 false（安全侧）");
+        check(count_true(fresh.fire_out) > 0,
+              "能量机关：窗口内 ⇒ fire 序列存在 true（门控未卡死）");
+        check(fresh.fire_gate_front.valid && fresh.fire_gate_front.second_ok,
+              "能量机关：窗口内该火控点第二门控为通过（可视化蓝灯不亮）");
+        check(stale.fire_gate_front.valid && !stale.fire_gate_front.second_ok,
+              "能量机关：超窗口该火控点第二门控为失败");
+    }
+
+    // ── powerRuneActiveTimeOk 边界（两个云台输出模式共用的 PowerRune 时间门控）──
+    {
+        auto mk = [](double flight, double age, bool valid) {
+            SequencePredictor::Result r;
+            SequencePredictor::Item it;
+            it.flight_time      = flight;
+            it.target_age       = age;
+            it.target_age_valid = valid;
+            r.items.push_back(it);
+            return r;
+        };
+        check(SequencePredictor::powerRuneActiveTimeOk(mk(0.10, 2.39, true), 0),
+              "powerRuneActiveTimeOk：命中年龄 2.49 s < 2.5 ⇒ 通过");
+        check(!SequencePredictor::powerRuneActiveTimeOk(mk(0.10, 2.41, true), 0),
+              "powerRuneActiveTimeOk：命中年龄 2.51 s > 2.5 ⇒ 拒绝");
+        check(!SequencePredictor::powerRuneActiveTimeOk(mk(0.10, 0.20, false), 0),
+              "powerRuneActiveTimeOk：target_age 无效 ⇒ 拒绝（安全侧）");
+        check(!SequencePredictor::powerRuneActiveTimeOk(mk(0.10, 0.20, true), 5),
+              "powerRuneActiveTimeOk：火控点下标越界 ⇒ 拒绝");
+        check(!SequencePredictor::powerRuneActiveTimeOk(SequencePredictor::Result{}, 0),
+              "powerRuneActiveTimeOk：空序列 ⇒ 拒绝");
     }
 
     // ── 控制器侧确认收到序列并持续求解 ──

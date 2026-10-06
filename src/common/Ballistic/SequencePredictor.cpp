@@ -978,3 +978,14 @@ bool SequencePredictor::fastGunLineOk(const Result& seq, int index,
     }
     return false;
 }
+
+// 能量机关（PowerRune）靶点"仍在激活窗口内"判定（火控第二条件的 PowerRune 版）。
+// 与 fastGunLineOk 一样由两个云台输出模式共用；Armor 分支不调用本函数
+// （Armor 不填 target_age，恒为无效）。
+bool SequencePredictor::powerRuneActiveTimeOk(const Result& seq, int index) {
+    if (index < 0 || index >= (int)seq.items.size()) return false;
+    const Item& item = seq.items[(size_t)index];
+    if (!item.target_age_valid) return false;   // 无"首次观测"记录：不开火（安全侧）
+    // 命中时刻的靶点年龄 = 弹道飞行时间 + 控制序列时刻的靶点年龄；超窗口即不开火
+    return item.flight_time + item.target_age < kPowerRuneActiveWindowSec;
+}

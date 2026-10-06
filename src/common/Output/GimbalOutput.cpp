@@ -112,11 +112,11 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
                     gate_seq.push_back({true, track_ok, line_ok, !observed_recently});
                 }
                 else if (result.predictor.source.kind == Kind::POWER_RUNE){
-                    const bool time_ok = (k < seq.items.size() &&
-                                          seq.items[k].flight_time + seq.items[k].target_age < 2.5 &&
-                                          seq.items[k].target_age_valid
-                                         );
-                    fire_seq.push_back(track_ok && time_ok); // 能量机关链路下，保证开火一定打击到正在激活的目标
+                    // 条件2（PowerRune）：保证开火一定打击到正在激活的靶点——该火控点
+                    // 命中时刻的靶点年龄（弹道飞行时间 + target_age）仍在激活窗口内
+                    // （见 SequencePredictor::powerRuneActiveTimeOk，与大小 yaw 构型共用）
+                    const bool time_ok = SequencePredictor::powerRuneActiveTimeOk(seq, (int)k);
+                    fire_seq.push_back(track_ok && time_ok);
                     gate_seq.push_back({true, track_ok, time_ok, false});
                 }
             }
