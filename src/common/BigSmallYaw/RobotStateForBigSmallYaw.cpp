@@ -28,7 +28,8 @@ RobotState toRobotState(const tcbs::RobotController::State& st) {
     s.yaw_small_joint = sp.yaw_small_angle;
     s.pitch_joint     = sp.pitch_angle;
 
-    // ── 世界方位角：★ 取自 strict（wrap 值；多圈连续由 unwrapAzimuths 恢复）──
+    // ── 世界方位角：★ 取自 strict（多圈连续；子模组解卷绕后即为连续值，
+    //    unwrapAzimuths 只作幂等兜底）──
     //   ψ_big = strict.big_azimuth（大 yaw 平台 x 轴）
     //   ψ_small = strict.small_azimuth（小 yaw 输出 x 轴）
     s.yaw_big_azimuth   = sp.big_azimuth;
@@ -173,14 +174,19 @@ RobotControllerAdapter::~RobotControllerAdapter() = default;
 RobotState RobotControllerAdapter::state() {
     RobotState s = toRobotState(rc_->getState());
     s.imu_location = imu_location_;   // 构造实参（配置决定），strict 不再携带
-    unwrapAzimuths(s);   // strict 只给 wrap 值 → 恢复多圈连续（保持/扫描参考需要）
+    unwrapAzimuths(s);   // 恢复/校验多圈连续（正常已是连续值 ⇒ 幂等直通）
     return s;
 }
 
 // 把 strict 的 wrap 方位角解卷绕成**多圈连续**量（原地修改 s.yaw_*_azimuth）。
 // 为什么必须做：非可视化消费方（GimbalOutputForBigSmallYaw 的保持/哨兵扫描）会把这两个
-// 方位角当作 MPC 参考下发，而子模组内部用于代价的 chassis_azimuth 是多圈量；若下发 wrap
-// 值，大 yaw 转过半圈后参考与状态会差整圈，MPC 会去追一个假目标。
+// 方位角当作 MPC 参考下发；若下发 wrap 值，大 yaw 转过半圈后参考与状态会差整圈，
+// MPC 会去追一个假目标。
+// ★ 现状（子模组修复后）：FullStrictPoseBuilder 已把 chassis_azimuth 累计圈数解卷绕，
+//   big/small_azimuth 本身就是多圈连续量，本函数因此退化为**幂等直通**（|Δ| < π，
+//   corr 恒为 0）。保留它是为了：(1) 万一子模组某处仍给出 wrap 值（如未就绪的全零样本、
+//   或将来回退到旧版子模组）；(2) 首个样本的锚定语义不变。**不要**因为"已经连续了"
+//   就删掉——它是流水线这一侧的兜底。
 // 只以 strict 的 wrap 值为输入：取与上一拍输出最近的同圈值。
 // 起点一致性：适配器**拥有**这个 tcbs::RobotController，且 state() 在构造后立刻被采样
 // 线程/云台线程调用；首个样本的 |wrap 值| ≤ π，即使首个样本是未就绪的全零，随后第一个

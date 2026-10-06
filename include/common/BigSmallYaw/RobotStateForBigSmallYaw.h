@@ -56,7 +56,8 @@ struct RobotState {
     double yaw_small_joint = 0.0;     // θ_small（相对大 yaw）
     double pitch_joint = 0.0;         // pitch 关节角
 
-    // 世界方位角（多圈连续；strict 只给 wrap 值，由 unwrapAzimuths 恢复）
+    // 世界方位角（多圈连续；strict 的 chassis_azimuth 已累计圈数解卷绕 ⇒ 这里通常
+    // 已是连续值，unwrapAzimuths 退化为幂等兜底，见该函数注释）
     double yaw_big_azimuth = 0.0;     // ψ_big（平台 x 轴世界方位角）
     double yaw_small_azimuth = 0.0;   // ψ_small（小 yaw 输出 x 轴世界方位角）
 
