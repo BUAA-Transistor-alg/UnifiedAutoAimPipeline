@@ -192,14 +192,16 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                                /*integral_enable_b=*/seq.integral_enable,
                                /*integral_enable_s=*/seq.integral_enable);
     } else {
-        // ── 预测不可用：自瞄关闭 ──
+        // ── 预测不可用：自瞄开关由配置决定 ──
         //  - 哨兵扫描控制器关闭（enabled = false）：**原行为完全不变**——大/小 yaw
         //    保持当前严格反解世界方位角；
         //  - 开启且已进入扫描模式：生成扫描序列——大/小 yaw 取**同一条**序列
         //    （同一个世界方位角，不保持关节角差），pitch 走锯齿波
-        //    （见 common/SentryController.h），auto_aim_enable = true、fire 全 false；
+        //    （见 common/SentryController.h），auto_aim_enable =
+        //    common.sentry_controller.scan_auto_aim_enable、fire 全 false；
         //  - 开启但尚未超过 idle_timeout_sec：保持段——用上一个有效输出序列首值
-        //    填充整条序列（从未有过有效输出时退化为本帧实测角度），自瞄关闭。
+        //    填充整条序列（从未有过有效输出时退化为本帧实测角度），
+        //    auto_aim_enable = common.sentry_controller.hold_auto_aim_enable。
         sentry_.update(/*valid=*/false, result.frame_timestamp);
 
         last_ = LastOutput{};
@@ -207,7 +209,9 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
         if (sentry_.enabled()) {
             const int n = std::max(1, scan_seq_points_);
             std::vector<double> big_seq, small_seq, pitch_scan_out;
-            bool auto_aim = false;
+            // auto_aim_enable 两段分别由配置给出（common.sentry_controller.
+            // hold_auto_aim_enable / scan_auto_aim_enable）
+            bool auto_aim = sentry_.holdAutoAimEnable();
             if (sentry_.scanning()) {
                 // 大/小 yaw 使用**同一条**目标序列（同一个世界方位角，不保持关节角差）：
                 // 小 yaw 参考关节角为 0，两级同步旋转到同一角度。基准取本帧实测小 yaw
@@ -216,7 +220,7 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                                          result.frame_timestamp, big_seq);
                 small_seq = big_seq;
                 sentry_.buildPitchSequence(n, dt_control_, result.frame_timestamp, pitch_scan_out);
-                auto_aim = true;
+                auto_aim = sentry_.scanAutoAimEnable();
             } else {
                 const double hold_big   = have_last_valid_ ? last_valid_big_ : st.yaw_big_azimuth;
                 const double hold_small = have_last_valid_ ? last_valid_small_ : st.yaw_small_azimuth;

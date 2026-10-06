@@ -19,6 +19,9 @@
 //   - pitch：在 [pitch_scan_min, pitch_scan_max] 之间做锯齿波往复——先由下界线性
 //     升到上界（耗时 pitch_scan_rise_time_sec），再由上界线性回落到下界（耗时
 //     pitch_scan_fall_time_sec），周期 = 上升 + 回落；相位零点取“进入扫描的时刻”。
+//   - auto_aim_enable：保持段 / 扫描段**分别**由配置 hold_auto_aim_enable /
+//     scan_auto_aim_enable 决定（两个云台输出模式读本类的 holdAutoAimEnable() /
+//     scanAutoAimEnable() 后随 set() 下发，不再硬编码）。
 //
 // 进入扫描前的“保持段”（预测已无效但未超过 idle_timeout_sec）由各输出模式处理：
 // 用上一个有效输出序列的首值填充整条序列（见两个 Gimbal 输出模式），本类不参与。
@@ -42,6 +45,14 @@ public:
     explicit SentryController(const RobotConfig::SentryControllerParams& params);
 
     bool enabled() const { return params_.enabled; }
+
+    /// 保持段下发给电控的 auto_aim_enable（config: hold_auto_aim_enable）。
+    /// 仅当 enabled() 为 true 时有效（enabled = false 时输出模式走原有分支，恒为 0）。
+    bool holdAutoAimEnable() const { return params_.holdAutoAimEnable; }
+
+    /// 扫描段下发给电控的 auto_aim_enable（config: scan_auto_aim_enable）。
+    /// 与保持段**分别配置**：扫描时枪口按扫描轨迹运动，电控是否进入自瞄分支由本值决定。
+    bool scanAutoAimEnable() const { return params_.scanAutoAimEnable; }
 
     /// 本帧是否处于扫描模式（enabled = false 时恒为 false）
     bool scanning() const { return scanning_; }

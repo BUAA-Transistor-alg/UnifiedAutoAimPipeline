@@ -537,6 +537,9 @@ public:
     //   - 其余字段：**仅当 enabled = true 时必填**（缺字段 / 非法值直接抛异常）；
     //     enabled = false 时可整段省略这些字段，代码既不读取也不校验，两个云台
     //     输出模式保持原有行为（与未引入本功能时**完全一致**）。
+    //   - 保持段 / 扫描段下发给电控的 auto_aim_enable 也由本段配置给出
+    //     （hold_auto_aim_enable / scan_auto_aim_enable，见 holdAutoAimEnable /
+    //     scanAutoAimEnable）；enabled = false 时该位仍按原行为恒为 0。
     struct SentryControllerParams {
         bool   enabled = false;   // 总开关（config: enabled，必填）
         // ── 以下仅在 enabled = true 时必需 ──
@@ -551,6 +554,12 @@ public:
         double pitchScanRiseTimeSec = 0.0;    // pitch 由下界线性升到上界的时间（秒，> 0）
         double pitchScanFallTimeSec = 0.0;    // pitch 由上界线性回落到下界的时间（秒，> 0）
                                               // （锯齿波周期 = 上升时间 + 回落时间）
+        // 下发给电控的 auto_aim_enable（**两段分别配置**，取代原先的硬编码 true/false）：
+        // 进入扫描前的保持段用 holdAutoAimEnable，扫描段用 scanAutoAimEnable。
+        // 扫描段枪口按扫描轨迹运动，电控是否进入自瞄分支由本配置决定；保持段通常
+        // 期望关闭。均为 bool，无额外取值校验（仅当 enabled = true 时读取与必填）。
+        bool   holdAutoAimEnable = false;     // 保持段 auto_aim_enable（config: hold_auto_aim_enable）
+        bool   scanAutoAimEnable = false;     // 扫描段 auto_aim_enable（config: scan_auto_aim_enable）
     };
 
     // 共用参数（两个流水线共享）

@@ -209,21 +209,26 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
         //  - 哨兵扫描控制器关闭（enabled = false）：**原行为完全不变**——用单元素
         //    序列保持当前严格反解位置；
         //  - 开启且已进入扫描模式：按配置生成扫描序列（yaw 匀速旋转 + pitch 锯齿波，
-        //    见 common/SentryController.h），auto_aim_enable = true、fire 全 false；
+        //    见 common/SentryController.h），auto_aim_enable =
+        //    common.sentry_controller.scan_auto_aim_enable、fire 全 false；
         //  - 开启但尚未超过 idle_timeout_sec：保持段——用上一个有效输出序列的首值
-        //    填充整条序列（从未有过有效输出时退化为本帧严格反解位置），自瞄关闭。
+        //    填充整条序列（从未有过有效输出时退化为本帧严格反解位置），
+        //    auto_aim_enable = common.sentry_controller.hold_auto_aim_enable。
         sentry_.update(/*valid=*/false, result.frame_timestamp);
 
         last_ = LastOutput{};
         std::vector<double> yaw_out, pitch_out;
         if (sentry_.enabled()) {
             const int n = std::max(1, scan_seq_points_);
-            bool auto_aim = false;
+            // auto_aim_enable 两段分别由配置给出（common.sentry_controller.
+            // hold_auto_aim_enable / scan_auto_aim_enable）：默认保持段 = 上一有效
+            // 输出、扫描段 = 扫描轨迹，是否让电控进入自瞄分支由配置决定。
+            bool auto_aim = sentry_.holdAutoAimEnable();
             if (sentry_.scanning()) {
                 sentry_.buildYawSequence(n, dt_control_, st.strict.yaw_pos,
                                          result.frame_timestamp, yaw_out);
                 sentry_.buildPitchSequence(n, dt_control_, result.frame_timestamp, pitch_out);
-                auto_aim = true;
+                auto_aim = sentry_.scanAutoAimEnable();
             } else {
                 const double hold_yaw   = have_last_valid_ ? last_valid_yaw_ : st.strict.yaw_pos;
                 const double hold_pitch = have_last_valid_ ? last_valid_pitch_ : st.strict.pitch_angle;

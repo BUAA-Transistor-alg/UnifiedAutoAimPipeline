@@ -494,6 +494,11 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
             requireScalar<double>(sc, "pitch_scan_rise_time_sec", "common.sentry_controller");
         cfg.common.sentryController.pitchScanFallTimeSec =
             requireScalar<double>(sc, "pitch_scan_fall_time_sec", "common.sentry_controller");
+        // 保持段 / 扫描段下发给电控的 auto_aim_enable（两段分别配置，取代硬编码）
+        cfg.common.sentryController.holdAutoAimEnable =
+            requireScalar<bool>(sc, "hold_auto_aim_enable", "common.sentry_controller");
+        cfg.common.sentryController.scanAutoAimEnable =
+            requireScalar<bool>(sc, "scan_auto_aim_enable", "common.sentry_controller");
         // 取值校验（非法值在此报错，不静默修正）
         if (cfg.common.sentryController.idleTimeoutSec < 0.0) {
             throw std::runtime_error("RobotConfig: common.sentry_controller.idle_timeout_sec "

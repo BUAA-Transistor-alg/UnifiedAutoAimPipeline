@@ -9,7 +9,10 @@
 //   2) GimbalOutputForBigSmallYaw::update 正常下发（大/小 yaw 序列长度 = 预测序列长度、
 //      fire 序列截取正确、拆分后每点 |θ_small| 在软限位内）；
 //   3) 控制器确实收到序列（MPC 参考序列长度、后台 loop_fps / ticks_since_set 正常）；
-//   4) 预测不可用时进入保持模式（auto_aim 关闭 + 大/小 yaw 保持当前反解方位角）。
+//   4) 预测不可用时进入保持段（auto_aim_enable = 配置 hold_auto_aim_enable，
+//      哨兵未开启时恒 0 + 大/小 yaw 保持当前反解方位角）；
+//   5) 哨兵控制器开启且无预测超过 idle_timeout_sec 时进入扫描段
+//      （auto_aim_enable = 配置 scan_auto_aim_enable、fire 全 false）。
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -151,7 +154,13 @@ int main() {
         ctx.bsy_state = adapter.state();
         // predict_result 保持默认无效
         out.update(res, nullptr, ctx);
-        check(!out.lastOutput().auto_aim_enable, "预测不可用 → 保持模式（auto_aim 关闭）");
+        // 保持段 auto_aim_enable：哨兵控制器开启时 = 配置 hold_auto_aim_enable，
+        // 未开启（enabled = false）时保持原行为恒为 false。
+        const bool expect_hold = cfg.common.sentryController.enabled
+                                     ? cfg.common.sentryController.holdAutoAimEnable
+                                     : false;
+        check(out.lastOutput().auto_aim_enable == expect_hold,
+              "预测不可用 → 保持段 auto_aim_enable = 配置 hold_auto_aim_enable");
         // 预测不可用时 fire 必须全为 false：
         //   - 未开启哨兵扫描（sentry_controller.enabled = false）⇒ 保持序列 = {false}；
         //   - 开启（Sentry1 配置即如此）⇒ 保持段/扫描段都是长度 = 扫描序列点数 n 的全 false 序列。
@@ -160,6 +169,29 @@ int main() {
             std::none_of(ctx.fire_out.begin(), ctx.fire_out.end(), [](bool b) { return b; });
         check(fire_all_false, "保持模式 fire 序列全为 false");
         check(!ctx.split_diag.valid, "保持模式清空拆分器诊断");
+    }
+
+    // ── 扫描模式：无有效预测持续超过 idle_timeout_sec（仅哨兵控制器开启时）──
+    if (cfg.common.sentryController.enabled) {
+        PipelineResult res;
+        res.valid = true;
+        res.frame = frame;
+        res.extra_info.fillCurrentPackZeros(YawMode::BIG_SMALL);
+        // 合成时间戳直接跨过 idle_timeout_sec（哨兵计时基于传入的帧时间戳）
+        ts += std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(cfg.common.sentryController.idleTimeoutSec + 0.5));
+        res.frame_timestamp = ts;
+        OutputContext ctx;
+        ctx.yaw_mode = YawMode::BIG_SMALL;
+        ctx.bsy_state = adapter.state();
+        // predict_result 保持默认无效
+        out.update(res, nullptr, ctx);
+        check(out.lastOutput().auto_aim_enable == cfg.common.sentryController.scanAutoAimEnable,
+              "扫描段 auto_aim_enable = 配置 scan_auto_aim_enable");
+        const bool fire_all_false =
+            !ctx.fire_out.empty() &&
+            std::none_of(ctx.fire_out.begin(), ctx.fire_out.end(), [](bool b) { return b; });
+        check(fire_all_false, "扫描模式 fire 序列全为 false");
     }
 
     std::cout << (g_fail == 0 ? "\nALL PASS" : "\nFAILED: " + std::to_string(g_fail)) << std::endl;

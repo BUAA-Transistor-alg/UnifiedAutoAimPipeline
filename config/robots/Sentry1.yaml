@@ -83,6 +83,12 @@ common:
     pitch_scan_rise_time_sec: 0.3  # pitch 由下界线性升到上界的时间（秒，> 0）
     pitch_scan_fall_time_sec: 0.3  # pitch 由上界线性回落到下界的时间（秒，> 0）
                                    # 锯齿波周期 = 上升 + 回落 = 1.0 s（示例）
+    # ── 下发给电控的 auto_aim_enable（两段分别配置；仅 enabled = true 时读取）──
+    # 保持段 = 进入扫描前（无有效预测但未超 idle_timeout_sec）的保持序列，
+    # 扫描段 = 正在执行扫描轨迹。两段都随控制器 set() 每帧下发，电控再与自己的
+    # 手动开关相与；enabled = false 时本段不读，两个云台输出模式保持原行为（恒 0）。
+    hold_auto_aim_enable: true    # 保持段 auto_aim_enable（bool，无默认值，必填）
+    scan_auto_aim_enable: false     # 扫描段 auto_aim_enable（bool，无默认值，必填）
 
   # ── 输入模式相机参数（common.input_mode）：两流水线共用，按输入模式自动选择 ──
   input_mode:
