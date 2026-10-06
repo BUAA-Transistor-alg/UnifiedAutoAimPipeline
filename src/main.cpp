@@ -1242,6 +1242,8 @@ int main(int argc, char** argv) {
                     lf.frame_timestamp = timestamp;
                     lf.predictor_valid = req.result->predictor_valid;
                     lf.result_valid    = req.ctx->predict_result.valid;
+                    // Armor：所选目标观测太旧 ⇒ 火控被强制关闭（config armor.fire_observation_timeout）
+                    lf.fire_forbidden  = req.result->armor.fire_forbidden;
                     lf.source          = predictorSourceName(req.result->predictor.source);
                     const auto& items  = req.ctx->predict_result.items;
                     if (!items.empty()) {

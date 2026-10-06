@@ -109,6 +109,7 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
     : queue_max_sizes_(queue_max_sizes)
     , min_delay_seconds_(min_delay_seconds)
     , stage5_stick_priority_m_(RobotConfig::instance().armor.targetSelection.stage5StickPriorityM)
+    , fire_observation_timeout_s_(RobotConfig::instance().armor.fireObservationTimeout)
     , s1_(RobotConfig::instance().armor.inputWidth,
           RobotConfig::instance().armor.inputHeight,
           RobotConfig::instance().armor.modelName)
@@ -489,6 +490,36 @@ void ArmorPipeline::processStage5(DataDeque& data)
     d->stage5.target_omega = target_omega;
     d->stage5.target_omega_valid = target_omega_valid;
 
+    // ── 禁火判据：所选目标距"最近一次真正观测到该类实体"的时长 ──
+    // 每一类各自维护（与滤波器同源，只读本帧选中那一类）：
+    //   - label 6  前哨站   ：OutpostESEKF 收到观测帧时刷新（无观测帧只 predict 外推）；
+    //   - label 0~5 各类车  ：该类 ClassEKF 收到本类观测并进入更新时刷新
+    //                        （无观测帧只 missUpdate 外推）；
+    //   - label 7~8 基地    ：该类 NewestObjectTracker 收到本类观测时刷新
+    //                        （无观测帧只冻结旧位姿）。
+    // 超过 armor.fire_observation_timeout（> 0 时生效）⇒ fire_forbidden = true，
+    // 两个云台输出模式据此把 fire 全置 false（瞄准序列照常下发，只禁止开火）。
+    // 从未记录过观测时刻（时间戳为 epoch 0）时按"最保守"处理：禁止开火。
+    if (best_label >= 0) {
+        std::chrono::steady_clock::time_point last_real_obs{};
+        if (best_label == ArmorDetect::OUTPOST_CLASS) {
+            last_real_obs = s5_.esekf->lastObservationTime();
+        } else if (best_label < NUM_CLASS_EKF) {
+            last_real_obs = s5_.class_ekfs[best_label].lastObservationTime();
+        } else {
+            last_real_obs =
+                s5_.newest_object_trackers[best_label - ArmorDetect::BASE_CLASS]
+                    .lastObservationTime();
+        }
+        const bool has_last_obs = last_real_obs.time_since_epoch().count() > 0;
+        d->stage5.since_observation_s = has_last_obs
+            ? std::chrono::duration<double>(ts - last_real_obs).count()
+            : 0.0;
+        d->stage5.fire_forbidden =
+            (fire_observation_timeout_s_ > 0.0) &&
+            (!has_last_obs || d->stage5.since_observation_s > fire_observation_timeout_s_);
+    }
+
     d->stage5.target_valid = (best_label >= 0);
     d->stage5.target_label = best_label;
     d->stage5.target_filter_type = TargetFilterType::NONE;
@@ -629,6 +660,9 @@ void ArmorPipeline::fillPerception(ArmorPipelineData* d, ArmorPerception& out)
     out.target_R64 = d->stage5.target_R64;
     out.target_world_points = d->stage5.target_world_points;
     out.target_pred_center_points = d->stage5.target_pred_center_points;
+    // 禁火判据（所选目标距上次"真实观测"的时长 / 是否禁止开火，见 Stage5Data）
+    out.since_observation_s = d->stage5.since_observation_s;
+    out.fire_forbidden = d->stage5.fire_forbidden;
     // 目标预测函数快照（d->stage5.target_predictor）不再复制到感知结果：由
     // tryPopFrame 组装进 PipelineResult::predictor（Predictor::function）后随
     // 结果输出（见 tryPopFrame）。

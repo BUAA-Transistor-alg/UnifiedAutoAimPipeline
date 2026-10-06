@@ -677,6 +677,15 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     }
     cfg.armor.shmKey   = requireScalar<int>(oinf, "shm_key", "armor.inference");
     cfg.armor.observationLostTimeoutSec = requireScalar<double>(op, "observation_lost_timeout", "armor");
+    // ── armor.fire_observation_timeout（禁火阈值）──
+    // 所选目标距"最近一次真正观测到该类实体"超过该时长即禁止开火（见
+    // ArmorParams::fireObservationTimeout）。0 = 关闭该保护（不因观测年龄禁火）。
+    cfg.armor.fireObservationTimeout =
+        requireScalar<double>(op, "fire_observation_timeout", "armor");
+    if (cfg.armor.fireObservationTimeout < 0.0) {
+        throw std::runtime_error("RobotConfig: armor.fire_observation_timeout 必须 >= 0 "
+                                 "（0 = 关闭按观测年龄禁火）");
+    }
 
     // ── armor.pipeline（缓冲队列长度 + 可批处理阶段批量）──
     const YAML::Node& opipe = op["pipeline"];

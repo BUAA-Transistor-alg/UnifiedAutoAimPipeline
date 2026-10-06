@@ -104,8 +104,12 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
                 const bool line_ok = SequencePredictor::fastGunLineOk(
                     seq, (int)k, extra_predict_time_, dt_control_);
                 if (result.predictor.source.kind == Kind::ARMOR){
-                    fire_seq.push_back(track_ok && line_ok);   // 两个条件都满足才开火
-                    gate_seq.push_back({true, track_ok, line_ok});
+                    // 条件3（Armor 专用）：所选目标距"最近一次真正观测到该类实体"的时长
+                    // 未超过 armor.fire_observation_timeout（只在惯性外推时禁止开火；
+                    // 见 ArmorPerception::fire_forbidden）。瞄准序列照常下发，只禁开火。
+                    const bool observed_recently = !result.armor.fire_forbidden;
+                    fire_seq.push_back(track_ok && line_ok && observed_recently);
+                    gate_seq.push_back({true, track_ok, line_ok, !observed_recently});
                 }
                 else if (result.predictor.source.kind == Kind::POWER_RUNE){
                     const bool time_ok = (k < seq.items.size() &&
@@ -113,7 +117,7 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
                                           seq.items[k].target_age_valid
                                          );
                     fire_seq.push_back(track_ok && time_ok); // 能量机关链路下，保证开火一定打击到正在激活的目标
-                    gate_seq.push_back({true, track_ok, time_ok});
+                    gate_seq.push_back({true, track_ok, time_ok, false});
                 }
             }
         }
@@ -214,6 +218,7 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
         //  - 开启但尚未超过 idle_timeout_sec：保持段——用上一个有效输出序列的首值
         //    填充整条序列（从未有过有效输出时退化为本帧严格反解位置），
         //    auto_aim_enable = common.sentry_controller.hold_auto_aim_enable。
+        //  两种情况（保持段 / 扫描段）**全程禁止开火**：fire 序列恒全 false。
         sentry_.update(/*valid=*/false, result.frame_timestamp);
 
         last_ = LastOutput{};
@@ -238,8 +243,11 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
             last_.auto_aim_enable = auto_aim;
             last_.yaw_seq         = yaw_out;
             last_.pitch_seq       = pitch_out;
+            // 保持段与扫描段**全程禁止开火**（与 auto_aim_enable 配置值无关：
+            // 那一位只决定电控是否进入自瞄分支，火控位在此恒为 0）。
             last_.fire_seq.assign((size_t)n, false);
             ctx.fire_out = last_.fire_seq;   // 预测不可用：无有效 fire（首元素 false）
+            ctx.fire_gate_front = OutputContext::FireGateStatus{};   // 无火控判定数据
             rc_.set(auto_aim, /*yaw_torque_only_mode=*/yaw_torque_only_mode_,
                     yaw_out, pitch_out, last_.fire_seq,
                     /*integral_enable=*/false);

@@ -52,6 +52,10 @@ public:
         std::chrono::steady_clock::time_point frame_timestamp;  // 该帧流水线时间戳
         bool        predictor_valid = false;   // 本帧是否有可用目标预测器
         bool        result_valid    = false;   // SequencePredictor 返回结果是否有效
+        // Armor 专用：本帧所选目标距"最近一次真正观测到该类实体"已超过
+        // config armor.fire_observation_timeout ⇒ 火控被强制关闭（见
+        // ArmorPerception::fire_forbidden）。PowerRune 帧恒为 false。
+        bool        fire_forbidden  = false;
         std::string source;                    // "PowerRune" / "Armor" / "None"
         int         selected_index  = -1;      // 本帧选中的瞄准点索引（-1 = 无）
         double      target_z        = 0.0;     // 选中瞄准点的预测世界 z（米）
@@ -229,11 +233,26 @@ public:
                         frame_count_, f.selected_index, reason.c_str());
             std::fflush(stdout);
         }
+        // ── 控制台：观测太旧禁火标志翻转（Armor 专用；config armor.fire_observation_timeout）──
+        // 进入禁火 = 所选目标距"最近一次真正观测到该类实体"已超阈值（此后 fire 恒 0，
+        // 只保持瞄准）；解除 = 重新观测到实体（或目标切换后新目标观测新鲜）。
+        if (has_prev_fire_forbidden_ && prev_fire_forbidden_ != f.fire_forbidden) {
+            const char* tag = f.fire_forbidden ? "FIRE_BAN_ON" : "FIRE_BAN_OFF";
+            std::printf("[%s] %s  frame#%lld  t=%.3fs  观测太旧禁火 %d -> %d",
+                        tag, wallTime().c_str(), frame_count_, steady_s,
+                        prev_fire_forbidden_ ? 1 : 0, f.fire_forbidden ? 1 : 0);
+            if (!f.context.empty()) std::printf("  |  %s", f.context.c_str());
+            std::printf("\n");
+            std::fflush(stdout);
+            writeEventRow(tag, steady_s, frame_ts_s, f);
+        }
 
         prev_index_     = f.selected_index;
         has_prev_index_ = true;
         prev_valid_     = f.predictor_valid;
         has_prev_valid_ = true;
+        prev_fire_forbidden_     = f.fire_forbidden;
+        has_prev_fire_forbidden_ = true;
         last_source_    = src(f);
         if (csv_.is_open()) csv_.flush();
     }
@@ -309,6 +328,7 @@ private:
         std::printf("[SWITCH-LOG] 选靶切换日志已开启");
         if (csv_.is_open()) {
             csv_ << "wall_time,steady_s,frame_ts_s,event,source,predictor_valid,result_valid,"
+                    "fire_forbidden,"
                     "prev_index,selected_index,switched,switch_gap_s,frame_gap_s,"
                     "invalid_since_switch,target_z,flight_time,reason,context\n";
             csv_ << std::fixed;
@@ -339,6 +359,7 @@ private:
         if (!csv_.is_open()) return;
         csv_ << wallTime() << ',' << steady_s << ',' << frame_ts_s << ',' << event << ','
              << src(f) << ',' << (f.predictor_valid ? 1 : 0) << ',' << (f.result_valid ? 1 : 0)
+             << ',' << (f.fire_forbidden ? 1 : 0)
              << ',' << prev_index << ',' << f.selected_index << ',' << switched << ','
              << switch_gap_s << ',' << frame_gap_s << ',' << invalid_between << ','
              << f.target_z << ',' << f.flight_time << ',' << csvSafe(reason) << ','
@@ -350,6 +371,7 @@ private:
         if (!csv_.is_open()) return;
         csv_ << wallTime() << ',' << steady_s << ',' << frame_ts_s << ',' << tag << ','
              << src(f) << ',' << (f.predictor_valid ? 1 : 0) << ',' << (f.result_valid ? 1 : 0)
+             << ',' << (f.fire_forbidden ? 1 : 0)
              << ',' << prev_index_ << ',' << f.selected_index << ',' << 0 << ',' << -1.0 << ','
              << -1.0 << ',' << invalid_since_switch_ << ',' << f.target_z << ','
              << f.flight_time << ',' << ',' << csvSafe(f.context) << '\n';
@@ -418,6 +440,9 @@ private:
     bool has_prev_index_    = false;
     bool prev_valid_        = false;
     bool has_prev_valid_    = false;
+    // 观测太旧禁火标志的上一帧值（用于 FIRE_BAN_ON / FIRE_BAN_OFF 事件）
+    bool prev_fire_forbidden_     = false;
+    bool has_prev_fire_forbidden_ = false;
     int  invalid_since_switch_ = 0;
     std::string pending_reason_;   // 本帧选靶原因（决策器写入，frame() 取用后清空）
     double last_frame_steady_s_  = -1.0;

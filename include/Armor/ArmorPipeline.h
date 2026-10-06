@@ -130,6 +130,15 @@ struct ArmorPipelineData {
         // 上下阈值判定（仅当有效标志为 true 时判定）。
         double target_omega = 0.0;
         bool   target_omega_valid = false;
+
+        // ── 禁火判据（config armor.fire_observation_timeout）──
+        // 所选目标（target_label 那一类）距**最近一次真正观测到该类实体**的时长：
+        // 每一类各自维护（前哨站 EKF / 各类移植 EKF / 两个最新物体跟踪器各记录自己
+        // 最近一次收到本类观测的帧时刻，只做惯性外推的帧不刷新），此处只把**本帧选中
+        // 那一类**的值随结果下发。超过阈值（且阈值 > 0）时 fire_forbidden = true，
+        // 两个云台输出模式据此把该帧 fire 全置 false（仍照常下发瞄准序列）。
+        double since_observation_s = 0.0;   // 距上次真实观测的时长（秒；无目标时为 0）
+        bool   fire_forbidden = false;      // 是否因观测太旧禁止开火
     } stage5;
 };
 
@@ -206,6 +215,11 @@ private:
     // 读取（判定已移入 SequencePredictor::predict，本类只下发原始角速度及其
     // 可用标志）。
     double stage5_stick_priority_m_ = 0.0;  // L1：stage5 目标级滞回固定优先度（米）
+
+    // ── 禁火阈值（取自 config armor.fire_observation_timeout，秒；0 = 关闭该保护）──
+    // 所选目标距"最近一次真正观测到该类实体"超过该时长即禁止开火（见 Stage5Data
+    // 的 since_observation_s / fire_forbidden）。
+    double fire_observation_timeout_s_ = 0.0;
 
     // ── stage5 目标选取跨帧状态（仅 stage5 worker 线程访问，单帧串行）──
     // L1：上一帧 stage5 选中的目标（label）；本帧仍为候选时获得固定优先度。

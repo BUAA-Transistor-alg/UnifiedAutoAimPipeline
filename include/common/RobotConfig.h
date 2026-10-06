@@ -378,6 +378,14 @@ public:
         int maxBatch;                       // 推理最大批量（动态 batch 1..max_batch）
         int shmKey;                         // 共享内存 Key（推理进程通信，见 InferShm.h）
         double observationLostTimeoutSec;   // 连续观测丢失多久后重置滤波器（秒）
+        // 禁火阈值（秒，config armor.fire_observation_timeout，>= 0；0 = 关闭该保护）：
+        // 每一类目标（label 0~5 各类 EKF / 6 前哨站 / 7~8 基地）各自记录**最近一次真正
+        // 观测到该类实体**（滤波器收到并接受本类观测，而非仅惯性外推）的帧时刻；本帧
+        // 所选目标距该时刻超过本阈值时，ArmorPerception::fire_forbidden = true，两个
+        // 云台输出模式据此把该帧 fire 全置 false（只保持瞄准，不开火）。
+        // 与 observation_lost_timeout 的区别：后者决定"何时不再有预测器"（保持模式），
+        // 本项更早介入——预测器仍在惯性外推但不允许开火。
+        double fireObservationTimeout;      // 距上次真实观测超过该时长即禁止开火（秒）
         PipelineParams pipeline;            // 缓冲队列长度 + 可批处理阶段批量
 
         // OutpostESEKF 误差状态扩展卡尔曼滤波参数

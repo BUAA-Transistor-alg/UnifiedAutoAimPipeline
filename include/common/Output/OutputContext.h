@@ -56,6 +56,11 @@ struct OutputContext {
         bool valid = false;
         bool track_ok = false;
         bool second_ok = false;  // 该输出分支实际使用的第二门控
+        // 该火控点是否被"目标观测太旧"禁止开火（Armor 专用：所选目标距最近一次真正
+        // 观测到该类实体的时长超过 armor.fire_observation_timeout，见
+        // ArmorPerception::fire_forbidden）。true 时 fire 恒 false，与 track_ok /
+        // second_ok 分开显示，便于区分"云台没跟上 / 枪线不对 / 观测太旧"。
+        bool fire_forbidden = false;
     } fire_gate_front;
     bool gimbal_enabled = false;  // 是否开启 gimbal 输出模式
 

@@ -100,6 +100,7 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
 
         // ── fire 序列：用 MPC 的**小 yaw** 参考/预测序列逐对判定（与旧版 yaw 通道一致）──
         std::vector<bool> fire_seq;
+        std::vector<OutputContext::FireGateStatus> gate_seq;
         bool mpc_available = false;
         const size_t ns = std::min(st.ref_small_azimuth_seq.size(),
                                    st.pred_small_azimuth_seq.size());
@@ -117,6 +118,7 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
             mpc_available = true;
             last_.fire_threshold = threshold;
             fire_seq.reserve(ns);
+            gate_seq.reserve(ns);
             for (size_t k = 0; k < ns; ++k) {
                 // 条件1：MPC 预测轨迹与目标轨迹（参考）误差在动态角度阈值内
                 const bool track_ok = computeFire(st.ref_small_azimuth_seq[k],
@@ -125,9 +127,19 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                 // 枪线上（匀速旋转模型；非 fast_target 时恒 true，保持原行为）
                 const bool line_ok = SequencePredictor::fastGunLineOk(
                     seq, (int)k, extra_predict_time_, dt_control_);
-                fire_seq.push_back(track_ok && line_ok);   // 两个条件都满足才开火
+                // 条件3（Armor 专用）：所选目标距"最近一次真正观测到该类实体"的时长未
+                // 超过 armor.fire_observation_timeout（只在惯性外推时禁止开火；见
+                // ArmorPerception::fire_forbidden）。瞄准序列照常下发，只禁开火。
+                // 非 Armor 帧该标志恒为 false，不影响能量机关链路。
+                const bool observed_recently = !result.armor.fire_forbidden;
+                fire_seq.push_back(track_ok && line_ok && observed_recently);
+                gate_seq.push_back({true, track_ok, line_ok, !observed_recently});
             }
         }
+        // 与 fire_out 相同的截取规则（短序列保留末点，空序列标记无数据），供可视化
+        // 显示该火控点的三个门控（track / 第二门控 / 观测太旧禁火）。
+        ctx.fire_gate_front = truncateKeepLast(
+            gate_seq, fire_seq_lead_, OutputContext::FireGateStatus{}).front();
 
         // ── 瞄准方位角序列（= 每个返回点的小 yaw 输出目标世界方位角）──
         std::vector<double> aim_azimuth;
@@ -202,6 +214,7 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
         //  - 开启但尚未超过 idle_timeout_sec：保持段——用上一个有效输出序列首值
         //    填充整条序列（从未有过有效输出时退化为本帧实测角度），
         //    auto_aim_enable = common.sentry_controller.hold_auto_aim_enable。
+        //  两种情况（保持段 / 扫描段）**全程禁止开火**：fire 序列恒全 false。
         sentry_.update(/*valid=*/false, result.frame_timestamp);
 
         last_ = LastOutput{};
@@ -230,6 +243,8 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                 pitch_scan_out.assign((size_t)n, hold_pitch);
             }
             std::vector<bool> fire_scan_out((size_t)n, false);
+            // 保持段与扫描段**全程禁止开火**（与 auto_aim_enable 配置值无关：
+            // 那一位只决定电控是否进入自瞄分支，火控位在此恒为 0）。
             last_.auto_aim_enable = auto_aim;
             last_.big_yaw_seq     = big_seq;
             last_.small_yaw_seq   = small_seq;

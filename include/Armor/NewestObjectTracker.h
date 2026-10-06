@@ -51,6 +51,11 @@ public:
     /// 是否有效（识别帧数达标且未超时重置）。
     bool valid() const { return valid_; }
 
+    /// **最近一次真正观测到本类实体**的帧时间戳（本类观测帧刷新；无观测帧只保持
+    /// 旧位姿、不刷新）。从未观测过时为默认值（epoch 0）。
+    /// 供 ArmorPipeline 判定"所选目标距上次真实观测多久"（armor.fire_observation_timeout）。
+    TimePoint lastObservationTime() const { return last_obs_ts_; }
+
     /// 保存的物体世界坐标（米）。仅 valid() 时有效。
     const cv::Vec3d& getPosition() const { return position_; }
 

@@ -240,6 +240,14 @@ armor:
           height: 640
   observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 OutpostESEKF / 最新物体位姿保持（秒）
 
+  # 禁火阈值（秒，>= 0；0 = 关闭该保护）：Armor 下每一类目标（label 0~5 各类 EKF /
+  # 6 前哨站 / 7~8 基地）各自维护"最近一次真正观测到该类实体"的帧时刻（只被真实观测
+  # 刷新，惯性外推不刷新）；本帧所选目标距该时刻超过本阈值时，随流水线结果下发
+  # fire_forbidden = true，两个云台输出模式据此把 fire 全置 false（只保持瞄准）。
+  # 参考量级：普通车 EKF 的失检容忍 ≈16 帧（约 0.16 s @100fps），前哨站/基地的
+  # 滤波窗口为 observation_lost_timeout（2.0 s）；本阈值应明显小于 2.0 s 才有意义。
+  fire_observation_timeout: 0.3
+
   # ── 目标选取滞回参数（armor.target_selection）──
   #   stage5_stick_priority_m：stage5 目标级滞回固定优先度（米）——上一帧选中的目标
   #     （filter/label）在再次选取时减去该米数参与“距底盘原点最近”比较，其它目标须

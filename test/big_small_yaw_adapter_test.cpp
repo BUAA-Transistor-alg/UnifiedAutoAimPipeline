@@ -12,7 +12,9 @@
 //   4) 预测不可用时进入保持段（auto_aim_enable = 配置 hold_auto_aim_enable，
 //      哨兵未开启时恒 0 + 大/小 yaw 保持当前反解方位角）；
 //   5) 哨兵控制器开启且无预测超过 idle_timeout_sec 时进入扫描段
-//      （auto_aim_enable = 配置 scan_auto_aim_enable、fire 全 false）。
+//      （auto_aim_enable = 配置 scan_auto_aim_enable、fire 全 false）；
+//   6) Armor 观测太旧禁火：预测有效但 ArmorPerception::fire_forbidden = true 时
+//      fire 序列整条为 false（瞄准序列照常下发，门控状态带出该标志）。
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -130,6 +132,45 @@ int main() {
                 lo.fire_seq.size(), lo.unlimited_episodes);
     check(!lo.fire_seq.empty(), "fire 序列已生成");
     check(!lo.pitch_seq.empty() && (int)lo.pitch_seq.size() <= N, "pitch 序列按配置截取");
+
+    // ── 观测太旧禁火（ArmorPerception::fire_forbidden / armor.fire_observation_timeout）──
+    // 预测仍然有效，但流水线标记"所选目标距上次真实观测已超阈值" ⇒ fire 必须全 false，
+    // 瞄准序列照常下发（大/小 yaw 序列仍在），门控状态把该标志带给可视化。
+    {
+        auto drive = [&](bool forbidden, OutputContext& ctx) {
+            PipelineResult res;
+            res.valid = true;
+            res.frame = frame;
+            res.extra_info.fillCurrentPackZeros(YawMode::BIG_SMALL);
+            res.frame_timestamp = ts;
+            res.armor.fire_forbidden = forbidden;
+            res.armor.since_observation_s = forbidden ? 9.0 : 0.0;
+            ctx.yaw_mode = YawMode::BIG_SMALL;
+            ctx.bsy_state = adapter.state();
+            ctx.predict_result = makeSeq(N, 0.2, 1.0, dt);
+            out.update(res, nullptr, ctx);
+        };
+        const auto count_true = [](const std::vector<bool>& v) {
+            return (int)std::count(v.begin(), v.end(), true);
+        };
+
+        OutputContext ctx_ok;
+        drive(/*forbidden=*/false, ctx_ok);
+        const int allowed_true = count_true(ctx_ok.fire_out);
+
+        OutputContext ctx_ban;
+        drive(/*forbidden=*/true, ctx_ban);
+        const int banned_true = count_true(ctx_ban.fire_out);
+        std::printf("  fire true 数：允许开火=%d  禁火=%d\n", allowed_true, banned_true);
+
+        check(banned_true == 0, "fire_forbidden ⇒ 整条 fire 序列全为 false");
+        check(!ctx_ban.fire_out.empty() && !ctx_ban.fire_out.front(),
+              "被禁火时回写可视化的 fire 首元素为 false");
+        check(ctx_ban.fire_gate_front.valid && ctx_ban.fire_gate_front.fire_forbidden,
+              "门控状态带出 fire_forbidden（可视化橙色指示灯）");
+        check(!out.lastOutput().big_yaw_seq.empty() && !out.lastOutput().small_yaw_seq.empty(),
+              "被禁火时仍照常下发大/小 yaw 瞄准序列（只禁止开火）");
+    }
 
     // ── 控制器侧确认收到序列并持续求解 ──
     std::this_thread::sleep_for(std::chrono::milliseconds(150));

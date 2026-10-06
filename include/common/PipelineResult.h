@@ -59,6 +59,16 @@ struct ArmorPerception {
     // 直接作为 sequence_predictor.predict 的输入。
 
     size_t detection_count = 0;
+
+    // ── 禁火判据（config armor.fire_observation_timeout）──
+    // 所选目标（target_label 那一类）距**最近一次真正观测到该类实体**的时长：
+    // 每一类各自维护（前哨站 EKF / 各类移植 EKF / 两个最新物体跟踪器各自记录最近
+    // 一次收到本类观测的帧时刻，只做惯性外推的帧不刷新），此处只带出本帧选中那一类。
+    // since_observation_s > armor.fire_observation_timeout（阈值 > 0 时生效）
+    // ⇒ fire_forbidden = true：两个云台输出模式把该帧 fire 全置 false（只保持瞄准）。
+    // 无目标（target_valid = false）时 since_observation_s = 0、fire_forbidden = false。
+    double since_observation_s = 0.0;
+    bool   fire_forbidden = false;
 };
 
 // ============================================================================

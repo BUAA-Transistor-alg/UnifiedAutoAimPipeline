@@ -116,6 +116,11 @@ public:
     /// state 是否有效（最近一帧 predictor_->ready()，见 processFrame 返回值）。
     bool stateAvailable() const { return state_available_; }
 
+    /// **最近一次真正观测到本类实体**的帧时间戳（本类 EKF 收到并进入更新的观测帧；
+    /// 无观测帧只 missUpdate 惯性外推，不刷新本值）。从未观测过时为默认值（epoch 0）。
+    /// 供 ArmorPipeline 判定"所选目标距上次真实观测多久"（armor.fire_observation_timeout）。
+    TimePoint lastObservationTime() const { return last_obs_ts_; }
+
     /// 车体中心世界坐标（米）。仅 state 有效时有效（先查 stateAvailable()）。
     const cv::Vec3d& getPosition() const { return position_; }
 
