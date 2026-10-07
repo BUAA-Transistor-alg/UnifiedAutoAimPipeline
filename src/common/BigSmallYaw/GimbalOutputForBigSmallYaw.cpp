@@ -34,13 +34,13 @@ GimbalOutputForBigSmallYaw::GimbalOutputForBigSmallYaw(RobotControllerAdapter& c
           RobotConfig::instance().common.bigSmallYaw.bigSmall.joints.smallMinAngle,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.joints.smallMaxAngle,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.joints.smallCenterAngle,
-          RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.mpc.smallLimitSoftRatio,
+          RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.smallSoftLimitRatio,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerMaxVelocity,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerMaxAcceleration,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerMaxJerk,
           RobotConfig::instance().common.bigSmallYaw.bigSmall.splitter.plannerSubsteps}),
-      big_torque_only_(RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.controller.bigTorqueOnly),
-      small_torque_only_(RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.controller.smallTorqueOnly),
+      big_torque_only_(RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.yawTorqueOnlyModeB),
+      small_torque_only_(RobotConfig::instance().common.bigSmallYaw.bigSmall.robotController.yawTorqueOnlyModeS),
       pitch_seq_lead_(RobotConfig::instance().common.predictSequence.pitchSeqLead),
       fire_seq_lead_(RobotConfig::instance().common.predictSequence.fireSeqLead),
       fire_angle_lower_limit_(RobotConfig::instance().common.predictSequence.fireAngleLowerLimit),
@@ -100,6 +100,7 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
 
         // ── fire 序列：用 MPC 的**小 yaw** 参考/预测序列逐对判定（与旧版 yaw 通道一致）──
         std::vector<bool> fire_seq;
+        std::vector<OutputContext::FireGateStatus> gate_seq;
         bool mpc_available = false;
         const size_t ns = std::min(st.ref_small_azimuth_seq.size(),
                                    st.pred_small_azimuth_seq.size());
@@ -117,6 +118,10 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
             mpc_available = true;
             last_.fire_threshold = threshold;
             fire_seq.reserve(ns);
+            gate_seq.reserve(ns);
+
+            using Kind = SequencePredictor::PredictorSource::Kind;
+
             for (size_t k = 0; k < ns; ++k) {
                 // 条件1：MPC 预测轨迹与目标轨迹（参考）误差在动态角度阈值内
                 const bool track_ok = computeFire(st.ref_small_azimuth_seq[k],
@@ -125,9 +130,30 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                 // 枪线上（匀速旋转模型；非 fast_target 时恒 true，保持原行为）
                 const bool line_ok = SequencePredictor::fastGunLineOk(
                     seq, (int)k, extra_predict_time_, dt_control_);
-                fire_seq.push_back(track_ok && line_ok);   // 两个条件都满足才开火
+                // 第二条件按来源分叉（与单 yaw 构型的 GimbalOutput 一致）：
+                if (result.predictor.source.kind == Kind::ARMOR) {
+                    // Armor：所选目标距"最近一次真正观测到该类实体"的时长未超过
+                    // armor.fire_observation_timeout（只在惯性外推时禁止开火；见
+                    // ArmorPerception::fire_forbidden）。瞄准序列照常下发，只禁开火。
+                    const bool observed_recently = !result.armor.fire_forbidden;
+                    fire_seq.push_back(track_ok && line_ok && observed_recently);
+                    gate_seq.push_back({true, track_ok, line_ok, !observed_recently});
+                } else if (result.predictor.source.kind == Kind::POWER_RUNE) {
+                    // PowerRune：保证开火一定打击到正在激活的靶点——该火控点命中时刻的
+                    // 靶点年龄（弹道飞行时间 + target_age）仍在激活窗口内
+                    // （见 SequencePredictor::powerRuneActiveTimeOk，与单 yaw 共用）。
+                    // 与单 yaw 的同名分支一致：PowerRune 帧 fast_target 恒为 false
+                    // （枪线门控无意义），第二条件只取 time_ok。
+                    const bool time_ok = SequencePredictor::powerRuneActiveTimeOk(seq, (int)k);
+                    fire_seq.push_back(track_ok && time_ok);
+                    gate_seq.push_back({true, track_ok, time_ok, false});
+                }
             }
         }
+        // 与 fire_out 相同的截取规则（短序列保留末点，空序列标记无数据），供可视化
+        // 显示该火控点的三个门控（track / 第二门控 / 观测太旧禁火）。
+        ctx.fire_gate_front = truncateKeepLast(
+            gate_seq, fire_seq_lead_, OutputContext::FireGateStatus{}).front();
 
         // ── 瞄准方位角序列（= 每个返回点的小 yaw 输出目标世界方位角）──
         std::vector<double> aim_azimuth;
@@ -182,21 +208,27 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
         ctx.split_diag.small_ref_front  = sp.small_azimuth.empty() ? 0.0 : sp.small_azimuth.front();
 
         // 序列 set：{自动瞄准开, 大 yaw 仅力矩, 小 yaw 仅力矩, ψ_big 序列, ψ_small 序列,
-        //            pitch 序列, fire 序列, 积分补偿}
+        //            pitch 序列, fire 序列, 大 yaw 积分开关, 小 yaw 积分开关}
+        // 注：v2 起两轴的力矩模式位与积分开关都各自独立；本工程当前把流水线给出的
+        //     同一个 seq.integral_enable 传给两轴（需要分轴控制时再拆开配置）。
         recordSent("predict", /*auto_aim_enable=*/true, sp.big_azimuth, sp.small_azimuth,
                    pitch_out, fire_out, seq.integral_enable);
         ctrl_.controller().set(/*auto_aim_enable=*/true, big_torque_only_, small_torque_only_,
                                sp.big_azimuth, sp.small_azimuth, pitch_out, fire_out,
-                               /*integral_enable=*/seq.integral_enable);
+                               /*integral_enable_b=*/seq.integral_enable,
+                               /*integral_enable_s=*/seq.integral_enable);
     } else {
-        // ── 预测不可用：自瞄关闭 ──
+        // ── 预测不可用：自瞄开关由配置决定 ──
         //  - 哨兵扫描控制器关闭（enabled = false）：**原行为完全不变**——大/小 yaw
         //    保持当前严格反解世界方位角；
         //  - 开启且已进入扫描模式：生成扫描序列——大/小 yaw 取**同一条**序列
         //    （同一个世界方位角，不保持关节角差），pitch 走锯齿波
-        //    （见 common/SentryController.h），auto_aim_enable = true、fire 全 false；
+        //    （见 common/SentryController.h），auto_aim_enable =
+        //    common.sentry_controller.scan_auto_aim_enable、fire 全 false；
         //  - 开启但尚未超过 idle_timeout_sec：保持段——用上一个有效输出序列首值
-        //    填充整条序列（从未有过有效输出时退化为本帧实测角度），自瞄关闭。
+        //    填充整条序列（从未有过有效输出时退化为本帧实测角度），
+        //    auto_aim_enable = common.sentry_controller.hold_auto_aim_enable。
+        //  两种情况（保持段 / 扫描段）**全程禁止开火**：fire 序列恒全 false。
         sentry_.update(/*valid=*/false, result.frame_timestamp);
 
         last_ = LastOutput{};
@@ -204,7 +236,9 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
         if (sentry_.enabled()) {
             const int n = std::max(1, scan_seq_points_);
             std::vector<double> big_seq, small_seq, pitch_scan_out;
-            bool auto_aim = false;
+            // auto_aim_enable 两段分别由配置给出（common.sentry_controller.
+            // hold_auto_aim_enable / scan_auto_aim_enable）
+            bool auto_aim = sentry_.holdAutoAimEnable();
             if (sentry_.scanning()) {
                 // 大/小 yaw 使用**同一条**目标序列（同一个世界方位角，不保持关节角差）：
                 // 小 yaw 参考关节角为 0，两级同步旋转到同一角度。基准取本帧实测小 yaw
@@ -213,7 +247,7 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                                          result.frame_timestamp, big_seq);
                 small_seq = big_seq;
                 sentry_.buildPitchSequence(n, dt_control_, result.frame_timestamp, pitch_scan_out);
-                auto_aim = true;
+                auto_aim = sentry_.scanAutoAimEnable();
             } else {
                 const double hold_big   = have_last_valid_ ? last_valid_big_ : st.yaw_big_azimuth;
                 const double hold_small = have_last_valid_ ? last_valid_small_ : st.yaw_small_azimuth;
@@ -223,6 +257,8 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                 pitch_scan_out.assign((size_t)n, hold_pitch);
             }
             std::vector<bool> fire_scan_out((size_t)n, false);
+            // 保持段与扫描段**全程禁止开火**（与 auto_aim_enable 配置值无关：
+            // 那一位只决定电控是否进入自瞄分支，火控位在此恒为 0）。
             last_.auto_aim_enable = auto_aim;
             last_.big_yaw_seq     = big_seq;
             last_.small_yaw_seq   = small_seq;
@@ -233,7 +269,7 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                        big_seq, small_seq, pitch_scan_out, fire_scan_out, /*integral_enable=*/false);
             ctrl_.controller().set(auto_aim, big_torque_only_, small_torque_only_,
                                    big_seq, small_seq, pitch_scan_out, fire_scan_out,
-                                   /*integral_enable=*/false);
+                                   /*integral_enable_b=*/false, /*integral_enable_s=*/false);
         } else {
             // 原行为（未开启哨兵控制器时与引入本功能前完全一致）
             const double hold_big   = st.yaw_big_azimuth;
@@ -248,7 +284,7 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
                        hold_pitch_seq, hold_fire_seq, /*integral_enable=*/false);
             ctrl_.controller().set(/*auto_aim_enable=*/false, big_torque_only_, small_torque_only_,
                                    hold_big_seq, hold_small_seq, hold_pitch_seq, hold_fire_seq,
-                                   /*integral_enable=*/false);
+                                   /*integral_enable_b=*/false, /*integral_enable_s=*/false);
         }
 
         // 持续保持超过一个规划时域（一个序列时长）后，拆分器的“上一轮计划”已无参考价值：

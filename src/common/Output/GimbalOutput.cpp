@@ -104,16 +104,20 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
                 const bool line_ok = SequencePredictor::fastGunLineOk(
                     seq, (int)k, extra_predict_time_, dt_control_);
                 if (result.predictor.source.kind == Kind::ARMOR){
-                    fire_seq.push_back(track_ok && line_ok);   // 两个条件都满足才开火
-                    gate_seq.push_back({true, track_ok, line_ok});
+                    // 条件3（Armor 专用）：所选目标距"最近一次真正观测到该类实体"的时长
+                    // 未超过 armor.fire_observation_timeout（只在惯性外推时禁止开火；
+                    // 见 ArmorPerception::fire_forbidden）。瞄准序列照常下发，只禁开火。
+                    const bool observed_recently = !result.armor.fire_forbidden;
+                    fire_seq.push_back(track_ok && line_ok && observed_recently);
+                    gate_seq.push_back({true, track_ok, line_ok, !observed_recently});
                 }
                 else if (result.predictor.source.kind == Kind::POWER_RUNE){
-                    const bool time_ok = (k < seq.items.size() &&
-                                          seq.items[k].flight_time + seq.items[k].target_age < 2.5 &&
-                                          seq.items[k].target_age_valid
-                                         );
-                    fire_seq.push_back(track_ok && time_ok); // 能量机关链路下，保证开火一定打击到正在激活的目标
-                    gate_seq.push_back({true, track_ok, time_ok});
+                    // 条件2（PowerRune）：保证开火一定打击到正在激活的靶点——该火控点
+                    // 命中时刻的靶点年龄（弹道飞行时间 + target_age）仍在激活窗口内
+                    // （见 SequencePredictor::powerRuneActiveTimeOk，与大小 yaw 构型共用）
+                    const bool time_ok = SequencePredictor::powerRuneActiveTimeOk(seq, (int)k);
+                    fire_seq.push_back(track_ok && time_ok);
+                    gate_seq.push_back({true, track_ok, time_ok, false});
                 }
             }
         }
@@ -209,21 +213,27 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
         //  - 哨兵扫描控制器关闭（enabled = false）：**原行为完全不变**——用单元素
         //    序列保持当前严格反解位置；
         //  - 开启且已进入扫描模式：按配置生成扫描序列（yaw 匀速旋转 + pitch 锯齿波，
-        //    见 common/SentryController.h），auto_aim_enable = true、fire 全 false；
+        //    见 common/SentryController.h），auto_aim_enable =
+        //    common.sentry_controller.scan_auto_aim_enable、fire 全 false；
         //  - 开启但尚未超过 idle_timeout_sec：保持段——用上一个有效输出序列的首值
-        //    填充整条序列（从未有过有效输出时退化为本帧严格反解位置），自瞄关闭。
+        //    填充整条序列（从未有过有效输出时退化为本帧严格反解位置），
+        //    auto_aim_enable = common.sentry_controller.hold_auto_aim_enable。
+        //  两种情况（保持段 / 扫描段）**全程禁止开火**：fire 序列恒全 false。
         sentry_.update(/*valid=*/false, result.frame_timestamp);
 
         last_ = LastOutput{};
         std::vector<double> yaw_out, pitch_out;
         if (sentry_.enabled()) {
             const int n = std::max(1, scan_seq_points_);
-            bool auto_aim = false;
+            // auto_aim_enable 两段分别由配置给出（common.sentry_controller.
+            // hold_auto_aim_enable / scan_auto_aim_enable）：默认保持段 = 上一有效
+            // 输出、扫描段 = 扫描轨迹，是否让电控进入自瞄分支由配置决定。
+            bool auto_aim = sentry_.holdAutoAimEnable();
             if (sentry_.scanning()) {
                 sentry_.buildYawSequence(n, dt_control_, st.strict.yaw_pos,
                                          result.frame_timestamp, yaw_out);
                 sentry_.buildPitchSequence(n, dt_control_, result.frame_timestamp, pitch_out);
-                auto_aim = true;
+                auto_aim = sentry_.scanAutoAimEnable();
             } else {
                 const double hold_yaw   = have_last_valid_ ? last_valid_yaw_ : st.strict.yaw_pos;
                 const double hold_pitch = have_last_valid_ ? last_valid_pitch_ : st.strict.pitch_angle;
@@ -233,8 +243,11 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
             last_.auto_aim_enable = auto_aim;
             last_.yaw_seq         = yaw_out;
             last_.pitch_seq       = pitch_out;
+            // 保持段与扫描段**全程禁止开火**（与 auto_aim_enable 配置值无关：
+            // 那一位只决定电控是否进入自瞄分支，火控位在此恒为 0）。
             last_.fire_seq.assign((size_t)n, false);
             ctx.fire_out = last_.fire_seq;   // 预测不可用：无有效 fire（首元素 false）
+            ctx.fire_gate_front = OutputContext::FireGateStatus{};   // 无火控判定数据
             rc_.set(auto_aim, /*yaw_torque_only_mode=*/yaw_torque_only_mode_,
                     yaw_out, pitch_out, last_.fire_seq,
                     /*integral_enable=*/false);

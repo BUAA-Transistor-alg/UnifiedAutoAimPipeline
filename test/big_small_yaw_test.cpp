@@ -150,7 +150,7 @@ int runSplit() {
     sc.smallMinAngle = bp.joints.smallMinAngle;
     sc.smallMaxAngle = bp.joints.smallMaxAngle;
     sc.smallCenterAngle = bp.joints.smallCenterAngle;
-    sc.softLimitRatio = bp.robotController.mpc.smallLimitSoftRatio;
+    sc.softLimitRatio = bp.splitter.smallSoftLimitRatio;
     sc.plannerMaxVelocity = bp.splitter.plannerMaxVelocity;
     sc.plannerMaxAcceleration = bp.splitter.plannerMaxAcceleration;
     sc.plannerMaxJerk = bp.splitter.plannerMaxJerk;

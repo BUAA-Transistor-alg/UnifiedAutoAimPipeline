@@ -31,7 +31,8 @@ void drawAimPointOverlay(cv::Mat& img, const cv::Vec3f& aim_world, double aim_t,
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1);
 }
 
-// 井形叉丝右侧固定两槽：上红 = track 未通过，下蓝 = 第二门控未通过。
+// 井形叉丝右侧固定三槽：上红 = track 未通过，中蓝 = 第二门控未通过，
+// 下橙 = 因"观测太旧"禁止开火（Armor 专用）。
 // 只有已计算出的失败门控才画；通过或无判定数据时留空。
 void drawFireGateIndicators(cv::Mat& img, const cv::Point2f& p,
                             const OutputContext::FireGateStatus& gates) {
@@ -46,6 +47,9 @@ void drawFireGateIndicators(cv::Mat& img, const cv::Point2f& p,
     };
     if (!gates.track_ok) square((int)p.y - 20, cv::Scalar(0, 0, 255));
     if (!gates.second_ok) square((int)p.y - 5, cv::Scalar(255, 0, 0));
+    // 橙：该火控点因"目标观测太旧"被禁止开火（见 ArmorPerception::fire_forbidden /
+    // armor.fire_observation_timeout）
+    if (gates.fire_forbidden) square((int)p.y + 10, cv::Scalar(0, 165, 255));
 }
 
 // cam 系 (0,1,0) 点（相机 y 轴正方向 1m 处的点）在当前图像上的投影叉丝绘制。
@@ -227,7 +231,9 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, tcs::RobotContro
         vis.big_small.yaw_small_joint   = bs.yaw_small_joint;
         vis.big_small.yaw_big_azimuth   = bs.yaw_big_azimuth;
         vis.big_small.yaw_small_azimuth = bs.yaw_small_azimuth;
-        vis.big_small.small_ref_over_limit = bs.small_ref_over_limit;
+        // v2 的 MpcData 已无 small_ref_over_limit 字段：越软限位由**拆分器**判定，
+        // 取本帧拆分器诊断（见 BigSmallYawSplitter::Output::over_limit）。
+        vis.big_small.small_ref_over_limit = ctx.split_diag.over_limit;
         vis.big_small.big_ref_front     = bs.ref_big_azimuth_seq.empty()
                                               ? bs.yaw_big_azimuth : bs.ref_big_azimuth_seq.front();
         vis.big_small.small_ref_front   = bs.ref_small_azimuth_seq.empty()

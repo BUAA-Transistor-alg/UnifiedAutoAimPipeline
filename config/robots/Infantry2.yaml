@@ -112,13 +112,15 @@ common:
   #   **只需填写当前 mode 那一支**（另一支可以整段省略，不必写）；
   #   当前构型那一支内的字段依旧全部必填——缺字段直接报错退出，不设代码默认值。
   #   mode = single    ：单 yaw（旧，TorqueController 子模组）：chassis -> yaw -> pitch
-  #   mode = big_small ：大/小双 yaw（新，TorqueControllerForBigSmallYaw 子模组）：
+  #   mode = big_small ：大/小双 yaw（新，TorqueControllerForBigSmallYaw_v2 子模组）：
   #                      chassis -> yaw_big -> yaw_small -> pitch
   # 本段内容按构型不同而异：
   #   tf               ：变换树各节点偏移（big_small 额外含小 yaw 轴相对大 yaw 轴的偏移）
   #   robot_controller ：控制器构造参数（single = tcs::RobotController；
-  #                      big_small = tcbs::RobotController：model/mpc/estimator/mcu_linear/controller）
-  #   joints / splitter：仅 big_small（关节行程与回中、大小 yaw 拆分器的大 yaw 平滑规划器）
+  #                      big_small = tcbs::RobotController：imu_location / dt_control /
+  #                      mpc_loop_period / yaw_torque_only_mode_b,s / model / mpc /
+  #                      dual_yaw_mpc / mcu_linear）
+  #   joints / splitter：仅 big_small（小 yaw 行程与回中、拆分器的软限位比例与大 yaw 规划器）
   big_small_yaw:
     mode: single                  # 构型开关：single（旧单 yaw）| big_small（大/小双 yaw）
 
@@ -236,7 +238,26 @@ armor:
         resolution:
           width: 512
           height: 512
+    # ── 类别处理（class_handling）：忽略列表 + 映射列表 ──
+    #   ignore ：忽略列表——模型**直接检测出**的这些类别（label 0~8）在解码阶段即被丢弃：
+    #            不参与 NMS，也不进入下游流水线，等价于该类从未被检测到。
+    #   mapping：映射列表——忽略过滤之后，类别命中键的物体把类别改为对应值；映射只做
+    #            一次、不链式传递，映射结果即使落在 ignore 中也不会被再次忽略（忽略只对
+    #            "直接检测出"的类别生效）。键、值均为类别 label（0~8：0~5 = 哨兵 / 1~5 号
+    #            机器人，6 = 装甲板，7/8 = 基地 / 基地大装甲），未命中的类别保持原样。
+    #   两个列表都必须填写、不可省略；取值为空（[] / {}）= 该步不生效（即当前默认行为）。
+    class_handling:
+      ignore: []                  # 例：[6] 表示直接忽略类别 6 的检测框
+      mapping: {}                 # 例：{8: 7} 表示把类别 8 的检测框改判为类别 7
   observation_lost_timeout: 2.0   # 连续多久未观测到目标则重置 OutpostESEKF / 最新物体位姿保持（秒）
+
+  # 禁火阈值（秒，>= 0；0 = 关闭该保护）：Armor 下每一类目标（label 0~5 各类 EKF /
+  # 6 前哨站 / 7~8 基地）各自维护"最近一次真正观测到该类实体"的帧时刻（只被真实观测
+  # 刷新，惯性外推不刷新）；本帧所选目标距该时刻超过本阈值时，随流水线结果下发
+  # fire_forbidden = true，两个云台输出模式据此把 fire 全置 false（只保持瞄准）。
+  # 参考量级：普通车 EKF 的失检容忍 ≈16 帧（约 0.16 s @100fps），前哨站/基地的
+  # 滤波窗口为 observation_lost_timeout（2.0 s）；本阈值应明显小于 2.0 s 才有意义。
+  fire_observation_timeout: 0.3
 
   # ── 目标选取滞回参数（armor.target_selection）──
   #   stage5_stick_priority_m：stage5 目标级滞回固定优先度（米）——上一帧选中的目标

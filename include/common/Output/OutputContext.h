@@ -56,6 +56,11 @@ struct OutputContext {
         bool valid = false;
         bool track_ok = false;
         bool second_ok = false;  // 该输出分支实际使用的第二门控
+        // 该火控点是否被"目标观测太旧"禁止开火（Armor 专用：所选目标距最近一次真正
+        // 观测到该类实体的时长超过 armor.fire_observation_timeout，见
+        // ArmorPerception::fire_forbidden）。true 时 fire 恒 false，与 track_ok /
+        // second_ok 分开显示，便于区分"云台没跟上 / 枪线不对 / 观测太旧"。
+        bool fire_forbidden = false;
     } fire_gate_front;
     bool gimbal_enabled = false;  // 是否开启 gimbal 输出模式
 
@@ -66,8 +71,10 @@ struct OutputContext {
         bool        valid = false;
         const char* kind = "";                 // 下发路径：predict / scan / hold
         bool        auto_aim_enable = false;
-        bool        big_torque_only = false, small_torque_only = false;
-        bool        integral_enable = false;
+        bool        big_torque_only = false, small_torque_only = false;  // 两轴各自的
+                                                                        // yaw_torque_only_mode
+        bool        integral_enable = false;   // 积分补偿开关（v2 分大小 yaw 两路，本工程
+                                               // 当前把同一值传给两轴，故只记一份）
         double      big_yaw_front = 0.0, small_yaw_front = 0.0;  // 世界方位角（rad）
         double      pitch_front = 0.0;                            // pitch（rad）
         bool        fire_front = false;

@@ -93,10 +93,21 @@ std::vector<InferenceOutput> ArmorInfer::runInference(
 // ==========================================================================
 
 ArmorPostprocessor::ArmorPostprocessor(int input_width, int input_height, int num_threads,
-                                       const std::string& model_name)
+                                       const std::string& model_name,
+                                       const ClassHandling& class_handling)
     : model_name_(model_name), input_width_(input_width), input_height_(input_height),
-      pool_(num_threads) {
+      class_handling_(class_handling), pool_(num_threads) {
     validateModelName(model_name_);
+}
+
+bool ArmorPostprocessor::isIgnoredLabel(int label) const {
+    return label >= 0 && label < (int)class_handling_.ignore.size()
+           && class_handling_.ignore[(size_t)label];
+}
+
+int ArmorPostprocessor::mapLabel(int label) const {
+    return (label >= 0 && label < (int)class_handling_.mapping.size())
+           ? class_handling_.mapping[(size_t)label] : label;
 }
 
 void ArmorPostprocessor::postprocessBatch(
@@ -188,6 +199,13 @@ std::vector<Object> ArmorPostprocessor::postprocess(
         _class_id = class_id.x;
         _color_id = color_id.x;
 
+        // ── 类别处理（config armor.inference.class_handling）──
+        // 先忽略（直接检测出的类别命中忽略列表即整条丢弃，不进入 NMS / 下游），
+        // 再映射（忽略过滤之后做一次类别替换；映射结果落在忽略列表中也保留，
+        // 因为忽略只对"直接检测出"的类别生效）。
+        if (isIgnoredLabel(_class_id)) continue;
+        _class_id = mapLabel(_class_id);
+
         // 保留所有类别的物体（哨兵/1~5号机器人/装甲板/基地，label 0~8）；
         // 类别分类由下游阶段（流水线 processStage4）按 obj.label 处理
         Object obj;
@@ -276,6 +294,11 @@ std::vector<Object> ArmorPostprocessor::postprocess0726(
             if (value(4 + c) > value(4 + label)) label = c;
         const float score = value(4 + label);
         if (score < conf_threshold) continue;
+        // ── 类别处理（config armor.inference.class_handling）：先忽略，再映射 ──
+        // （与 postprocess 同一语义；见 ClassHandling 注释。分数必须按**原**类别读取，
+        //   因此放在读取 score 之后。）
+        if (isIgnoredLabel(label)) continue;
+        label = mapLabel(label);
         for (int c = 1; c < 4; ++c)
             if (value(c) > value(color)) color = c;
         if (color >= 2) continue; // White/purple are intentionally unsupported.

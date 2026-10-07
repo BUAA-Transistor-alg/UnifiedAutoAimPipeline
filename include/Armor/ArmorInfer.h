@@ -47,6 +47,18 @@ struct Object {
     double ratio;                  // 长宽比
 };
 
+// 类别处理规则（config armor.inference.class_handling；由 ArmorPipeline 从
+// RobotConfig::ArmorParams::ClassHandlingParams 转换后传入后处理器）：
+//   ignore  —— 忽略列表：直接检测出的类别命中即丢弃（不参与 NMS / 下游流水线）；
+//   mapping —— 映射列表：忽略过滤之后，类别命中键的物体把类别改为对应值（只做一次，
+//              不链式传递；映射结果落在 ignore 中也不会被再次忽略）。
+// 两条规则都按 label 直接下标索引，长度应为 NUM_CLASSES；为空（默认构造）时等价于
+// "不忽略、不映射"，越界下标按恒等处理。
+struct ClassHandling {
+    std::vector<bool> ignore;   // 索引 = label：true 表示该类直接忽略
+    std::vector<int>  mapping;  // 索引 = 原 label，值 = 新 label（未配置的项为恒等）
+};
+
 // 推理输出：一个 batch 的输出张量 + 该图在此 batch 中的索引
 using InferenceOutput = Infer::InferenceOutput;
 
@@ -122,8 +134,10 @@ class ArmorPostprocessor {
 public:
     /// @param input_width/input_height  模型输入分辨率（后处理坐标缩放基准）
     /// @param num_threads               线程池线程数，0 = 自动
+    /// @param class_handling            类别处理规则（忽略列表 + 映射列表，见 ClassHandling）
     ArmorPostprocessor(int input_width, int input_height, int num_threads = 0,
-                       const std::string& model_name = "0526");
+                       const std::string& model_name = "0526",
+                       const ClassHandling& class_handling = ClassHandling());
 
     /// 处理单个推理输出（每图一个独立输出缓冲）
     /// @param detect_color 0=仅红, 1=仅蓝, 2=双色
@@ -149,9 +163,15 @@ public:
                           std::vector<std::vector<Object>>& out);
 
 private:
+    /// 类别是否在忽略列表内（越界按"不忽略"处理）
+    bool isIgnoredLabel(int label) const;
+    /// 类别映射（未配置 / 越界按恒等处理；只做一次，不链式传递）
+    int mapLabel(int label) const;
+
     std::string model_name_;
     int input_width_;
     int input_height_;
+    ClassHandling class_handling_;
     TaskPool pool_;
 };
 

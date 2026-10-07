@@ -19,6 +19,9 @@
 //   - pitch：在 [pitch_scan_min, pitch_scan_max] 之间做锯齿波往复——先由下界线性
 //     升到上界（耗时 pitch_scan_rise_time_sec），再由上界线性回落到下界（耗时
 //     pitch_scan_fall_time_sec），周期 = 上升 + 回落；相位零点取“进入扫描的时刻”。
+//   - auto_aim_enable：保持段 / 扫描段**分别**由配置 hold_auto_aim_enable /
+//     scan_auto_aim_enable 决定（两个云台输出模式读本类的 holdAutoAimEnable() /
+//     scanAutoAimEnable() 后随 set() 下发，不再硬编码）。
 //
 // 进入扫描前的“保持段”（预测已无效但未超过 idle_timeout_sec）由各输出模式处理：
 // 用上一个有效输出序列的首值填充整条序列（见两个 Gimbal 输出模式），本类不参与。
@@ -43,6 +46,14 @@ public:
 
     bool enabled() const { return params_.enabled; }
 
+    /// 保持段下发给电控的 auto_aim_enable（config: hold_auto_aim_enable）。
+    /// 仅当 enabled() 为 true 时有效（enabled = false 时输出模式走原有分支，恒为 0）。
+    bool holdAutoAimEnable() const { return params_.holdAutoAimEnable; }
+
+    /// 扫描段下发给电控的 auto_aim_enable（config: scan_auto_aim_enable）。
+    /// 与保持段**分别配置**：扫描时枪口按扫描轨迹运动，电控是否进入自瞄分支由本值决定。
+    bool scanAutoAimEnable() const { return params_.scanAutoAimEnable; }
+
     /// 本帧是否处于扫描模式（enabled = false 时恒为 false）
     bool scanning() const { return scanning_; }
 
@@ -57,9 +68,9 @@ public:
     /// 距进入扫描的秒数（未进入扫描时为 0）
     double scanElapsed(const TimePoint& now) const;
 
-    /// yaw 目标限幅：把 target 限制在本帧实测角 current ± yaw_scan_max_deviation 内。
-    /// 序列每个点都按此限幅，只约束“参考相对实机的超前量”，不影响参考本身的速度。
-    double clampYawToMeasured(double target, double current) const;
+    /// yaw 目标限幅：把 target 第一点限制在本帧实测角 current ± yaw_scan_max_deviation 内。
+    /// 并将这个移动应用于后续的点及后续的帧上
+    void clampYawToMeasured(std::vector<double>& targets, double current);
 
     /// pitch 扫描目标（t = 距进入扫描的秒数）：rise / fall 两段线性锯齿波
     double pitchTargetAt(double t) const;
@@ -93,6 +104,8 @@ private:
     // scanRefValid 为 false 时，下一次 buildYawSequence 用它收到的实测角锁存初值。
     bool   scan_ref_valid_ = false;
     double scan_ref_yaw_   = 0.0;
+
+    double clamp_yaw_bias_ = 0.0;
 };
 
 } // namespace sentry

@@ -131,6 +131,13 @@ public:
     const TimePoint& getLastTime() const { return last_time_; }
     cv::Mat getRotationMatrix() const;
 
+    /// **最近一次真正观测到前哨站实体**的帧时间戳（收到观测帧时刷新；无观测帧只
+    /// predict 惯性外推，不刷新）。从未观测过时返回默认值（epoch 0）。
+    /// 供 ArmorPipeline 判定"所选目标距上次真实观测多久"（armor.fire_observation_timeout）。
+    TimePoint lastObservationTime() const {
+        return has_observation_time_ ? last_observation_time_ : TimePoint{};
+    }
+
 private:
     void predict(double dt);
     void applyCorrection(const Eigen::VectorXd& dx);

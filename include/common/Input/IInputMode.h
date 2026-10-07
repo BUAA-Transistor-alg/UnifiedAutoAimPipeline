@@ -17,7 +17,8 @@
  *     与大小 yaw 构型（YawMode::BIG_SMALL）**关节角的物理含义完全不同**：
  *       SINGLE    ：仅一个 yaw 关节角（相对底盘），imu_euler 为“IMU 在头上”语义；
  *       BIG_SMALL ：大 yaw 关节角 θ_big（相对底盘）+ 小 yaw 关节角 θ_small（相对大 yaw），
- *                   imu_euler 为“IMU 在大 yaw 转子上”语义（见子模组 StrictPose）。
+ *                   imu_euler 为 IMU **原始欧拉角**（世界←IMU，随 robot_controller.imu_location
+ *                   的安装构型而定，Sentry1 为 ON_HEAD）。
  *     因此**两套信息分别打包**（single / big_small），**当前构型用哪一包就只填哪一包**，
  *     另一包**整体置 NaN**（默认构造即为 NaN）：下游任何按错包取值的代码都会立刻
  *     因为 NaN 暴露出来，而不是静默用错语义的角度算出一个看似合理的姿态。
@@ -52,13 +53,15 @@ struct ExtraInputInfo {
     };
 
     // ── 大小 yaw 构型包（新：chassis -> yaw_big -> yaw_small -> pitch -> head）──
-    // 语义与子模组 tcbs::dual_yaw::StrictPose 一致（IMU 固定在大 yaw 转子上时：
-    // R_world_imu = R_chassis·Rz(θ_big)·R_A_IMU）。
+    // 关节角语义与子模组 tcbs::com::FullStrictPoseBuilder::StrictPose 一致（严格反解所用值，
+    // wrap 到 (−π, π]）；imu_euler 则是 IMU **原始包**的欧拉角（v2 的 StrictPose 不再携带，
+    // 安装构型由 robot_controller.imu_location 决定），不参与变换树/弹道/云台解算，
+    // 只用于有效性判据、录制与显示。
     struct BigSmallYawPose {
         double yaw_big_pos     = kNaN;   // 大 yaw 关节角 θ_big（相对底盘，wrap 后）
         double yaw_small_pos   = kNaN;   // 小 yaw 关节角 θ_small（相对大 yaw，wrap 后）
         double pitch_angle     = kNaN;   // pitch 关节角
-        double imu_euler_yaw   = kNaN;   // IMU 原始欧拉角（IMU 装在大 yaw 转子上）
+        double imu_euler_yaw   = kNaN;   // IMU 原始欧拉角（世界←IMU，安装构型见 imu_location）
         double imu_euler_pitch = kNaN;
         double imu_euler_roll  = kNaN;
 
