@@ -585,13 +585,16 @@ power_rune:
 # ════════════════════════════════════════════════════════════
 # main 的遥测线程周期从控制器读取这两个值（见 include/common/McuTelemetry.h）；
 # 本段配置它们的**合法初始值**，以及是否用控制器实时值覆盖：
-#   update = true  ：控制器报告有效数据时用实时值覆盖（默认行为）
+#   update = true  ：控制器报告有效数据时用实时值覆盖（默认行为；弹速先限位再低通）
 #   update = false ：遥测线程不写该值，始终保持 initial 配置的初值不变
 # 所有字段必填（本工程无默认值约定）。
 mcu_telemetry:
   bullet_velocity:
-    initial: 20.0        # 合法初始弹速（m/s，须 > 0；无控制器数据 / 不更新时使用）
+    initial: 20.0        # 合法初始弹速（m/s，须在 [min, max] 内；无数据 / 不更新时使用）
     update: true         # true = 用控制器实时弹速覆盖；false = 始终保持 initial
+    min: 12.0            # 限位下限（m/s）：实测弹速先限位到 [min, max]
+    max: 27.0            # 限位上限（m/s，须 > min）
+    low_pass_coefficient: 0.02  # 一阶低通系数 α ∈ (0,1]：v ← α·v_limited + (1−α)·v_prev
   color:
     initial: 0           # 合法初始颜色（0~255）
     update: true         # true = 用控制器实时颜色覆盖；false = 始终保持 initial

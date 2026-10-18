@@ -1053,8 +1053,26 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
         requireScalar<double>(mtbv, "initial", "mcu_telemetry.bullet_velocity");
     cfg.mcuTelemetry.bulletVelocity.update =
         requireScalar<bool>(mtbv, "update", "mcu_telemetry.bullet_velocity");
-    if (!(cfg.mcuTelemetry.bulletVelocity.initial > 0.0)) {
-        throw std::runtime_error("RobotConfig: mcu_telemetry.bullet_velocity.initial 必须 > 0（m/s）");
+    cfg.mcuTelemetry.bulletVelocity.min =
+        requireScalar<double>(mtbv, "min", "mcu_telemetry.bullet_velocity");
+    cfg.mcuTelemetry.bulletVelocity.max =
+        requireScalar<double>(mtbv, "max", "mcu_telemetry.bullet_velocity");
+    cfg.mcuTelemetry.bulletVelocity.lowPassCoefficient =
+        requireScalar<double>(mtbv, "low_pass_coefficient", "mcu_telemetry.bullet_velocity");
+    // 取值范围校验：min < max；initial 落在 [min, max] 内（保证初值本身合法）；
+    // 低通系数 α ∈ (0, 1]（α = 1 = 不滤波；α <= 0 会使弹速永不更新，应由 update=false 表达）
+    if (!(cfg.mcuTelemetry.bulletVelocity.min < cfg.mcuTelemetry.bulletVelocity.max)) {
+        throw std::runtime_error("RobotConfig: mcu_telemetry.bullet_velocity.min 必须 < max");
+    }
+    if (cfg.mcuTelemetry.bulletVelocity.initial < cfg.mcuTelemetry.bulletVelocity.min ||
+        cfg.mcuTelemetry.bulletVelocity.initial > cfg.mcuTelemetry.bulletVelocity.max) {
+        throw std::runtime_error("RobotConfig: mcu_telemetry.bullet_velocity.initial 必须在 "
+                                 "[min, max] 范围内");
+    }
+    if (!(cfg.mcuTelemetry.bulletVelocity.lowPassCoefficient > 0.0) ||
+        cfg.mcuTelemetry.bulletVelocity.lowPassCoefficient > 1.0) {
+        throw std::runtime_error("RobotConfig: mcu_telemetry.bullet_velocity."
+                                 "low_pass_coefficient 必须在 (0, 1] 内");
     }
 
     const YAML::Node& mtc = mt["color"];

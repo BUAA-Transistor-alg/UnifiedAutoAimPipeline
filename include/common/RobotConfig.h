@@ -603,8 +603,15 @@ public:
     struct McuTelemetryParams {
         // 弹速（config: mcu_telemetry.bullet_velocity）
         struct BulletVelocityParams {
-            double initial;   // 合法初始弹速（m/s，须 > 0；无控制器数据 / 不更新时使用）
+            double initial;   // 合法初始弹速（m/s，须在 [min, max] 内；无控制器数据 /
+                              // 不更新时使用）
             bool   update;    // true = 用控制器实时弹速覆盖；false = 始终保持 initial
+            double min;       // 限位下限（m/s）：实测弹速先 clamp 到 [min, max]
+            double max;       // 限位上限（m/s，须 > min）
+            // 一阶低通滤波系数 α ∈ (0, 1]：v_new = α·v_limited + (1-α)·v_prev。
+            // α = 1 等价于不滤波（直接取限位后的实测值）；α 越小越平滑、跟随越慢。
+            // 滤波状态就是 McuTelemetry 当前的弹速值（初值 = initial）。
+            double lowPassCoefficient;
         };
         BulletVelocityParams bulletVelocity;
 

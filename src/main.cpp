@@ -66,7 +66,6 @@
 #include <memory>
 #include <thread>
 #include <atomic>
-#include <cmath>
 #include <csignal>
 
 // ── backward-cpp 崩溃堆栈回溯 ──
@@ -1103,7 +1102,9 @@ int main(int argc, char** argv) {
 
     // ── 电控遥测线程：周期读取控制器最新弹速 / 颜色，写入 mcu_telemetry ──
     // 仅当控制器存在时读取（纯视频 / 交互输入且未开云台输出时为空操作）；
-    // 弹速/颜色变化缓慢，100 Hz 足够“实时”，且刻意不做帧对齐（见 McuTelemetry.h）。
+    // 弹速变化缓慢，100 Hz 足够“实时”，且刻意不做帧对齐（见 McuTelemetry.h）。
+    // 弹速实测值先限位到 mcu_telemetry.bullet_velocity.[min, max]，再按
+    // low_pass_coefficient 做一阶低通（见 McuTelemetry::updateBulletVelocityLimitedFiltered）。
     // 读取时持 rc_mtx，与 process_thread / bsyStateSnapshot 的“先 rc_mtx 后控制器内部锁”
     // 顺序一致，不会与控制器自身的内部锁形成逆序。
     std::atomic<bool> telemetry_stop{false};
@@ -1119,11 +1120,15 @@ int main(int argc, char** argv) {
                         const bsy::RobotState s = bsy_adapter->state();
                         if (s.valid) {
                             if (mt_cfg.color.update) mcu_telemetry.setColor(s.mcu.color);
-                            // 弹速有效性判据与改造前 snapshotFromBigSmall 保持一致
-                            if (mt_cfg.bulletVelocity.update &&
-                                std::isfinite(s.bullet_velocity) && s.bullet_velocity > 0.0) {
-                                mcu_telemetry.setBulletVelocity(
-                                    static_cast<float>(s.bullet_velocity));
+                            // 弹速实测更新：先限位到 [min, max]，再按低通系数与当前值融合
+                            //（有效性判据沿用改造前：MCU 数据有效；NaN/±Inf 由
+                            //  McuTelemetry::updateBulletVelocityLimitedFiltered 内部跳过）
+                            if (mt_cfg.bulletVelocity.update) {
+                                mcu_telemetry.updateBulletVelocityLimitedFiltered(
+                                    s.bullet_velocity,
+                                    mt_cfg.bulletVelocity.min,
+                                    mt_cfg.bulletVelocity.max,
+                                    mt_cfg.bulletVelocity.lowPassCoefficient);
                             }
                         }
                     }
@@ -1132,8 +1137,15 @@ int main(int argc, char** argv) {
                     // 单 yaw 构型：MCU 数据有效即写入（判据与改造前 has_bullet_velocity 一致）
                     if (s.mcu.valid) {
                         if (mt_cfg.color.update) mcu_telemetry.setColor(s.mcu.color);
-                        if (mt_cfg.bulletVelocity.update)
-                            mcu_telemetry.setBulletVelocity(s.mcu.bullet_velocity);
+                        // 与大小 yaw 分支同一套「限位 + 一阶低通」；NaN/±Inf 在
+                        // McuTelemetry::updateBulletVelocityLimitedFiltered 内部跳过
+                        if (mt_cfg.bulletVelocity.update) {
+                            mcu_telemetry.updateBulletVelocityLimitedFiltered(
+                                s.mcu.bullet_velocity,
+                                mt_cfg.bulletVelocity.min,
+                                mt_cfg.bulletVelocity.max,
+                                mt_cfg.bulletVelocity.lowPassCoefficient);
+                        }
                     }
                 }
             }
