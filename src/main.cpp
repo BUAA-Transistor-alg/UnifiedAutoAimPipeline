@@ -29,9 +29,10 @@
 //    两种构型的输入信息、变换树、瞄准解算与云台输出模式各不相同，互不混用
 //    （信息包按构型分两包，未使用的一包整体为 NaN，取错即报错）；
 //  - 电控遥测：main 维护一个 McuTelemetry（弹速 / 颜色），由专门的遥测线程周期从
-//    控制器读取并写入；弹道解算与可视化覆盖层统一从这里取**最新值**（不要求与帧
-//    严格时序对齐），不再各自 getState() 读这两个字段（见 common/McuTelemetry.h）。
-//    其初始值与是否用控制器实时值覆盖由机器配置文件顶层段 mcu_telemetry 配置。
+//    控制器读取并写入；**弹道解算**从这里取最新值（不要求与帧严格时序对齐），不再从
+//    状态包读弹速；**可视化覆盖层仍直接读控制器状态**显示原始值（诊断用）。
+//    其初始值、限位/低通与是否用控制器实时值覆盖由机器配置文件顶层段
+//    mcu_telemetry 配置（见 common/McuTelemetry.h）。
 #include "common/Output/VisualizationControls.h"
 #include "common/Input/IInputMode.h"
 #include "common/Input/CameraInputMode.h"
@@ -275,7 +276,6 @@ static void drawOverlay(cv::Mat& img,
                         double visualize_fps,
                         tcs::RobotController* rc,
                         const bsy::RobotState* bsy_state,   // 新构型（大小 yaw）状态；单 yaw 构型为 nullptr
-                        const McuTelemetry& mcu_telemetry,  // 电控遥测最新值（弹速 / 颜色；main 遥测线程写）
                         const RobotTfTree* tf_tree,         // 当帧变换树（节点世界欧拉角栏）；无则 nullptr
                         const OutputContext::BigSmallSent* bsy_sent,   // 本帧下发给子模组的内容；无则 nullptr
                         const std::chrono::steady_clock::time_point& frame_ts,
@@ -288,9 +288,6 @@ static void drawOverlay(cv::Mat& img,
         (rc != nullptr) ? rc->getState() : tcs::RobotController::State{};
     // 新构型（大小 yaw）下 MPC 后台循环帧率取自适配器状态包的 MPC 分组
     const double mpc_loop_fps = bsy_state ? bsy_state->mpc.loop_fps : st.mpc.loop_fps;
-    // 弹速 / 颜色统一取 main 电控遥测的最新值（见 common/McuTelemetry.h），
-    // 下面 MCU 信息块中这两个字段不再读控制器状态
-    const McuTelemetry::Snapshot mcu = mcu_telemetry.load();
 
     // 1. 热键提醒（顶部）
     if (options.status) cv::putText(img, "Keys: 1/2 pipeline | v visualize | g gimbal | n none | q quit",
@@ -360,7 +357,7 @@ static void drawOverlay(cv::Mat& img,
         put("--- MCU ---");
         if (bs.mcu.valid) {
             oss.str(""); oss << std::fixed << std::setprecision(3);
-            oss << "bullet: " << mcu.bullet_velocity
+            oss << "bullet: " << bs.mcu.bullet_velocity
                 << "  pitch: " << bs.mcu.pitch_angle
                 << "  yaw_big: " << bs.mcu.yaw_big_angle
                 << "  yaw_small: " << bs.mcu.yaw_small_angle;
@@ -372,7 +369,7 @@ static void drawOverlay(cv::Mat& img,
                              << "  chassis_imu_w: " << bs.mcu.chassis_imu_omega;
             put(oss.str());
             oss.str(""); oss << "mark: " << (int)bs.mcu.mark
-                             << "  color: " << (int)mcu.color
+                             << "  color: " << (int)bs.mcu.color
                              << "  aim: " << (int)bs.mcu.auto_aim_switch
                              << "  mcu2_seq: " << (int)bs.mcu.mcu2_seq;
             put(oss.str());
@@ -541,7 +538,7 @@ static void drawOverlay(cv::Mat& img,
     if (st.mcu.valid) {
         oss.str("");
         oss << std::fixed << std::setprecision(3);
-        oss << "bullet: " << mcu.bullet_velocity
+        oss << "bullet: " << st.mcu.bullet_velocity
             << "  pitch: " << st.mcu.pitch_angle
             << "  yaw: " << st.mcu.yaw_angle;
         put(oss.str());
@@ -550,7 +547,7 @@ static void drawOverlay(cv::Mat& img,
                          << "  imu_omega: " << st.mcu.chassis_imu_omega;
         put(oss.str());
         oss.str(""); oss << "mark: " << (int)st.mcu.mark
-                         << "  color: " << (int)mcu.color
+                         << "  color: " << (int)st.mcu.color
                          << "  aim: " << (int)st.mcu.auto_aim_switch;
         put(oss.str());
         // 温度行（按温度区间变色：>=70 红 / >=50 黄 / 其余绿）
@@ -756,8 +753,8 @@ int main(int argc, char** argv) {
         return bsy_adapter->state();
     };
     // ── 电控遥测（弹速 / 颜色）最新值 ──
-    // 由下方“电控遥测线程”周期从控制器读取并写入；消费者统一从这里 load() 取值，
-    // 不再各自 getState() 读这两个字段（见 common/McuTelemetry.h 的说明）。
+    // 由下方“电控遥测线程”周期从控制器读取并写入；**弹道解算**从这里 load() 取弹速，
+    // 不再从状态包读（可视化覆盖层不经过本结构体，仍直接读控制器状态，见 drawOverlay）。
     // 不使用 valid 标志：**构造时给合法初始值**（来自顶层 config 段 mcu_telemetry），
     // 写入方只写有效数据 ⇒ 任何时刻 load() 都是合法值；两个值变化缓慢，不要求与帧
     // 严格时序对齐。mcu_telemetry 段中某值 update = false 时遥测线程不写该值，
@@ -1460,7 +1457,6 @@ int main(int argc, char** argv) {
                                     visualize_stage.fps.load(std::memory_order_relaxed),
                                     robotControllerPtr(),
                                     (yaw_mode == YawMode::BIG_SMALL) ? &bsy_st : nullptr,
-                                    mcu_telemetry,
                                     vis ? &vis->tree() : nullptr,
                                     cached.ctx ? &cached.ctx->bsy_sent : nullptr,
                                     shared_frame_timestamp.load(std::memory_order_acquire),

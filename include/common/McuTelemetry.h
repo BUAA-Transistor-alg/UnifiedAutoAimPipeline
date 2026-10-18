@@ -5,7 +5,8 @@
 // 弹速与颜色并写入；其余消费者不再各自 getState() 读这两个字段：
 //   - 弹道解算：main 弹道线程把 load() 的弹速传给 SequencePredictor::predict
 //     （SequencePredictor 不再从状态包读弹速，见其 predict 的 bullet_velocity 参数）；
-//   - 可视化覆盖层：drawOverlay 显示本结构体中的值。
+//   - 可视化覆盖层**不**经过本结构体：drawOverlay 仍直接读控制器状态显示原始弹速 /
+//     颜色（诊断用，不受本段的初始值 / 限位 / 低通影响）。
 //
 // ★ 取值合法性约定（**不使用 valid 标志**）：
 //   - 本结构体**任何时刻都持有合法值**：构造时必须给出合法初始值，来自机器配置
