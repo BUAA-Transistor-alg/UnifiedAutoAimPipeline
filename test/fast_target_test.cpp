@@ -341,7 +341,9 @@ int main() {
     bsy::RobotState bst;
     if (mode == YawMode::SINGLE) {
         env.name = "单 yaw 构型";
-        env.predict = [&](const SequencePredictor::Predictor& p) { return sp.predict(st, p, kNow); };
+        env.predict = [&](const SequencePredictor::Predictor& p) {
+            return sp.predict(st, p, kNow, st.mcu.bullet_velocity);
+        };
     } else {
         env.name = "大小 yaw 构型";
         bst.valid = true;
@@ -359,7 +361,9 @@ int main() {
         for (size_t i = 0; i < bst.pred_big_azimuth_seq.size(); ++i) {
             bst.pred_big_azimuth_seq[i] = 0.001 * (double)i;
         }
-        env.predict = [&](const SequencePredictor::Predictor& p) { return sp.predict(bst, p, kNow); };
+        env.predict = [&](const SequencePredictor::Predictor& p) {
+            return sp.predict(bst, p, kNow, bst.bullet_velocity);
+        };
     }
     env.ext = ext;
     env.ts = kNow;

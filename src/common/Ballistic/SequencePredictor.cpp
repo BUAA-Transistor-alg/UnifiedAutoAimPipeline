@@ -195,21 +195,26 @@ SequencePredictor::Item SequencePredictor::extrapItem(const Item& A, const Item&
 
 SequencePredictor::Result SequencePredictor::predict(const tcs::RobotController::State& st,
                                            const Predictor& predictor,
-                                           const std::chrono::steady_clock::time_point& timestamp)
+                                           const std::chrono::steady_clock::time_point& timestamp,
+                                           double bullet_velocity)
 {
-    return predictImpl(snapshotFromSingle(st), predictor, timestamp);
+    return predictImpl(snapshotFromSingle(st, bullet_velocity), predictor, timestamp);
 }
 
 SequencePredictor::Result SequencePredictor::predict(const bsy::RobotState& st,
                                            const Predictor& predictor,
-                                           const std::chrono::steady_clock::time_point& timestamp)
+                                           const std::chrono::steady_clock::time_point& timestamp,
+                                           double bullet_velocity)
 {
-    return predictImpl(snapshotFromBigSmall(st), predictor, timestamp);
+    return predictImpl(snapshotFromBigSmall(st, bullet_velocity), predictor, timestamp);
 }
 
-// 单 yaw 构型的输入快照（旧行为：只读 st.strict + st.mcu）
+// 单 yaw 构型的输入快照：姿态读 st.strict、自瞄开关读 st.mcu；
+// 弹速由调用方传入（main 电控遥测最新值，见 common/McuTelemetry.h，恒为合法值），
+// 此处不再读 st.mcu
 SequencePredictor::InputSnapshot
-SequencePredictor::snapshotFromSingle(const tcs::RobotController::State& st) const {
+SequencePredictor::snapshotFromSingle(const tcs::RobotController::State& st,
+                                      double bullet_velocity) const {
     InputSnapshot in;
     in.big_small = false;
     in.info.single.yaw_pos         = st.strict.yaw_pos;
@@ -220,22 +225,22 @@ SequencePredictor::snapshotFromSingle(const tcs::RobotController::State& st) con
     in.info.chassis_yaw   = st.strict.chassis_yaw;
     in.info.chassis_pitch = st.strict.chassis_pitch;
     in.info.chassis_roll  = st.strict.chassis_roll;
-    in.has_bullet_velocity = st.mcu.valid;
-    in.bullet_velocity     = st.mcu.bullet_velocity;
+    in.bullet_velocity     = bullet_velocity;
     in.auto_aim_switch     = (st.mcu.auto_aim_switch == 1);
     // 底盘 yaw 修正项（原式：imu_euler_yaw − yaw_pos）
     in.chassis_yaw_correction = st.strict.imu_euler_yaw - st.strict.yaw_pos;
     return in;
 }
 
-// 大小 yaw 构型的输入快照（适配器状态包 → ExtraInputInfo 的大小 yaw 包 + 弹速/开关 + MPC 预测序列）
+// 大小 yaw 构型的输入快照（适配器状态包 → ExtraInputInfo 的大小 yaw 包 + 开关 +
+// MPC 预测序列）。弹速同样由调用方传入（main 电控遥测最新值），不再读 st.bullet_velocity
 SequencePredictor::InputSnapshot
-SequencePredictor::snapshotFromBigSmall(const bsy::RobotState& st) const {
+SequencePredictor::snapshotFromBigSmall(const bsy::RobotState& st,
+                                        double bullet_velocity) const {
     InputSnapshot in;
     in.big_small = true;
     in.info = bsy::toExtraInputInfo(st);
-    in.has_bullet_velocity = st.valid && std::isfinite(st.bullet_velocity) && st.bullet_velocity > 0.0;
-    in.bullet_velocity     = st.bullet_velocity;
+    in.bullet_velocity     = bullet_velocity;
     in.auto_aim_switch     = (st.auto_aim_switch == 1);
     // 底盘 yaw 修正项：严格反解的 chassis 欧拉 yaw（ZXY，与树的 chassis 欧拉角同一约定）
     in.chassis_yaw_correction = st.info_chassis_yaw;
@@ -489,9 +494,9 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         // 包未填充（NaN）时抛异常，不会静默用 NaN 解算）
         applyExtraInputInfoToTree(g->tree(), in.info);
         g->setChassisPosition(0.0f, 0.0f, 0.0f);   // 弹道解算固定以底盘为世界原点
-        if (in.has_bullet_velocity) {
-            g->setBulletVelocity(in.bullet_velocity);
-        }
+        // 弹速恒为合法值：main 电控遥测构造时给合法初值、写入方只写有效值
+        //（见 common/McuTelemetry.h），因此这里无条件同步
+        g->setBulletVelocity(in.bullet_velocity);
     }
     const double chassis_yaw = in.chassis_yaw_correction;  // item.yaw 的底盘 yaw 修正项
     // ── yaw 系原点（world 系）：树已同步，同一线程内计算并写入 Result，

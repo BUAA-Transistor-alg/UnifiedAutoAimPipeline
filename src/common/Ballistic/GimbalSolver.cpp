@@ -16,7 +16,9 @@ GimbalSolver::GimbalSolver() : tree_(std::make_shared<RobotTfTree>()) {
     const RobotConfig& cfg = RobotConfig::instance();
     ballistic_ = std::make_shared<BallisticSolver>(
         cfg.common.gimbal.bulletDiameter, cfg.common.gimbal.bulletMass, cfg.common.gimbal.integrationStep);
-    bullet_velocity_    = cfg.common.gimbal.bulletVelocity;
+    // 初始弹速取顶层 mcu_telemetry 的合法初值（运行时由 SequencePredictor 每帧
+    // 用 main 电控遥测的最新值覆盖；此处只是 GimbalSolver 的初始值）
+    bullet_velocity_    = cfg.mcuTelemetry.bulletVelocity.initial;
     distance_threshold_ = cfg.common.gimbal.distanceThreshold;
     distance_iterate_threshold_ = cfg.common.gimbal.distanceIterateThreshold;
     stop_z_             = cfg.common.gimbal.stopZ;

@@ -164,7 +164,8 @@ public:
     // 并再次解 pitch（两轮保留更优者）；最终最近距离不超过 distance_threshold（原阈值）才算成功。
     // 任意一步失效返回 success = false。
     AimResult solveAim(const cv::Vec3f& targetWorld, double bulletVelocity) const;
-    // 使用默认弹丸初速（RobotConfig::gimbal.bulletVelocity，可经 setBulletVelocity 覆盖）
+    // 使用初始弹速（config mcu_telemetry.bullet_velocity.initial，可经
+    // setBulletVelocity 覆盖；实际解算时由 SequencePredictor 每帧同步最新遥测值）
     AimResult solveAim(const cv::Vec3f& targetWorld) const;
     // 大小 yaw 构型专用：显式给出该预测时刻的大 yaw 关节角 θ_big（单 yaw 构型下抛异常）
     AimResult solveAim(const cv::Vec3f& targetWorld, double bulletVelocity, float yawBig) const;

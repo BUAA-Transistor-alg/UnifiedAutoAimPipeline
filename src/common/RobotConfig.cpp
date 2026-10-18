@@ -648,11 +648,12 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
         requireScalar<double>(rec, "min_free_space_mb", "common.recording") * 1024.0 * 1024.0);
 
     // ── common.gimbal ──
+    // 注：弹速不在此段——已移至顶层 mcu_telemetry 段（合法初始值 + 更新开关，
+    //     见下方解析与 RobotConfig::McuTelemetryParams）。
     const YAML::Node& gim = cm["gimbal"];
     if (!gim || !gim.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'common.gimbal' 配置段");
     cfg.common.gimbal.bulletDiameter    = requireScalar<double>(gim, "bullet_diameter", "common.gimbal");
     cfg.common.gimbal.bulletMass        = requireScalar<double>(gim, "bullet_mass", "common.gimbal");
-    cfg.common.gimbal.bulletVelocity    = requireScalar<double>(gim, "bullet_velocity", "common.gimbal");
     cfg.common.gimbal.integrationStep   = requireScalar<double>(gim, "integration_step", "common.gimbal");
     cfg.common.gimbal.distanceThreshold = requireScalar<double>(gim, "distance_threshold", "common.gimbal");
     cfg.common.gimbal.distanceIterateThreshold = requireScalar<double>(gim, "distance_iterate_threshold", "common.gimbal");
@@ -1036,6 +1037,35 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
         cfg.powerRune.targetSelection.lostTimeoutSec < 0.0) {
         throw std::runtime_error("RobotConfig: power_rune.target_selection 取值非法："
                                  "establish_duration_s / lost_timeout_s 必须 >= 0");
+    }
+
+    // ══════════════ mcu_telemetry（电控遥测：合法初始值 + 更新开关） ══════════════
+    // 顶层独立大项（见 RobotConfig::McuTelemetryParams）。main 的遥测线程把控制器
+    // 实时弹速 / 颜色写入 common/McuTelemetry.h 的 McuTelemetry；本段给出这两个值的
+    // 合法初值，以及是否允许用控制器实时值覆盖（update = false ⇒ 始终保持初值）。
+    const YAML::Node& mt = root["mcu_telemetry"];
+    if (!mt || !mt.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'mcu_telemetry' 配置段");
+
+    const YAML::Node& mtbv = mt["bullet_velocity"];
+    if (!mtbv || !mtbv.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'mcu_telemetry.bullet_velocity' 配置段");
+    cfg.mcuTelemetry.bulletVelocity.initial =
+        requireScalar<double>(mtbv, "initial", "mcu_telemetry.bullet_velocity");
+    cfg.mcuTelemetry.bulletVelocity.update =
+        requireScalar<bool>(mtbv, "update", "mcu_telemetry.bullet_velocity");
+    if (!(cfg.mcuTelemetry.bulletVelocity.initial > 0.0)) {
+        throw std::runtime_error("RobotConfig: mcu_telemetry.bullet_velocity.initial 必须 > 0（m/s）");
+    }
+
+    const YAML::Node& mtc = mt["color"];
+    if (!mtc || !mtc.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'mcu_telemetry.color' 配置段");
+    cfg.mcuTelemetry.color.initial =
+        requireScalar<int>(mtc, "initial", "mcu_telemetry.color");
+    cfg.mcuTelemetry.color.update =
+        requireScalar<bool>(mtc, "update", "mcu_telemetry.color");
+    if (cfg.mcuTelemetry.color.initial < 0 || cfg.mcuTelemetry.color.initial > 255) {
+        throw std::runtime_error("RobotConfig: mcu_telemetry.color.initial 必须在 0~255");
     }
 
     return cfg;

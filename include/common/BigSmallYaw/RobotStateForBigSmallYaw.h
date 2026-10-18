@@ -68,6 +68,9 @@ struct RobotState {
     double imu_euler_yaw = 0.0, imu_euler_pitch = 0.0, imu_euler_roll = 0.0;
 
     // MCU 概览（细节见 mcu 分组）
+    // 注：弹速的弹道消费方已改为 main 维护的 common/McuTelemetry.h 最新值
+    //（main 遥测线程周期写入）；本字段仅作状态包透传/调试用，不再被
+    // SequencePredictor 读取。
     double  bullet_velocity = 0.0;
     uint8_t auto_aim_switch = 0;
 

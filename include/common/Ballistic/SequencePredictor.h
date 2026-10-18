@@ -242,7 +242,9 @@ public:
     /// 构造时创建内部 GimbalSolver，序列/弹道/偏置参数从 RobotConfig common 段读取
     SequencePredictor();
 
-    /// 同步内部树（st.strict + MCU 弹速）并生成预测云台控制序列 + 瞄准点序列。
+    /// 同步内部树（st.strict + 传入的弹速）并生成预测云台控制序列 + 瞄准点序列。
+    /// 弹速不再从状态包读取：由 main 维护的电控遥测（common/McuTelemetry.h）作为
+    /// 参数传入，供内部 GimbalSolver 同步（见 predictImpl 的 setBulletVelocity）。
     /// 中低速 Armor 按板并行、同板按精算时间顺序热启动；其它路径按精算点并行。
     /// 每个工作线程通过 thread_local
     /// 绑定一个独立的 GimbalSolver（内部 pitch 粗搜索保持并行且互不竞争）。
@@ -267,8 +269,13 @@ public:
     /// @param timestamp  调用时刻（当前帧时间戳）；额外预测时间自动加上
     ///                   (timestamp - predictor.timestamp)，补偿快照生成到
     ///                   消费之间的延迟
+    /// @param bullet_velocity 当帧使用的弹速（m/s），取 main 电控遥测的最新值
+    ///                        （common/McuTelemetry.h）；**不再**从 st.mcu 读取。
+    ///                        该值由 McuTelemetry 保证恒为合法值（构造时给合法初值，
+    ///                        写入方只写有效值），这里无条件同步给所有 GimbalSolver。
     Result predict(const tcs::RobotController::State& st, const Predictor& predictor,
-                   const std::chrono::steady_clock::time_point& timestamp);
+                   const std::chrono::steady_clock::time_point& timestamp,
+                   double bullet_velocity);
 
     /// 新构型（大/小双 yaw，common.big_small_yaw.mode = big_small）状态包输入版本。
     /// 与单 yaw 版本**互不混用**（各自只读自己那一包，见 ExtraInputInfo 两包约定）：
@@ -280,8 +287,11 @@ public:
     ///     解算因此按“大 yaw 未来实际会到哪”求有效 yaw 旋转中心（见 GimbalSolver）；
     ///     MPC 序列不可用（从未开启云台控制等）时退回**上一轮解算所用的 θ_big 序列**，
     ///     再没有则用当帧实测 θ_big。
+    /// bullet_velocity 语义与单 yaw 版本相同（取自 main 电控遥测，不再读
+    /// st.bullet_velocity）。
     Result predict(const bsy::RobotState& st, const Predictor& predictor,
-                   const std::chrono::steady_clock::time_point& timestamp);
+                   const std::chrono::steady_clock::time_point& timestamp,
+                   double bullet_velocity);
 
     /// 预测器不可用：重置自身跨帧状态（State）与当前来源记录；
     /// 下次 predict() 从新来源重新开始维护状态
@@ -406,8 +416,7 @@ private:
     struct InputSnapshot {
         bool   big_small = false;          // 是否大小 yaw 构型
         ExtraInputInfo info;               // 底盘位姿 + 对应构型的关节角包
-        double bullet_velocity = 0.0;
-        bool   has_bullet_velocity = false;
+        double bullet_velocity = 0.0;   // 恒为合法值（来自 main 电控遥测）
         bool   auto_aim_switch = false;
         // item.yaw 的底盘 yaw 修正项：
         //   SINGLE    ：imu_euler_yaw − yaw_pos（原式）；
@@ -416,8 +425,11 @@ private:
         // 仅 BIG_SMALL：MPC 预测的大 yaw 世界方位角序列（长度 N、步长 dt_control），空 = 不可用
         std::vector<double> pred_big_azimuth_seq;
     };
-    InputSnapshot snapshotFromSingle(const tcs::RobotController::State& st) const;
-    InputSnapshot snapshotFromBigSmall(const bsy::RobotState& st) const;
+    // 弹速由调用方传入（main 电控遥测最新值），不从状态包读取
+    InputSnapshot snapshotFromSingle(const tcs::RobotController::State& st,
+                                     double bullet_velocity) const;
+    InputSnapshot snapshotFromBigSmall(const bsy::RobotState& st,
+                                       double bullet_velocity) const;
     Result predictImpl(const InputSnapshot& in, const Predictor& predictor,
                        const std::chrono::steady_clock::time_point& timestamp);
 

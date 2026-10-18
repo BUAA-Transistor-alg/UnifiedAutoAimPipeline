@@ -19,7 +19,7 @@
 //   2) 在 RobotConfig.h 对应结构体中添加成员（无默认初始化）；
 //   3) 在 src/common/RobotConfig.cpp 中通过 requireScalar 等读取。
 //
-// 机器配置文件顶层分为三个大类：
+// 机器配置文件顶层分为四个大类：
 //   - common      ：两个流水线共用的参数（tf 偏移 / 相机内参 / 弹道 / MPC / 输入控制器 /
 //                    min_delay_seconds 等；其中 common.big_small_yaw 决定 yaw 构型
 //                    （single = 旧单 yaw / big_small = 大/小双 yaw）并提供新构型的
@@ -27,6 +27,8 @@
 //   - armor     ：Armor 流水线独占参数（推理模型 / 批量 / 观测丢失超时 /
 //                   OutpostESEKF 与 SuperPower EKF 滤波参数）
 //   - power_rune  ：PowerRune 流水线独占参数（推理模型 / NMS / 阈值 / 批量）
+//   - mcu_telemetry：电控遥测（弹速 / 颜色）的合法初始值 + 是否用控制器实时值覆盖
+//                    （main 的遥测线程写入 common/McuTelemetry.h 的 McuTelemetry）
 //
 // 相机内参与畸变系数两流水线共用，但分为两套按输入模式自动选择
 // （common.input_mode 下）：
@@ -103,10 +105,11 @@ public:
     };
 
     // 云台角度解算参数
+    // 注：弹速不在此段——其初始值与更新开关见顶层 mcu_telemetry 段
+    //     （McuTelemetryParams；运行时由 main 电控遥测最新值覆盖）。
     struct GimbalParams {
         double bulletDiameter;      // 弹丸直径（米）
         double bulletMass;          // 弹丸质量（kg）
-        double bulletVelocity;      // 默认弹丸初速（m/s）
         double integrationStep;     // 弹道积分步长（秒）
         double distanceThreshold;   // 弹道最近点距离阈值（米）
         double distanceIterateThreshold;  // 迭代触发阈值（米）
@@ -588,6 +591,31 @@ public:
         bool   scanAutoAimEnable = false;     // 扫描段 auto_aim_enable（config: scan_auto_aim_enable）
     };
 
+    // ══════════════════════════════════════════════════════════════════
+    // 电控遥测（config: mcu_telemetry；**顶层独立大项**）
+    //
+    // main 维护一个 common/McuTelemetry.h 的 McuTelemetry，由专门的遥测线程周期从
+    // 控制器读取弹速与颜色并写入；本段配置这两个值的**合法初始值**，以及是否用
+    // 控制器实时值覆盖：
+    //   update = true  ：控制器报告有效数据时用实时值覆盖（默认行为）；
+    //   update = false ：遥测线程不写该值，始终保持在 initial 配置的初值不变。
+    // 所有字段必填（本工程无默认值约定）。
+    struct McuTelemetryParams {
+        // 弹速（config: mcu_telemetry.bullet_velocity）
+        struct BulletVelocityParams {
+            double initial;   // 合法初始弹速（m/s，须 > 0；无控制器数据 / 不更新时使用）
+            bool   update;    // true = 用控制器实时弹速覆盖；false = 始终保持 initial
+        };
+        BulletVelocityParams bulletVelocity;
+
+        // 电控颜色标志位（config: mcu_telemetry.color）
+        struct ColorParams {
+            int  initial;     // 合法初始颜色（0~255，写入 McuTelemetry 时转 uint8_t）
+            bool update;      // true = 用控制器实时颜色覆盖；false = 始终保持 initial
+        };
+        ColorParams color;
+    };
+
     // 共用参数（两个流水线共享）
     struct CommonParams {
         // yaw 构型与**构型相关参数**（tf / 控制器参数 / 新构型模型与拆分器参数）。
@@ -671,6 +699,7 @@ public:
     CommonParams    common;      // 共用参数
     ArmorParams   armor;     // Armor 独占参数
     PowerRuneParams powerRune;   // PowerRune 独占参数
+    McuTelemetryParams mcuTelemetry;  // 电控遥测初始值 / 更新开关（顶层独立大项）
 
     // 从指定 yaml 文件加载配置；文件缺失或格式错误抛出 std::runtime_error。
     static RobotConfig load(const std::string& yamlPath);
