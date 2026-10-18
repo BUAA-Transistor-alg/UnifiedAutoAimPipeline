@@ -1102,6 +1102,8 @@ int main(int argc, char** argv) {
     // 弹速变化缓慢，100 Hz 足够“实时”，且刻意不做帧对齐（见 McuTelemetry.h）。
     // 弹速实测值先限位到 mcu_telemetry.bullet_velocity.[min, max]，再按
     // low_pass_coefficient 做一阶低通（见 McuTelemetry::updateBulletVelocityLimitedFiltered）。
+    // 颜色同时同步给 Armor 流水线的后处理颜色过滤（detect_color = 遥测颜色值：
+    // 0=仅红 / 1=仅蓝 / 2=双色 / 其它=都不通过，见 ArmorPipeline::setDetectColor）。
     // 读取时持 rc_mtx，与 process_thread / bsyStateSnapshot 的“先 rc_mtx 后控制器内部锁”
     // 顺序一致，不会与控制器自身的内部锁形成逆序。
     std::atomic<bool> telemetry_stop{false};
@@ -1146,6 +1148,9 @@ int main(int argc, char** argv) {
                     }
                 }
             }
+            // 电控颜色同步给 Armor 流水线的后处理颜色过滤（detect_color）：
+            // 取遥测最新值（color.update = false 时即配置初始值），不做帧对齐
+            armor_pipeline.setDetectColor(static_cast<int>(mcu_telemetry.load().color));
             std::this_thread::sleep_for(std::chrono::milliseconds(kReadPeriodMs));
         }
     });

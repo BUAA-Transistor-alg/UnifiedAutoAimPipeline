@@ -141,7 +141,9 @@ public:
                        const ClassHandling& class_handling = ClassHandling());
 
     /// 处理单个推理输出（每图一个独立输出缓冲）
-    /// @param detect_color 0=仅红, 1=仅蓝, 2=双色
+    /// @param detect_color 0=仅红, 1=仅蓝, 2=双色；**其它值 = 任何颜色都不通过**
+    ///                     （Armor 流水线由 main 按电控遥测颜色 mcu_telemetry.color
+    ///                      填入，见 ArmorPipeline::setDetectColor）
     /// @return 该图的所有检测结果（坐标已缩放到原图尺寸）
     std::vector<Object> postprocess(const float* data, int rows, int cols,
                                     int orig_w,

@@ -451,7 +451,7 @@ mcu_telemetry:
     min: 12.0            # 限位下限（m/s）：实测弹速先限位到 [min, max]
     max: 27.0            # 限位上限（m/s，须 > min）
     low_pass_coefficient: 0.02  # 一阶低通系数 α ∈ (0,1]：v ← α·v_limited + (1−α)·v_prev
-  color:
+  color:                 # 敌方颜色： red:0, blue:1, both:2, neither:other
     initial: 0           # 合法初始颜色（0~255）
     update: true         # true = 用控制器实时颜色覆盖；false = 始终保持 initial
 

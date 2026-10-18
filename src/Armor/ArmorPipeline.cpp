@@ -119,6 +119,11 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
     const RobotConfig& cfg = RobotConfig::instance();
     const RobotConfig::PipelineParams& pipe = cfg.armor.pipeline;
 
+    // 后处理颜色过滤初值：电控遥测颜色的合法初始值（config mcu_telemetry.color.initial）。
+    // 运行期由 main 遥测线程按控制器最新颜色调用 setDetectColor() 更新。
+    detect_color_.store(static_cast<int>(cfg.mcuTelemetry.color.initial),
+                        std::memory_order_relaxed);
+
     // 推理器在独立进程 armor_infer_process 中（仅推理一步；预处理/后处理在本
     // 进程），本阶段经共享内存通信调用，推理进程未启动时阻塞等待。
     // 推理挂死强制重启时限取自 config common.infer_force_restart_timeout_sec
@@ -323,8 +328,10 @@ void ArmorPipeline::processStage3(DataDeque& data)
     }
 
     std::vector<std::vector<ArmorDetect::Object>> results;
+    // 颜色过滤取最新电控颜色（0=仅红 / 1=仅蓝 / 2=双色 / 其它=都不通过）；
+    // 由 main 遥测线程设置，与帧不严格对齐
     s3_.postprocessor->postprocessBatch(outputs, orig_ws, orig_hs,
-                                        /*detect_color=*/2,
+                                        detect_color_.load(std::memory_order_relaxed),
                                         conf_threshold_, nms_threshold_, results);
 
     for (size_t i = 0; i < ptrs.size(); ++i)

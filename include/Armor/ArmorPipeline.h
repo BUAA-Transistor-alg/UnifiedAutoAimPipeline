@@ -3,7 +3,9 @@
 // 五阶段（各有独立工作线程，由 PipelineStage 模板管理）：
 //   1. 预处理          — ArmorPreprocessor 并行 resize（分辨率取 config armor.inference.resolution）
 //   2. 推理            — InferShmClient 经共享内存调用独立推理进程（动态 batch）
-//   3. 后处理          — ArmorPostprocessor 并行解码 + NMS（读取 PipelineData 自持输出缓冲）
+//   3. 后处理          — ArmorPostprocessor 并行解码 + NMS（读取 PipelineData 自持输出缓冲）；
+//                        detect_color（0=仅红/1=仅蓝/2=双色/其它=都不通过）由 main 按
+//                        电控遥测颜色（mcu_telemetry.color）实时设置，见 setDetectColor
 //   4. PnP + 坐标转换  — 每物体按装甲板种类（类别 label 0~8）分类：solvePnP + world
 //                        转换 + 重投影；结果按类别打包存入 vector<CategoryData>
 //                        （索引 = 类别，含该类别观测关键点与 world_pos/world_euler）
@@ -186,6 +188,14 @@ public:
         s2_.client->setForceRestartHandler(std::move(handler));
     }
 
+    /// 设置后处理颜色过滤（ArmorPostprocessor 的 detect_color）：
+    ///   0 = 仅红 / 1 = 仅蓝 / 2 = 双色 / 其它值 = 两种颜色都不通过（无检测结果）。
+    /// 由 main 遥测线程按 McuTelemetry 的颜色最新值周期写入（原子，线程安全，
+    /// 不要求与帧时序对齐）；构造时初值取 config mcu_telemetry.color.initial。
+    void setDetectColor(int detect_color) {
+        detect_color_.store(detect_color, std::memory_order_relaxed);
+    }
+
     // ---- IPipeline ----
     PipelineMode mode() const override { return PipelineMode::ARMOR; }
     std::string name() const override { return "Armor"; }
@@ -215,6 +225,10 @@ private:
     // 读取（判定已移入 SequencePredictor::predict，本类只下发原始角速度及其
     // 可用标志）。
     double stage5_stick_priority_m_ = 0.0;  // L1：stage5 目标级滞回固定优先度（米）
+
+    // ── 后处理颜色过滤（detect_color；见 setDetectColor）──
+    // 初值在构造时取 config mcu_telemetry.color.initial，运行期由 main 遥测线程更新
+    std::atomic<int> detect_color_{2};
 
     // ── 禁火阈值（取自 config armor.fire_observation_timeout，秒；0 = 关闭该保护）──
     // 所选目标距"最近一次真正观测到该类实体"超过该时长即禁止开火（见 Stage5Data
