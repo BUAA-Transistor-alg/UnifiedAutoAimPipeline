@@ -188,16 +188,19 @@ std::vector<Object> ArmorPostprocessor::postprocess(
         cv::minMaxLoc(classes_scores, NULL, &score_num, NULL, &class_id);
         cv::minMaxLoc(color_scores, NULL, &score_color, NULL, &color_id);
 
-        // None / Purple 丢掉
+        // None / Purple 丢掉（索引 2/3 与红蓝无关，不参与下面的颜色交换）
         if (color_id.x == 2 || color_id.x == 3)
             continue;
-        else if (detect_color == 0 && color_id.x == 1)   // detect blue
-            continue;
-        else if (detect_color == 1 && color_id.x == 0)   // detect red
-            continue;
+
+        // ── 0526 模型颜色交换 ──
+        // 本模型颜色通道与 Object::color 约定相反（模型 0=蓝 / 1=红，而 Object::color
+        // 约定为 blue:1 / red:0；与 0726 的 internal_color = 1 - color 同一处理），
+        // 此处交换颜色识别结果，使下游拿到的 obj.color 统一为 Object 约定。
+        _color_id = 1 - color_id.x;
+        // 按交换后的颜色过滤（detect_color：0 = 仅红 / 1 = 仅蓝 / 2 = 双色）
+        if (detect_color != 2 && _color_id != detect_color) continue;
 
         _class_id = class_id.x;
-        _color_id = color_id.x;
 
         // ── 类别处理（config armor.inference.class_handling）──
         // 先忽略（直接检测出的类别命中忽略列表即整条丢弃，不进入 NMS / 下游），

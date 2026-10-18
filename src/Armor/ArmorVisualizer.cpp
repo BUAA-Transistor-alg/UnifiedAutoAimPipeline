@@ -490,8 +490,9 @@ void ArmorVisualizer::drawDetectionResults(cv::Mat& image,
             obj.rect.x + obj.rect.width <= 0 || obj.rect.y + obj.rect.height <= 0)
             continue;
 
-        // Object colors, not raw tensor indices: 0726 already converts blue=0/red=1
-        // in postprocess0726. Both supported models expose red=0/blue=1 here.
+        // Object colors, not raw tensor indices: both supported models convert the raw
+        // model color channels in their postprocess (0526 swaps 0/1; 0726 uses 1 - color),
+        // so Object::color is uniformly red=0/blue=1 here.
         const bool known_model = model_name == "0526" || model_name == "0726";
         const bool red = known_model && obj.color == 0;
         const bool blue = known_model && obj.color == 1;

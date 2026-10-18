@@ -6,7 +6,8 @@
 // 512×512 → 16128，320×320 → 6300；anchor 数随分辨率变化，后处理按输出形状动态读取）：
 //   col 0-7    4 个关键点 xy（左上/左下/右下/右上）
 //   col 8      obj 置信度（需 sigmoid）
-//   col 9-12   颜色独热（0=red, 1=blue, 2/3=丢弃）
+//   col 9-12   颜色独热（0=blue, 1=red, 2/3=None/Purple 丢弃）；后处理把 0/1
+//              交换后写入 Object::color（red=0/blue=1，与 0726 的输出约定一致）
 //   col 13-21  类别独热（9 类）
 #ifndef ARMOR_INFER_H
 #define ARMOR_INFER_H
