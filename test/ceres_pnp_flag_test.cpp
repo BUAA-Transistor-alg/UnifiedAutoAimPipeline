@@ -163,7 +163,7 @@ int main() {
             return (n > 1e-12f) ? v / n : cv::Vec3f(0, 0, 0);
         };
 
-        // 构建单条约束（默认约束物体本体 +z 轴，对应旧的 Z 轴模式）
+        // 构建单条约束（默认约束物体本体 +z 轴，对应 Z 轴模式）
         auto zConstr = [](const cv::Vec3f& dir_cam, double cos) {
             AxisCosConstraintParam c;
             c.axis_body_cam = cv::Vec3f(0, 0, 1);

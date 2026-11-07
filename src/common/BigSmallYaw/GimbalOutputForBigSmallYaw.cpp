@@ -98,7 +98,7 @@ void GimbalOutputForBigSmallYaw::update(const PipelineResult& result, tcs::Robot
     if (seq.valid && !seq.items.empty()) {
         holding_ = false;
 
-        // ── fire 序列：用 MPC 的**小 yaw** 参考/预测序列逐对判定（与旧版 yaw 通道一致）──
+        // ── fire 序列：用 MPC 的**小 yaw** 参考/预测序列逐对判定（与 yaw 通道的判据一致）──
         std::vector<bool> fire_seq;
         std::vector<OutputContext::FireGateStatus> gate_seq;
         bool mpc_available = false;

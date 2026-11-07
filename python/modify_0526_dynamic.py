@@ -51,11 +51,10 @@ Model/Armor/0526.onnx 是一个由 PyTorch 2.0.1 静态导出的"魔改 YOLO"（
                                 [--output Model/Armor/0526_dynamic.onnx]
                                 [--no-verify]
 
-配套改动
+配套要求
 --------
-C++ 侧后处理原先把 anchor 数写死为 NUM_ANCHORS=25200（include/Armor/ArmorInfer.h），
-分辨率一改就会拒绝输出。配合本脚本需将后处理改为按输出张量形状动态读取 anchor 数
-（已随分支提交：删除 NUM_ANCHORS，postprocess 内用 shape[1] 作为循环/步长）。
+C++ 侧后处理按输出张量形状动态读取 anchor 数（include/Armor/ArmorInfer.h 中
+postprocess 用 shape[1] 作为循环/步长，不写死 NUM_ANCHORS），否则分辨率一改就会拒绝输出。
 
 验证
 ----
@@ -64,13 +63,14 @@ C++ 侧后处理原先把 anchor 数写死为 NUM_ANCHORS=25200（include/Armor/
   * onnxruntime 冒烟测试：batch=1/2/4 × 640/512/320，检查输出形状
   * 与原模型在 640×640 batch=1 下逐位一致对比（要求 max_abs_diff == 0）
 
-依赖：onnx、numpy、onnxruntime（仅验证阶段需要 onnxruntime）。
+依赖：onnx、numpy、onnxruntime。
 """
 import argparse
 import sys
 
 import numpy as np
 import onnx
+import onnxruntime as ort
 from onnx import TensorProto, helper, numpy_helper
 
 # ---------------------------------------------------------------------------
@@ -258,11 +258,6 @@ def verify(model, with_ort=True):
     print("[verify] onnx.checker full_check OK")
 
     if not with_ort:
-        return
-    try:
-        import onnxruntime as ort
-    except ImportError:
-        print("[verify] onnxruntime 未安装，跳过运行时验证")
         return
 
     tmp = "/tmp/_0526_dynamic_verify.onnx"

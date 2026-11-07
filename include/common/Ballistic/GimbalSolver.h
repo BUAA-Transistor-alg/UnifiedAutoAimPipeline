@@ -125,7 +125,7 @@ public:
 
     // 大小 yaw 构型专用重载：显式给出该预测时刻的大 yaw 关节角 θ_big（弧度，相对底盘），
     // 有效 yaw 旋转中心随之 = p_big + Rz(θ_big)·p_small，解出的 yaw = θ_total。
-    // 单 yaw 构型下调用本重载抛 std::logic_error（构型不匹配，防止误用）。
+    // 单 yaw 构型下调用本重载抛出 std::logic_error（构型不匹配，防止误用）。
     bool computeYawToAimTarget(const cv::Vec3f& targetWorld, float pitch, float yawBig,
                                float& yawOut) const;
 
@@ -167,7 +167,7 @@ public:
     // 使用初始弹速（config mcu_telemetry.bullet_velocity.initial，可经
     // setBulletVelocity 覆盖；实际解算时由 SequencePredictor 每帧同步最新遥测值）
     AimResult solveAim(const cv::Vec3f& targetWorld) const;
-    // 大小 yaw 构型专用：显式给出该预测时刻的大 yaw 关节角 θ_big（单 yaw 构型下抛异常）
+    // 大小 yaw 构型专用：显式给出该预测时刻的大 yaw 关节角 θ_big（单 yaw 构型下抛出异常）
     AimResult solveAim(const cv::Vec3f& targetWorld, double bulletVelocity, float yawBig) const;
 
 private:
@@ -182,7 +182,7 @@ private:
         double    stopZ;             // 弹道计算截止高度（world 系，米，由 buildContext 从配置赋值）
     };
     EvalContext buildContext() const;
-    // 带显式大 yaw 关节角（BIG_SMALL 专用；构造时由配置定型，SINGLE 下调用抛异常）
+    // 带显式大 yaw 关节角（BIG_SMALL 专用；构造时由配置定型，SINGLE 下调用抛出异常）
     EvalContext buildContext(float yawBig) const;
 
     // 当前两级 yaw 关节角之和（SINGLE = yaw 关节角；BIG_SMALL = θ_big + θ_small）

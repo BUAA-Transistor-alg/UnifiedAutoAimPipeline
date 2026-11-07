@@ -52,7 +52,7 @@ std::vector<double> requireList(const YAML::Node& section, const std::string& ke
 
 // 解析一套相机参数（common.input_mode.camera_mode / video_mode）。
 // ⚠ 不设任何默认值：每个模式段中的所有参数都必须显式出现在机器配置文件
-//   （config/robots/*.yaml），缺字段即抛异常。
+//   （config/robots/*.yaml），缺字段即抛出异常。
 void parseCameraParams(const YAML::Node& camNode, const std::string& name,
                        RobotConfig::CameraParams& out, bool cameraMode) {
     const YAML::Node& res = camNode["resolution"];
@@ -454,7 +454,7 @@ void parseBigSmallYawBranch(const YAML::Node& node,
 
 // 解析 common.big_small_yaw：构型开关 + 两支。
 // ⚠ 约定：**只需填写当前 mode 那一支**；另一支可以整段省略，若写了则同样严格校验
-//   （缺字段报错），当前构型那一支缺失或字段不全一律抛异常。
+//   （缺字段报错），当前构型那一支缺失或字段不全一律抛出异常。
 void parseBigSmallYawParams(const YAML::Node& bs, RobotConfig::BigSmallYawParams& out) {
     const std::string S = "common.big_small_yaw";
     if (!bs || !bs.IsMap()) throw std::runtime_error("RobotConfig: 缺少 '" + S + "' 配置段");
@@ -489,7 +489,7 @@ void parseBigSmallYawParams(const YAML::Node& bs, RobotConfig::BigSmallYawParams
 
 // ⚠ 给后续修改者：所有参数均无代码默认值，必须由机器配置文件
 //   （config/robots/<active_config>.yaml）提供；
-//   缺段或缺字段直接抛异常（不静默采用默认值）。
+//   缺段或缺字段直接抛出异常（不静默采用默认值）。
 RobotConfig RobotConfig::load(const std::string& yamlPath) {
     YAML::Node root;
     try {
@@ -509,7 +509,7 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
 
     // ── common.big_small_yaw（yaw 构型开关 + **构型相关参数**）──
     // 本段内按构型分为 single / big_small 两支，**只需填写当前 mode 那一支**；
-    // 当前构型那一支内的字段全部必填（缺字段抛异常，绝不静默采用默认值），
+    // 当前构型那一支内的字段全部必填（缺字段抛出异常，绝不静默采用默认值），
     // 变换树偏移（tf）与控制器参数（robot_controller）都在此段内，见文件头约定。
     parseBigSmallYawParams(cm["big_small_yaw"], cfg.common.bigSmallYaw);
 
@@ -538,21 +538,21 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     //   true：仅启动当前流水线所需推理进程，切换时立即关闭不需要的进程（主程序管理）
     cfg.common.inferProcessLazy = requireScalar<bool>(cm, "infer_process_lazy", "common");
 
-    // ── common.infer_force_restart_timeout_sec（推理挂死强制重启时限）──
+    // ── common.infer_force_restart_timeout_sec（推理卡死强制重启时限）──
     // 推理客户端（InferShmClient）每次推理响应超时（2s）返回时，检测距上一次
-    // 推理正常返回的间隔，超过该时限则判定推理进程挂死，经 InferProcessManager::
+    // 推理正常返回的间隔，超过该时限则判定推理进程卡死，经 InferProcessManager::
     // forceRestart 强制重启对应推理进程（见 InferShmClient 文件头注释）。
     // 0 = 关闭该功能。
     cfg.common.inferForceRestartTimeoutSec =
         requireScalar<double>(cm, "infer_force_restart_timeout_sec", "common");
     if (cfg.common.inferForceRestartTimeoutSec < 0.0) {
         throw std::runtime_error("RobotConfig: common.infer_force_restart_timeout_sec "
-                                 "必须 >= 0（0 = 关闭推理挂死强制重启）");
+                                 "必须 >= 0（0 = 关闭推理卡死强制重启）");
     }
 
     // ── common.sentry_controller（哨兵扫描控制器，可选功能）──
     // 总开关 enabled 必填；其余字段**仅当 enabled = true 时必填**（缺字段 / 非法值
-    // 直接抛异常，不静默采用默认值）；enabled = false 时不读取、不校验这些字段，
+    // 直接抛出异常，不静默采用默认值）；enabled = false 时不读取、不校验这些字段，
     // 两个云台输出模式保持原有行为（见 common/SentryController.h）。
     const YAML::Node& sc = cm["sentry_controller"];
     if (!sc || !sc.IsMap())
@@ -574,7 +574,7 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
             requireScalar<double>(sc, "pitch_scan_rise_time_sec", "common.sentry_controller");
         cfg.common.sentryController.pitchScanFallTimeSec =
             requireScalar<double>(sc, "pitch_scan_fall_time_sec", "common.sentry_controller");
-        // 保持段 / 扫描段下发给电控的 auto_aim_enable（两段分别配置，取代硬编码）
+        // 保持段 / 扫描段下发给电控的 auto_aim_enable（两段分别配置）
         cfg.common.sentryController.holdAutoAimEnable =
             requireScalar<bool>(sc, "hold_auto_aim_enable", "common.sentry_controller");
         cfg.common.sentryController.scanAutoAimEnable =
@@ -723,7 +723,7 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (!op || !op.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'armor' 配置段");
     const YAML::Node& oinf = op["inference"];
     if (!oinf || !oinf.IsMap()) throw std::runtime_error("RobotConfig: 缺少 'armor.inference' 配置段");
-    // Older configuration files without a selector keep the 0526 contract.
+    // 缺少 selector 段的配置文件按 0526 约定处理。
     cfg.armor.modelName = oinf["model"]
         ? requireScalar<std::string>(oinf, "model", "armor.inference") : "0526";
     if (cfg.armor.modelName != "0526" && cfg.armor.modelName != "0726")
@@ -751,7 +751,7 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
     if (cfg.armor.modelName == "0726") {
         if (cfg.armor.inputWidth % 32 != 0 || cfg.armor.inputHeight % 32 != 0)
             throw std::runtime_error("RobotConfig: 0726 width/height must be positive multiples of 32");
-        // Reserve enough space for the shared-memory transport's maximum batch.
+        // 为共享内存传输的最大 batch 预留空间。
         const auto input_bytes = 1LL * cfg.armor.inputWidth * cfg.armor.inputHeight * 3 * InferShm::MAX_IMAGES;
         if (input_bytes > static_cast<long long>(InferShm::MAX_INPUT_BYTES))
             throw std::runtime_error("RobotConfig: 0726 resolution exceeds shared-memory input capacity (W*H <= 640*640)");

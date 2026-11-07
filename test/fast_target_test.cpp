@@ -397,7 +397,7 @@ int main() {
     tgt3.omega  = 4.5;
     checkFastCase(sp, env, tgt3, true, true, "前哨站 3 面");
 
-    // ── 目标平动（本次修订的关键：对齐位置必须落在**当前预测中心**的连线上）──
+    // ── 目标平动（对齐位置必须落在**当前预测中心**的连线上）──
     Target tgtmv = tgt4b;
     tgtmv.vel   = cv::Vec3f(2.0f, -1.0f, 0.0f);   // 斜向平移 2.24 m/s
     tgtmv.omega = 5.5;

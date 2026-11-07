@@ -1,6 +1,6 @@
 #pragma once
 
-// Display-only settings. Owned by the visualization thread, retained across v/1/2.
+// 仅用于显示的设置，由可视化线程持有，在 v/1/2 切换之间保留。
 struct ArmorVisualizationOptions {
     bool detections = true;
     bool details = false;

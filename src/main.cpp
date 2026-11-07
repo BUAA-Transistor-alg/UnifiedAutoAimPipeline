@@ -345,7 +345,7 @@ static void drawOverlay(cv::Mat& img,
         //    （--- MCU --- / --- IMU --- / --- STRICT --- / --- MPC ---），
         //    字段按双级 yaw 语义展开（θ_big/θ_small、ψ_big/ψ_small、电机侧/云台侧、
         //    旋转平面重力分量等），保证两种构型下左侧输入信息块一一对应。
-        //    注：v2 子模组已取消 YawStateEstimator，故没有旧版的 --- EST --- 块。 ──
+        //    注：v2 子模组不包含 YawStateEstimator，因此没有 --- EST --- 块。 ──
         const bsy::RobotState& bs = *bsy_state;
         // 控制器未构造 / 尚未收到数据时给出与单 yaw 构型 "Serial: N/A" 对应的提示
         // （ready = MCU 与 IMU 都收到过有效样本，与子模组 control_demo 的就绪判据一致）
@@ -475,7 +475,7 @@ static void drawOverlay(cv::Mat& img,
 
         // ── 本帧**实际下发给子模组**的信息（tcbs 序列 set() 的实参；序列取首元素）──
         //    由 GimbalOutputForBigSmallYaw::update 在每次 set() 前回写 ctx.bsy_sent，
-        //    因此这里显示的就是真实下发量（而非控制器内部消费后的剩余序列）。
+        //    因此这里显示的就是真实下发量，不受控制器内部消费的影响。
         //    kind：predict（正常预测）/ scan（哨兵扫描）/ hold(sentry)（扫描前保持）/
         //          hold（无目标且未开哨兵）；yaw/pitch 单位 **rad**（与下发量一致）。
         put("--- SENT to tcbs [rad] ---");
@@ -838,7 +838,7 @@ int main(int argc, char** argv) {
     //     再启动新流水线所需进程；推理进程就绪后需重连该流水线的 InferShmClient
     //     （客户端先于服务端附加，服务端 sem_unlink 重建信号量后旧句柄失效）。
     //   - 非 lazy 模式（默认）：推理进程由 launch_all.py 启动并常驻，本管理器不
-    //     主动启停；仅当推理客户端检测到推理进程挂死时（响应超时距上次正常返回
+    //     主动启停；仅当推理客户端检测到推理进程卡死时（响应超时距上次正常返回
     //     超过 common.infer_force_restart_timeout_sec）经 forceRestart 强制重启。
     // 用 shared_ptr 持有，并让两条流水线的强制重启回调捕获其副本：管理器因此存活
     // 于任何可能调用它的推理阶段线程之后（回调随客户端析构才释放引用）。
@@ -850,7 +850,7 @@ int main(int argc, char** argv) {
     };
     auto infer_manager = std::make_shared<Infer::InferProcessManager>(reconnectFor);
 
-    // 推理客户端 → 管理器：推理进程疑似挂死时强制重启对应进程（两条流水线各一个
+    // 推理客户端 → 管理器：推理进程疑似卡死时强制重启对应进程（两条流水线各一个
     // 客户端；强制重启对非 lazy 模式同样生效——按进程名终止外部进程后自启）
     armor_pipeline.setInferRestartHandler([mgr = infer_manager]() {
         mgr->forceRestart(Infer::InferProcessManager::Kind::ARMOR);
@@ -1447,7 +1447,7 @@ int main(int argc, char** argv) {
                 controls.changed = false;
                 controls.show(vis != nullptr, current_mode == PipelineMode::ARMOR);
 
-                // Paint HUD on a clean copy, never accumulate overlays on cached pixels.
+                // 在干净副本上绘制 HUD，避免覆盖层累积到缓存的像素上。
                 const bool vis_active = vis && matching_frame && !last_display.empty();
                 (vis_active ? last_display : last_raw_frame).copyTo(to_show);
                 if (!to_show.empty()) {

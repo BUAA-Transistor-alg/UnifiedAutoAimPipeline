@@ -10,7 +10,7 @@
 // 由 main 弹道线程写入当帧 OutputContext（含瞄准点 / 云台序列 / yaw 系原点），
 // 沿"弹道 → 云台 → 可视化"级联逐级转发给输出模式（输出模式不再持有本类引用）。
 //
-// 目标预测器以 Predictor 结构体传入（而非仅 std::function）：内含预测函数
+// 目标预测器以 Predictor 结构体传入：内含预测函数
 // （输入预测时间，返回 (预测车体中心位置, 预测目标点位置列表)）、
 // 目标预测器来源标注（PredictorSource，见下）、快照时间戳（predictor_timestamp）、
 // 目标屏蔽索引列表（masked_indices）与目标旋转角速度（target_omega + omega_valid，
@@ -280,8 +280,8 @@ public:
     /// 新构型（大/小双 yaw，common.big_small_yaw.mode = big_small）状态包输入版本。
     /// 与单 yaw 版本**互不混用**（各自只读自己那一包，见 ExtraInputInfo 两包约定）：
     ///   - 树同步用大小 yaw 包（θ_big / θ_small / pitch）；
-    ///   - item.yaw 的底盘修正项改用严格反解的 chassis 欧拉 yaw（而非“IMU 欧拉 − 单 yaw
-    ///     关节角”——该式只对单 yaw 构型成立）；
+    ///   - item.yaw 的底盘修正项取严格反解的 chassis 欧拉 yaw；"IMU 欧拉 − 单 yaw
+    ///     关节角"只对单 yaw 构型成立。
     ///   - 逐预测点的大 yaw 关节角 θ_big(t) 取「该状态包里的 MPC 预测大 yaw 世界方位角
     ///     序列（线性插值，超出覆盖区间用最后一个值）− 当帧底盘 yaw」，muzzle 原点/瞄准
     ///     解算因此按“大 yaw 未来实际会到哪”求有效 yaw 旋转中心（见 GimbalSolver）；

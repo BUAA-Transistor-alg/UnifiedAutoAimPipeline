@@ -14,7 +14,7 @@ void validateModelName(const std::string& name) {
     if (name != "0526" && name != "0726")
         throw std::invalid_argument("Unsupported Armor model: " + name);
 }
-// Identical rounding and padding for image preprocessing and inverse coordinates.
+// 图像预处理与逆坐标换算共用同一套取整与补边规则。
 struct LetterboxTransform {
     float scale;
     int width, height, left, top;
@@ -271,7 +271,7 @@ std::vector<Object> ArmorPostprocessor::postprocess(
     return detections;
 }
 
-// Infantry 0726: per-image [21,N] view of [B,21,N], already-sigmoid color/class scores followed by xy points.
+// Infantry 0726：把 [B,21,N] 按单张图取成 [21,N]；前若干行为已过 sigmoid 的颜色/类别分数，其后为 xy 坐标点。
 std::vector<Object> ArmorPostprocessor::postprocess0726(
     const float* data, int rows, int cols, int orig_w, int orig_h,
     int detect_color, float conf_threshold, float nms_threshold) {

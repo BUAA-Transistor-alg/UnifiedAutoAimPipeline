@@ -22,7 +22,7 @@
 //        小 yaw 轴相对大 yaw 轴的 xyz 偏移（**大 yaw 系**，随大 yaw 一起旋转）；
 //        「云台瞄准方向」由两级之和决定（θ_big + θ_small），见 GimbalSolver。
 //
-// ⚠ 给后续修改者：**越界调用立刻抛 std::logic_error**（例如 BIG_SMALL 构型下调
+// ⚠ 给后续修改者：**越界调用立刻抛出 std::logic_error**（例如 BIG_SMALL 构型下调
 //   setYaw / 用 RobotTfTree::YAW 取节点），绝不静默按另一种构型的语义执行。
 class RobotTfTree {
 public:
@@ -36,7 +36,7 @@ public:
     void setChassisPosition(float x, float y, float z);
     void setChassisEuler(float yaw, float pitch, float roll);
 
-    // ── yaw 关节设置（按构型区分，越界调用抛 std::logic_error）──
+    // ── yaw 关节设置（按构型区分，越界调用抛出 std::logic_error）──
     // 单 yaw 构型（SINGLE）：yaw 关节角（绕 z 轴）
     void setYaw(float yaw);
     // 大小 yaw 构型（BIG_SMALL）：大 yaw 关节角（相对底盘，绕 z 轴）
@@ -44,7 +44,7 @@ public:
     // 大小 yaw 构型（BIG_SMALL）：小 yaw 关节角（相对大 yaw，绕 z 轴）
     void setYawSmall(float yaw_small);
 
-    // ── yaw 关节读取（按构型区分，越界调用抛 std::logic_error）──
+    // ── yaw 关节读取（按构型区分，越界调用抛出 std::logic_error）──
     float yawSingle() const;   // SINGLE：yaw 关节角
     float yawBig() const;      // BIG_SMALL：大 yaw 关节角
     float yawSmall() const;    // BIG_SMALL：小 yaw 关节角
@@ -80,7 +80,7 @@ public:
     // 保存全部状态到结构体（只读节点数据，不检查锁）
     State saveState() const;
     // 从结构体恢复全部状态（内部自动 unlock 并设置各关节，若原状态为上锁则重新上锁）；
-    // 状态构型与当前树构型不符时抛 std::logic_error
+    // 状态构型与当前树构型不符时抛出 std::logic_error
     void restoreState(const State& state);
 
     TransformTreeManager& manager();
@@ -100,7 +100,7 @@ public:
     static constexpr const char* MUZZLE  = "muzzle";
 
 private:
-    // 构型校验：不符则抛 std::logic_error（what = 调用者名字）
+    // 构型校验：不符则抛出 std::logic_error（what = 调用者名字）
     void requireMode(YawMode expected, const char* what) const;
 
     TransformTreeManager manager_;

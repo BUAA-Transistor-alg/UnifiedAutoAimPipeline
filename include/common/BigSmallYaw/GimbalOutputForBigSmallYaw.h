@@ -5,7 +5,7 @@
 //   - 流水线解算出的 yaw 序列是**小 yaw 输出的世界方位角** ψ_small*（= item.yaw），
 //     大 yaw 参考序列 ψ_big* 由大小 yaw 拆分器（BigSmallYawSplitter）按“大 yaw 平滑
 //     轨迹 + 小 yaw 到限位时无限幅快速运动”规划得到（见其文件头注释）；
-//   - fire 序列判据改用控制器 MPC 的**小 yaw** 参考/预测序列（与旧版用 yaw 通道一致）；
+//   - fire 序列判据用控制器 MPC 的**小 yaw** 参考/预测序列（与 yaw 通道的判据一致）；
 //   - 预测不可用时进入保持模式：大/小 yaw 均保持当前严格反解世界方位角，自瞄关闭。
 //     若开启哨兵扫描控制器（config common.sentry_controller.enabled），无目标超过
 //     idle_timeout_sec 后进入扫描模式：大/小 yaw 取**同一个**目标世界方位角

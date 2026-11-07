@@ -58,7 +58,7 @@ public:
         // （predicted_point / predict_time / gimbal）均为默认值，仅 target_index 有效
         // （= 预测函数返回列表中的原始下标，保持结果向量下标对齐）。
         // masked == true 时 success 恒为 false；但 success == false 也可能是
-        // “已解算但失败”（Newton/几何不满足），下游如需区分请判本标志。
+        // “已解算但失败”（Newton/几何不满足），下游如需区分请检查本标志。
         bool   masked = false;
         cv::Vec3f predicted_point;      // 该目标点使用的预测点（world 系）
         double predict_time = 0.0;      // 该目标点使用的预测时间 = 额外预测时间 + 飞行时间（秒）

@@ -1,4 +1,4 @@
-// infer_force_restart_test.cpp — 推理挂死强制重启功能验证（临时测试，不入 CMake）
+// infer_force_restart_test.cpp — 推理卡死强制重启功能验证（临时测试，不入 CMake）
 //
 // 覆盖：
 //   1) InferShmClient：正常返回计时 / 响应超时检测 / 间隔判定 / 节流 / reconnect
@@ -44,7 +44,7 @@ static int g_failures = 0;
         }                                                       \
     } while (0)
 
-// ── 进程内假服务端：按 InferShm 协议响应请求，可切换为挂死（不再响应）──
+// ── 进程内假服务端：按 InferShm 协议响应请求，可切换为卡死（不再响应）──
 static void fakeServerLoop(int shm_key, std::atomic<bool>& hang) {
     const size_t size = InferShm::totalSize();
     int shm_id = shmget(shm_key, size, IPC_CREAT | 0666);
@@ -65,7 +65,7 @@ static void fakeServerLoop(int shm_key, std::atomic<bool>& hang) {
             if (hang.load()) { std::cout << "[server] hang requested, stop responding" << std::endl; break; }
             continue;
         }
-        if (hang.load()) { continue; }   // 已挂死：不响应
+        if (hang.load()) { continue; }   // 已卡死：不响应
         // 响应一个 batch=1 的 [1,1] f32 张量
         shm->result_batches = 1;
         shm->batch_size[0] = 1;
@@ -80,9 +80,9 @@ static void fakeServerLoop(int shm_key, std::atomic<bool>& hang) {
     shmdt(shm);
 }
 
-// ── 1) 推理客户端挂死检测 ──
+// ── 1) 推理客户端卡死检测 ──
 static int testClient() {
-    std::cout << "\n===== 客户端挂死检测（limit = 5.0s，响应超时 2s）=====" << std::endl;
+    std::cout << "\n===== 客户端卡死检测（limit = 5.0s，响应超时 2s）=====" << std::endl;
     const int key = 23401;
     std::atomic<bool> hang{false};
     std::thread server(fakeServerLoop, key, std::ref(hang));
@@ -103,16 +103,16 @@ static int testClient() {
     CHECK(ok1 && ok2, "正常推理返回两次成功");
     CHECK(calls.load() == 0, "正常返回不触发强制重启（不计算间隔）");
 
-    // 服务端挂死：第一次超时距上次正常返回 ≈2s < 5s，不应触发
+    // 服务端卡死：第一次超时距上次正常返回 ≈2s < 5s，不应触发
     hang.store(true);
     const bool r1 = client.runInference(imgs, outs);
-    CHECK(!r1, "挂死后推理超时返回 false");
+    CHECK(!r1, "卡死后推理超时返回 false");
     CHECK(calls.load() == 0, "超时但距上次正常返回未超时限 → 不触发");
 
     // 间隔超过时限 → 触发一次
     std::this_thread::sleep_for(seconds(4));
     const bool r2 = client.runInference(imgs, outs);
-    CHECK(!r2, "挂死后推理再次超时返回 false");
+    CHECK(!r2, "卡死后推理再次超时返回 false");
     CHECK(calls.load() == 1, "距上次正常返回超过时限 → 触发强制重启");
 
     // 节流：紧随其后的超时不再触发（两次触发至少间隔时限）
@@ -126,7 +126,7 @@ static int testClient() {
     CHECK(!r4, "reconnect 后推理超时");
     CHECK(calls.load() == 1, "reconnect 重置'上次正常返回' → 短间隔不触发");
 
-    // 再次等待超过时限 → 可再次触发（重启失败/进程再挂死的重试路径）
+    // 再次等待超过时限 → 可再次触发（重启失败/进程再卡死的重试路径）
     std::this_thread::sleep_for(seconds(4));
     const bool r5 = client.runInference(imgs, outs);
     CHECK(!r5, "重试验证：推理再次超时");
@@ -205,7 +205,7 @@ static int testManager() {
 }
 
 int main() {
-    std::cout << "推理挂死强制重启功能测试" << std::endl;
+    std::cout << "推理卡死强制重启功能测试" << std::endl;
     testClient();
     testManager();
     std::cout << "\n结果：" << (g_failures == 0 ? "全部通过" : "存在失败") << std::endl;

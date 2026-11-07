@@ -31,6 +31,8 @@ import shutil
 import sys
 from pathlib import Path
 
+import onnx
+
 # 使脚本可直接运行（python3 python/export_onnx.py）也能被 import
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from path_resolver import get_project_root, resolve_path  # noqa: E402
@@ -96,11 +98,6 @@ def preview_pt(model, test_image: str, save_path: Path, show: bool) -> None:
 def verify_onnx(onnx_path: Path) -> None:
     """结构校验：能 load 并通过 onnx.checker 即可。"""
     try:
-        import onnx
-    except Exception:  # noqa: BLE001
-        print("[校验] 未安装 onnx，跳过结构校验。")
-        return
-    try:
         m = onnx.load(str(onnx_path))
         onnx.checker.check_model(m)
         print(f"[校验] ONNX 结构检查通过（{onnx_path.stat().st_size / 1e6:.1f} MB）")
@@ -127,7 +124,7 @@ def main() -> int:
         preview_pt(model, TEST_IMAGE, onnx_path.with_name(MODEL_NAME + "_preview.jpg"),
                    SHOW_PREVIEW)
 
-    # 清理旧的同名导出文件（onnx 及可能的 sidecar），再导出
+    # 清理残留的同名导出文件（onnx 及可能的 sidecar），再导出
     for suffix in (".onnx", ".bin", ".xml"):
         old = onnx_path.with_suffix(suffix)
         if old.exists():

@@ -144,7 +144,7 @@ public:
     /// 会 sem_unlink 重建信号量，本客户端先于服务端附加则需重连（见 InferShmClient::reconnect）。
     void reconnectInferClient() { s2_.client->reconnect(); }
 
-    /// 设置推理客户端强制重启回调：推理进程疑似挂死（响应超时超过配置时限）时由
+    /// 设置推理客户端强制重启回调：推理进程疑似卡死（响应超时超过配置时限）时由
     /// 客户端从推理阶段线程调用；主程序把它挂钩到 InferProcessManager::forceRestart。
     void setInferRestartHandler(std::function<void()> handler) {
         s2_.client->setForceRestartHandler(std::move(handler));
@@ -222,7 +222,7 @@ private:
         std::chrono::steady_clock::time_point last_valid_timestamp;
         std::chrono::steady_clock::time_point last_frame_timestamp;  // 用于计算帧间 dt，每帧更新
 
-        // ── 级联阈值（config power_rune.cascade；原先硬编码在本流水线内）──
+        // ── 级联阈值（config power_rune.cascade）──
         float continuity_threshold_s;    // 帧间 dt 小于该值视为连续帧
         float roll_rmse_gate;            // RollPredictor 预测矩阵可用于特殊预测的 RMSE 门限
         float reset_timeout_s;           // 连续无有效观测超过该秒数则重置两级滤波/预测器

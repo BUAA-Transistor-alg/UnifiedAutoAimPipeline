@@ -73,7 +73,7 @@ public:
     ArmorPreprocessor(int input_width, int input_height, int num_threads = 0,
                       const std::string& model_name = "0526");
 
-    /// 0526: resize; 0726: centered letterbox (padding=124).
+    /// 0526：直接 resize；0726：居中 letterbox（padding=124）。
     void preprocess(const std::vector<const cv::Mat*>& imgs,
                     std::vector<cv::Mat*>& out);
 

@@ -49,9 +49,9 @@ common:
   #     （新进程需重新编译模型，就绪前该流水线推理返回空结果，界面保持响应）。
   infer_process_lazy: false
 
-  # ── 推理挂死强制重启时限（秒，>= 0；0 = 关闭）──
+  # ── 推理卡死强制重启时限（秒，>= 0；0 = 关闭）──
   # 推理客户端每次推理响应超时（2s）返回时，检测距上一次推理正常返回的间隔；
-  # 若超过该时限（说明推理进程疑似挂死），则强制重启对应的推理进程
+  # 若超过该时限（说明推理进程疑似卡死），则强制重启对应的推理进程
   # （SIGKILL 后重新启动并等待就绪，见 InferProcessManager::forceRestart）。
   # 建议大于模型编译/切换耗时（如 10s），避免切换期间误触发。
   infer_force_restart_timeout_sec: 10.0
@@ -561,7 +561,7 @@ power_rune:
       omega_max: 2.058
 
   # ── 级联阈值（power_rune.cascade）──
-  # 连接两级滤波/预测与上游位姿观测的阈值（原先硬编码在流水线内）。
+  # 连接两级滤波/预测与上游位姿观测的阈值。
   cascade:
     continuity_threshold_s: 0.1     # 帧间 dt 小于该值视为连续帧
     roll_rmse_gate: 0.3             # RollPredictor 预测矩阵可用于特殊预测的 RMSE 门限

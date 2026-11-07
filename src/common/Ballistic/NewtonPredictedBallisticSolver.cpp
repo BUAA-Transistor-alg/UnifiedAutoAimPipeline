@@ -220,7 +220,7 @@ NewtonPredictedBallisticSolver::Result NewtonPredictedBallisticSolver::packResul
     result.gimbal.yaw = static_cast<float>(std::remainder(q[0], 2.0 * kPi));
     result.gimbal.pitch = static_cast<float>(q[1]);
     result.gimbal.flight_time = q[2];
-    // 新算法此字段为同一命中时刻的三维残差，而非轨迹到静态目标的最近距离。
+    // 此字段为同一命中时刻的三维残差。
     result.gimbal.distance = evaluation.residual.norm();
     const double endpoint_z = evaluation.target_position.z() + evaluation.residual.z();
     result.success = result.gimbal.distance <= distance_tolerance_ &&

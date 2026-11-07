@@ -128,9 +128,9 @@ void PowerRuneVisualizer::render(Mat& image,
 
 }
 
-// ==================== Separate fit / status window ====================
+// ==================== 独立的拟合 / 状态窗口 ====================
 bool PowerRuneVisualizer::fitWindowExists() const {
-    // GTK does not support WND_PROP_VISIBLE; use the same probe as the controls panel.
+    // GTK 不支持 WND_PROP_VISIBLE；沿用电控面板（VisualizationControls）相同的探测方式。
     try { return cv::getWindowProperty(fit_window_name_, cv::WND_PROP_AUTOSIZE) >= 0; }
     catch (const cv::Exception&) { return false; }
 }
@@ -143,11 +143,11 @@ bool PowerRuneVisualizer::syncFitWindow(bool active) {
     if (fit_window_open_) {
         if (fitWindowExists()) return true;
         fit_window_open_ = false;
-        return false;  // Let the controls panel reflect a manual window close.
+        return false;  // 让控制面板反映出用户手动关闭了窗口。
     }
     cv::namedWindow(fit_window_name_, cv::WINDOW_AUTOSIZE);
     fit_window_open_ = true;
-    // Show useful empty-state text even before the first PowerRune frame arrives.
+    // 首帧 PowerRune 到达之前也显示有用的空状态文字。
     cv::imshow(fit_window_name_, makeFitPanel(PowerRuneVisualizationData{}));
     return true;
 }

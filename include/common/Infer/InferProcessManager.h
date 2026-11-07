@@ -6,7 +6,7 @@
 //
 // 默认模式（infer_process_lazy=false）：推理进程由 launch_all.py 在启动时全部启动并
 // 常驻（无推理任务时后台闲置），主程序不主动启停；本类仅在被推理客户端调用
-// forceRestart（推理进程疑似挂死）时按需接管对应进程的重启。
+// forceRestart（推理进程疑似卡死）时按需接管对应进程的重启。
 //
 // lazy 模式（infer_process_lazy=true）：本类从主程序 fork/exec 推理进程：
 //   - 启动时：startAndWait(kind) 同步启动当前流水线所需推理进程并等待其输出

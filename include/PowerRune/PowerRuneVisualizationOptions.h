@@ -1,6 +1,6 @@
 #pragma once
 
-// Display-only settings, retained across pipeline / visualization toggles.
+// 仅用于显示的设置，在流水线 / 可视化切换之间保留。
 struct PowerRuneVisualizationOptions {
     bool detections = true;
     bool details = false;

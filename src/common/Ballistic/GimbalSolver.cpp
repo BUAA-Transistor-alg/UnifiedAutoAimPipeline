@@ -115,7 +115,7 @@ void GimbalSolver::setYawSmall(float yaw_small) {
 //     p_big + Rz(θ_big)·p_small
 // （p_big = yaw_big 节点相对 chassis 的位置，p_small = yaw_small 节点相对 yaw_big 的
 //   位置 = 配置里小 yaw 轴相对大 yaw 轴的偏移，随大 yaw 旋转）。
-// 由于两级都绕 z 旋转且 pitch 及以下全部挂在 yaw_small 之下，把旋转中心这样取定后，
+// 由于两级都绕 z 旋转且 pitch 及以下全部位于 yaw_small 之下，把旋转中心这样取定后，
 // 「绕总角 θ_big+θ_small 旋转」的表达式与单 yaw 构型完全同形，解算公式无需修改。
 // ============================================================================
 cv::Vec3f GimbalSolver::effectiveYawPos(float yawBig) const {

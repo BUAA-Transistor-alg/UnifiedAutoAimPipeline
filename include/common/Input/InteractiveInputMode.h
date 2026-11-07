@@ -6,11 +6,10 @@
 #include <string>
 
 /**
- * @brief Interactive single-image input mode.
+ * @brief 交互式单图输入模式。
  *
- * The user types image file paths into stdin.
- * Press Enter on an empty line to skip,
- * 'q' or 'quit' to exit.
+ * 用户从 stdin 输入图像文件路径。
+ * 空行回车表示跳过该帧，输入 'q' 或 'quit' 退出。
  */
 class InteractiveInputMode : public IInputMode {
 public:
@@ -20,7 +19,7 @@ public:
                       std::chrono::steady_clock::time_point& timestamp,
                       ExtraInputInfo& extra_info) override;
     std::string getName() const override { return "Interactive"; }
-    float getFrameDelay() const override { return 0.0f; }  // no artificial delay
+    float getFrameDelay() const override { return 0.0f; }  // 不做额外延迟
 
 private:
     std::string stripQuotes(const std::string& s);

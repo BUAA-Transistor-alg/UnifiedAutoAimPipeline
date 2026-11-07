@@ -8,7 +8,7 @@
 //
 // ⚠ 重要约定（给后续修改者）：机器配置文件中的所有参数均为必填，本文件及
 //   RobotConfig.cpp 中不设任何默认值/回退值——缺段或缺字段时 RobotConfig::load
-//   直接抛异常退出，绝不静默采用默认值。
+//   直接抛出异常退出，绝不静默采用默认值。
 //   **唯一例外**：common.big_small_yaw 下按 yaw 构型分为 single / big_small 两支，
 //   只需填写当前 mode 对应的那一支（另一支可整段省略——两种构型的参数互不通用，
 //   写没用到的那一份纯属冗余）；当前构型那一支内部的字段依旧全部必填。
@@ -50,7 +50,7 @@
 //               chassis -> yaw_big -> yaw_small -> pitch -> ...
 // 构型决定变换树节点结构、ExtraInputInfo 使用哪一包关节角、瞄准解算几何与输出模式，
 // 因此两边（树 / 输入信息 / 状态包）都按本构型只填自己那一包，另一包整体置 NaN，
-// 越界调用（如单 yaw 下调 setYawBig）直接抛异常，绝不静默混用。
+// 越界调用（如单 yaw 下调 setYawBig）直接抛出异常，绝不静默混用。
 enum class YawMode {
     SINGLE    = 0,
     BIG_SMALL = 1,
@@ -84,7 +84,7 @@ public:
     //     exposure / gain / extra_info_delay；
     //   - 视频/交互模式（common.input_mode.video_mode）必填 test_max_fps；
     //   - 两模式均必填 resolution / camera_matrix / dist_coeffs。
-    //   缺任一字段 RobotConfig::load 直接抛异常退出，解析见 src/common/RobotConfig.cpp。
+    //   缺任一字段 RobotConfig::load 直接抛出异常退出，解析见 src/common/RobotConfig.cpp。
     struct CameraParams {
         std::string deviceIp;   // 相机设备 IP（相机模式必填）
         std::string netIp;      // 本机网口 IP（相机模式必填）
@@ -191,7 +191,7 @@ public:
     // ⚠ 配置约定（本工程唯一的例外，见 config/robots/*.yaml 文件头）：
     //   common.big_small_yaw 下按构型分为 single / big_small **两支**，
     //   **只需填写当前 mode 那一支**（另一支可以整段省略、不必写）；
-    //   当前构型那一支内的字段依旧**全部必填**（缺字段直接抛异常，不设代码默认值）；
+    //   当前构型那一支内的字段依旧**全部必填**（缺字段直接抛出异常，不设代码默认值）；
     //   另一支若写了则同样严格校验（防止半截残留的自相矛盾配置）。
     //
     //   mode = single    → 只填 single 支：tf（单 yaw 链）+ robot_controller（tcs 子模组）
@@ -401,7 +401,7 @@ public:
         double observationLostTimeoutSec;   // 连续观测丢失多久后重置滤波器（秒）
         // 禁火阈值（秒，config armor.fire_observation_timeout，>= 0；0 = 关闭该保护）：
         // 每一类目标（label 0~5 各类 EKF / 6 前哨站 / 7~8 基地）各自记录**最近一次真正
-        // 观测到该类实体**（滤波器收到并接受本类观测，而非仅惯性外推）的帧时刻；本帧
+        // 观测到该类实体**（滤波器收到并接受本类观测；仅惯性外推的帧不计入）的帧时刻；本帧
         // 所选目标距该时刻超过本阈值时，ArmorPerception::fire_forbidden = true，两个
         // 云台输出模式据此把该帧 fire 全置 false（只保持瞄准，不开火）。
         // 与 observation_lost_timeout 的区别：后者决定"何时不再有预测器"（保持模式），
@@ -536,7 +536,7 @@ public:
         RollPredictorParams rollPredictor;
 
         // ── 级联阈值（config: power_rune.cascade）──
-        // 连接两级滤波/预测与上一级位姿的阈值，原先硬编码在流水线内。
+        // 连接两级滤波/预测与上一级位姿的阈值。
         struct CascadeParams {
             double continuityThresholdSec;  // 帧间 dt 小于该值视为连续帧
             double rollRmseGate;            // RollPredictor 预测矩阵可用于特殊预测的 RMSE 门限
@@ -563,7 +563,7 @@ public:
     // ⚠ 字段必要性约定（本工程第二处“按开关决定字段是否必填”的例外，第一处是
     //   common.big_small_yaw 的 single / big_small 分支）：
     //   - enabled：**必填**（总开关）；
-    //   - 其余字段：**仅当 enabled = true 时必填**（缺字段 / 非法值直接抛异常）；
+    //   - 其余字段：**仅当 enabled = true 时必填**（缺字段 / 非法值直接抛出异常）；
     //     enabled = false 时可整段省略这些字段，代码既不读取也不校验，两个云台
     //     输出模式保持原有行为（与未引入本功能时**完全一致**）。
     //   - 保持段 / 扫描段下发给电控的 auto_aim_enable 也由本段配置给出
@@ -583,7 +583,7 @@ public:
         double pitchScanRiseTimeSec = 0.0;    // pitch 由下界线性升到上界的时间（秒，> 0）
         double pitchScanFallTimeSec = 0.0;    // pitch 由上界线性回落到下界的时间（秒，> 0）
                                               // （锯齿波周期 = 上升时间 + 回落时间）
-        // 下发给电控的 auto_aim_enable（**两段分别配置**，取代原先的硬编码 true/false）：
+        // 下发给电控的 auto_aim_enable（**两段分别配置**）：
         // 进入扫描前的保持段用 holdAutoAimEnable，扫描段用 scanAutoAimEnable。
         // 扫描段枪口按扫描轨迹运动，电控是否进入自瞄分支由本配置决定；保持段通常
         // 期望关闭。均为 bool，无额外取值校验（仅当 enabled = true 时读取与必填）。
@@ -658,9 +658,9 @@ public:
         // false: 启动时启动全部推理进程并后台闲置（launch_all.py 预启动）
         bool inferProcessLazy;
 
-        // 推理挂死强制重启时限（秒，必填，config: common.infer_force_restart_timeout_sec）：
+        // 推理卡死强制重启时限（秒，必填，config: common.infer_force_restart_timeout_sec）：
         // 推理客户端（InferShmClient）每次推理响应超时（2s）返回时，检测当前时间
-        // 与上一次推理正常返回时间的间隔，超过该时限则判定推理进程挂死，调用
+        // 与上一次推理正常返回时间的间隔，超过该时限则判定推理进程卡死，调用
         // InferProcessManager::forceRestart 强制重启对应的推理进程（见 InferShmClient
         // 文件头注释）。0 = 关闭该功能。
         double inferForceRestartTimeoutSec;
@@ -677,7 +677,7 @@ public:
         // 得到取帧线程的额外延迟。小量级增益下稳态无极限环震荡。
         // ⚠ 给后续修改者：本结构体所有字段均无默认值，必须由机器配置文件的
         //   common.backlog_adaptive_delay 段提供（缺段/缺字段时 RobotConfig::load
-        //   直接抛异常退出），解析见 src/common/RobotConfig.cpp，取值校验也在那里。
+        //   直接抛出异常退出），解析见 src/common/RobotConfig.cpp，取值校验也在那里。
         struct BacklogAdaptiveDelayParams {
             bool   enabled;             // 功能总开关（config: enabled）
             double targetBacklog;       // 目标积压（设定点，>= 1，config: target_backlog）

@@ -77,14 +77,14 @@ int runMode(const std::string& expect) {
 
     RobotTfTree tree;
     check(tree.isBigSmallYaw() == want_big_small, "变换树按配置定型构型");
-    // 越界调用必须抛异常
+    // 越界调用必须抛出异常
     bool threw = false;
     try {
         if (want_big_small) tree.setYaw(0.1f); else tree.setYawBig(0.1f);
     } catch (const std::logic_error&) {
         threw = true;
     }
-    check(threw, "越界调用（不属当前构型的方法）抛 std::logic_error");
+    check(threw, "越界调用（不属当前构型的方法）抛出 std::logic_error");
 
     // 节点链：BIG_SMALL 时应存在 yaw_big / yaw_small 且无 yaw
     const bool has_big = tree.manager().getNode(RobotTfTree::YAW_BIG) != nullptr;
@@ -189,7 +189,7 @@ int runSplit() {
         check(worst < 0.01, "慢速目标：小 yaw 偏离 0 点 < 0.01 rad");
     }
     // B) 快速目标（约 8 rad/s，远超大 yaw 平滑规划器 V=3 rad/s）：必须让大 yaw 无限幅跟进，
-    //    表现为**一段连续的修正**（而非多次独立动作）
+    //    表现为**一段连续的修正**（同一次无限幅运动内部的多个点只计一段）
     {
         std::vector<double> aim(N);
         for (int i = 0; i < N; ++i) aim[i] = 8.0 * (i + 1) * dt;

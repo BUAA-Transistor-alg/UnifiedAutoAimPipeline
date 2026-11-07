@@ -8,7 +8,7 @@
 #include "Armor/EKF/SuperPowerEKF.h"
 
 // 算法内部类型：统一遵循 SuperPower 约定——米、秒、弧度；装甲 angle 为
-// SP 定义的外法线 yaw，而非项目层直接使用的 yaw。
+// SP 定义的外法线 yaw（项目层使用的 yaw 定义与此不同）。
 namespace sp_ekf {
 
 struct ArmorObservation {
@@ -27,7 +27,7 @@ struct PairUpdateConfig {
 };
 
 struct TargetUpdateDebug {
-    // 一次量测更新的关联结果及更新前预测误差，用于诊断而非参与滤波计算。
+    // 一次量测更新的关联结果及更新前预测误差，用于诊断，不参与滤波计算。
     int matched_id = -1;
     bool armor_switched = false;
     Eigen::Vector4d predicted_xyza = Eigen::Vector4d::Zero();

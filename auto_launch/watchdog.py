@@ -14,7 +14,7 @@
 
 用法：
   ./watchdog.py                     # 看门狗模式（systemd 服务用的就是这条）
-  ./watchdog.py --run               # 不用看门狗，只按配置前台跑一次命令行（等价旧版 launch 脚本）
+  ./watchdog.py --run               # 不用看门狗，只按配置前台跑一次命令行
   ./watchdog.py --check             # 只检查配置/环境/可执行文件，不启动
   ./watchdog.py --self-test         # 用内置假程序跑通「心跳→卡死→杀掉→重启」全链路（无需相机）
   ./watchdog.py --print-command     # 打印将要在项目根目录执行的 shell 脚本
@@ -736,7 +736,7 @@ def format_returncode(rc):
 
 
 def run_foreground(cfg, log, args):
-    """--run：不看门狗，只在项目根目录前台执行配置里的命令行（等价旧版 launch 脚本）"""
+    """--run：不看门狗，只在项目根目录前台执行配置里的命令行"""
     script = cfg.shell_script()
     if args.print_command:
         print(f"# 项目根目录: {cfg.project_root}")

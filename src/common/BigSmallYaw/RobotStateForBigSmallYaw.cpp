@@ -182,10 +182,10 @@ RobotState RobotControllerAdapter::state() {
 // 为什么必须做：非可视化消费方（GimbalOutputForBigSmallYaw 的保持/哨兵扫描）会把这两个
 // 方位角当作 MPC 参考下发；若下发 wrap 值，大 yaw 转过半圈后参考与状态会差整圈，
 // MPC 会去追一个假目标。
-// ★ 现状（子模组修复后）：FullStrictPoseBuilder 已把 chassis_azimuth 累计圈数解卷绕，
+// ★ 子模组行为：FullStrictPoseBuilder 把 chassis_azimuth 累计圈数解卷绕，
 //   big/small_azimuth 本身就是多圈连续量，本函数因此退化为**幂等直通**（|Δ| < π，
 //   corr 恒为 0）。保留它是为了：(1) 万一子模组某处仍给出 wrap 值（如未就绪的全零样本、
-//   或将来回退到旧版子模组）；(2) 首个样本的锚定语义不变。**不要**因为"已经连续了"
+//   或子模组其他给出 wrap 值的情况）；(2) 首个样本的锚定语义不变。**不要**因为"已经连续了"
 //   就删掉——它是流水线这一侧的兜底。
 // 只以 strict 的 wrap 值为输入：取与上一拍输出最近的同圈值。
 // 起点一致性：适配器**拥有**这个 tcbs::RobotController，且 state() 在构造后立刻被采样

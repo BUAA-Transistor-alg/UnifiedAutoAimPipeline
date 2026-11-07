@@ -6,104 +6,104 @@
 
 /********************************************************************/
 ///  \~chinese
-///  \name ÕıÈ·Âë¶¨Òå
+///  \name æ­£ç¡®ç å®šä¹‰
 ///  @{
 ///  \~english
 ///  \name Definition of correct code
 ///  @{
-#define MV_OK                       0x00000000  ///< \~chinese ³É¹¦£¬ÎŞ´íÎó             \~english Successed, no error
+#define MV_OK                       0x00000000  ///< \~chinese æˆåŠŸï¼Œæ— é”™è¯¯             \~english Successed, no error
 /// @}
 
 /********************************************************************/
 ///  \~chinese
-///  \name Í¨ÓÃ´íÎóÂë¶¨Òå:·¶Î§0x80000000-0x800000FF
+///  \name é€šç”¨é”™è¯¯ç å®šä¹‰:èŒƒå›´0x80000000-0x800000FF
 ///  @{
 ///  \~english
 ///  \name Definition of General error code
 ///  @{
-#define MV_E_HANDLE                 0x80000000  ///< \~chinese ´íÎó»òÎŞĞ§µÄ¾ä±ú         \~english Error or invalid handle
-#define MV_E_SUPPORT                0x80000001  ///< \~chinese ²»Ö§³ÖµÄ¹¦ÄÜ             \~english Not supported function
-#define MV_E_BUFOVER                0x80000002  ///< \~chinese »º´æÒÑÂú                 \~english Buffer overflow
-#define MV_E_CALLORDER              0x80000003  ///< \~chinese º¯Êıµ÷ÓÃË³Ğò´íÎó         \~english Function calling order error
-#define MV_E_PARAMETER              0x80000004  ///< \~chinese ´íÎóµÄ²ÎÊı               \~english Incorrect parameter
-#define MV_E_RESOURCE               0x80000006  ///< \~chinese ×ÊÔ´ÉêÇëÊ§°Ü             \~english Applying resource failed
-#define MV_E_NODATA                 0x80000007  ///< \~chinese ÎŞÊı¾İ                   \~english No data
-#define MV_E_PRECONDITION           0x80000008  ///< \~chinese Ç°ÖÃÌõ¼şÓĞÎó£¬»òÔËĞĞ»·¾³ÒÑ·¢Éú±ä»¯   \~english Precondition error, or running environment changed
-#define MV_E_VERSION                0x80000009  ///< \~chinese °æ±¾²»Æ¥Åä               \~english Version mismatches
-#define MV_E_NOENOUGH_BUF           0x8000000A  ///< \~chinese ´«ÈëµÄÄÚ´æ¿Õ¼ä²»×ã       \~english Insufficient memory
-#define MV_E_ABNORMAL_IMAGE         0x8000000B  ///< \~chinese Òì³£Í¼Ïñ£¬¿ÉÄÜÊÇ¶ª°üµ¼ÖÂÍ¼Ïñ²»ÍêÕû   \~english Abnormal image, maybe incomplete image because of lost packet
-#define MV_E_LOAD_LIBRARY           0x8000000C  ///< \~chinese ¶¯Ì¬µ¼ÈëDLLÊ§°Ü          \~english Load library failed
-#define MV_E_NOOUTBUF               0x8000000D  ///< \~chinese Ã»ÓĞ¿ÉÊä³öµÄ»º´æ         \~english No Avaliable Buffer
-#define MV_E_ENCRYPT                0x8000000E  ///< \~chinese ¼ÓÃÜ´íÎó                 \~english Encryption error
-#define MV_E_OPENFILE               0x8000000F  ///< \~chinese ´ò¿ªÎÄ¼ş³öÏÖ´íÎó         \~english open file error
-#define MV_E_UNKNOW                 0x800000FF  ///< \~chinese Î´ÖªµÄ´íÎó               \~english Unknown error
+#define MV_E_HANDLE                 0x80000000  ///< \~chinese é”™è¯¯æˆ–æ— æ•ˆçš„å¥æŸ„         \~english Error or invalid handle
+#define MV_E_SUPPORT                0x80000001  ///< \~chinese ä¸æ”¯æŒçš„åŠŸèƒ½             \~english Not supported function
+#define MV_E_BUFOVER                0x80000002  ///< \~chinese ç¼“å­˜å·²æ»¡                 \~english Buffer overflow
+#define MV_E_CALLORDER              0x80000003  ///< \~chinese å‡½æ•°è°ƒç”¨é¡ºåºé”™è¯¯         \~english Function calling order error
+#define MV_E_PARAMETER              0x80000004  ///< \~chinese é”™è¯¯çš„å‚æ•°               \~english Incorrect parameter
+#define MV_E_RESOURCE               0x80000006  ///< \~chinese èµ„æºç”³è¯·å¤±è´¥             \~english Applying resource failed
+#define MV_E_NODATA                 0x80000007  ///< \~chinese æ— æ•°æ®                   \~english No data
+#define MV_E_PRECONDITION           0x80000008  ///< \~chinese å‰ç½®æ¡ä»¶æœ‰è¯¯ï¼Œæˆ–è¿è¡Œç¯å¢ƒå·²å‘ç”Ÿå˜åŒ–   \~english Precondition error, or running environment changed
+#define MV_E_VERSION                0x80000009  ///< \~chinese ç‰ˆæœ¬ä¸åŒ¹é…               \~english Version mismatches
+#define MV_E_NOENOUGH_BUF           0x8000000A  ///< \~chinese ä¼ å…¥çš„å†…å­˜ç©ºé—´ä¸è¶³       \~english Insufficient memory
+#define MV_E_ABNORMAL_IMAGE         0x8000000B  ///< \~chinese å¼‚å¸¸å›¾åƒï¼Œå¯èƒ½æ˜¯ä¸¢åŒ…å¯¼è‡´å›¾åƒä¸å®Œæ•´   \~english Abnormal image, maybe incomplete image because of lost packet
+#define MV_E_LOAD_LIBRARY           0x8000000C  ///< \~chinese åŠ¨æ€å¯¼å…¥DLLå¤±è´¥          \~english Load library failed
+#define MV_E_NOOUTBUF               0x8000000D  ///< \~chinese æ²¡æœ‰å¯è¾“å‡ºçš„ç¼“å­˜         \~english No Avaliable Buffer
+#define MV_E_ENCRYPT                0x8000000E  ///< \~chinese åŠ å¯†é”™è¯¯                 \~english Encryption error
+#define MV_E_OPENFILE               0x8000000F  ///< \~chinese æ‰“å¼€æ–‡ä»¶å‡ºç°é”™è¯¯         \~english open file error
+#define MV_E_UNKNOW                 0x800000FF  ///< \~chinese æœªçŸ¥çš„é”™è¯¯               \~english Unknown error
 /// @}
 
 /********************************************************************/
 ///  \~chinese
-///  \name GenICamÏµÁĞ´íÎó:·¶Î§0x80000100-0x800001FF
+///  \name GenICamç³»åˆ—é”™è¯¯:èŒƒå›´0x80000100-0x800001FF
 ///  @{
 ///  \~english
 ///  \name GenICam Series Error Codes: Range from 0x80000100 to 0x800001FF
 ///  @{
-#define MV_E_GC_GENERIC             0x80000100  ///< \~chinese Í¨ÓÃ´íÎó                 \~english General error
-#define MV_E_GC_ARGUMENT            0x80000101  ///< \~chinese ²ÎÊı·Ç·¨                 \~english Illegal parameters
-#define MV_E_GC_RANGE               0x80000102  ///< \~chinese Öµ³¬³ö·¶Î§               \~english The value is out of range
-#define MV_E_GC_PROPERTY            0x80000103  ///< \~chinese ÊôĞÔ                     \~english Property
-#define MV_E_GC_RUNTIME             0x80000104  ///< \~chinese ÔËĞĞ»·¾³ÓĞÎÊÌâ           \~english Running environment error
-#define MV_E_GC_LOGICAL             0x80000105  ///< \~chinese Âß¼­´íÎó                 \~english Logical error
-#define MV_E_GC_ACCESS              0x80000106  ///< \~chinese ½Úµã·ÃÎÊÌõ¼şÓĞÎó         \~english Node accessing condition error
-#define MV_E_GC_TIMEOUT             0x80000107  ///< \~chinese ³¬Ê±                     \~english Timeout
-#define MV_E_GC_DYNAMICCAST         0x80000108  ///< \~chinese ×ª»»Òì³£                 \~english Transformation exception
-#define MV_E_GC_UNKNOW              0x800001FF  ///< \~chinese GenICamÎ´Öª´íÎó          \~english GenICam unknown error
+#define MV_E_GC_GENERIC             0x80000100  ///< \~chinese é€šç”¨é”™è¯¯                 \~english General error
+#define MV_E_GC_ARGUMENT            0x80000101  ///< \~chinese å‚æ•°éæ³•                 \~english Illegal parameters
+#define MV_E_GC_RANGE               0x80000102  ///< \~chinese å€¼è¶…å‡ºèŒƒå›´               \~english The value is out of range
+#define MV_E_GC_PROPERTY            0x80000103  ///< \~chinese å±æ€§                     \~english Property
+#define MV_E_GC_RUNTIME             0x80000104  ///< \~chinese è¿è¡Œç¯å¢ƒæœ‰é—®é¢˜           \~english Running environment error
+#define MV_E_GC_LOGICAL             0x80000105  ///< \~chinese é€»è¾‘é”™è¯¯                 \~english Logical error
+#define MV_E_GC_ACCESS              0x80000106  ///< \~chinese èŠ‚ç‚¹è®¿é—®æ¡ä»¶æœ‰è¯¯         \~english Node accessing condition error
+#define MV_E_GC_TIMEOUT             0x80000107  ///< \~chinese è¶…æ—¶                     \~english Timeout
+#define MV_E_GC_DYNAMICCAST         0x80000108  ///< \~chinese è½¬æ¢å¼‚å¸¸                 \~english Transformation exception
+#define MV_E_GC_UNKNOW              0x800001FF  ///< \~chinese GenICamæœªçŸ¥é”™è¯¯          \~english GenICam unknown error
 /// @}
 
 /********************************************************************/
 ///  \~chinese
-///  \name GigE_STATUS¶ÔÓ¦µÄ´íÎóÂë:·¶Î§0x80000200-0x800002FF
+///  \name GigE_STATUSå¯¹åº”çš„é”™è¯¯ç :èŒƒå›´0x80000200-0x800002FF
 ///  @{
 ///  \~english
 ///  \name GigE_STATUS Error Codes: Range from 0x80000200 to 0x800002FF
 ///  @{
-#define MV_E_NOT_IMPLEMENTED        0x80000200  ///< \~chinese ÃüÁî²»±»Éè±¸Ö§³Ö         \~english The command is not supported by device
-#define MV_E_INVALID_ADDRESS        0x80000201  ///< \~chinese ·ÃÎÊµÄÄ¿±êµØÖ·²»´æÔÚ     \~english The target address being accessed does not exist
-#define MV_E_WRITE_PROTECT          0x80000202  ///< \~chinese Ä¿±êµØÖ·²»¿ÉĞ´           \~english The target address is not writable
-#define MV_E_ACCESS_DENIED          0x80000203  ///< \~chinese Éè±¸ÎŞ·ÃÎÊÈ¨ÏŞ           \~english No permission
-#define MV_E_BUSY                   0x80000204  ///< \~chinese Éè±¸Ã¦£¬»òÍøÂç¶Ï¿ª       \~english Device is busy, or network disconnected
-#define MV_E_PACKET                 0x80000205  ///< \~chinese ÍøÂç°üÊı¾İ´íÎó           \~english Network data packet error
-#define MV_E_NETER                  0x80000206  ///< \~chinese ÍøÂçÏà¹Ø´íÎó             \~english Network error
-#define MV_E_KEY_VERIFICATION       0x8000020F  ///< \~chinese ÃØÔ¿Ğ£Ñé´íÎó              \~english SwitchKey error
-#define MV_E_IP_CONFLICT            0x80000221  ///< \~chinese Éè±¸IP³åÍ»               \~english Device IP conflict
+#define MV_E_NOT_IMPLEMENTED        0x80000200  ///< \~chinese å‘½ä»¤ä¸è¢«è®¾å¤‡æ”¯æŒ         \~english The command is not supported by device
+#define MV_E_INVALID_ADDRESS        0x80000201  ///< \~chinese è®¿é—®çš„ç›®æ ‡åœ°å€ä¸å­˜åœ¨     \~english The target address being accessed does not exist
+#define MV_E_WRITE_PROTECT          0x80000202  ///< \~chinese ç›®æ ‡åœ°å€ä¸å¯å†™           \~english The target address is not writable
+#define MV_E_ACCESS_DENIED          0x80000203  ///< \~chinese è®¾å¤‡æ— è®¿é—®æƒé™           \~english No permission
+#define MV_E_BUSY                   0x80000204  ///< \~chinese è®¾å¤‡å¿™ï¼Œæˆ–ç½‘ç»œæ–­å¼€       \~english Device is busy, or network disconnected
+#define MV_E_PACKET                 0x80000205  ///< \~chinese ç½‘ç»œåŒ…æ•°æ®é”™è¯¯           \~english Network data packet error
+#define MV_E_NETER                  0x80000206  ///< \~chinese ç½‘ç»œç›¸å…³é”™è¯¯             \~english Network error
+#define MV_E_KEY_VERIFICATION       0x8000020F  ///< \~chinese ç§˜é’¥æ ¡éªŒé”™è¯¯              \~english SwitchKey error
+#define MV_E_IP_CONFLICT            0x80000221  ///< \~chinese è®¾å¤‡IPå†²çª               \~english Device IP conflict
 /// @}
 
 /********************************************************************/
 ///  \~chinese
-///  \name USB_STATUS¶ÔÓ¦µÄ´íÎóÂë:·¶Î§0x80000300-0x800003FF
+///  \name USB_STATUSå¯¹åº”çš„é”™è¯¯ç :èŒƒå›´0x80000300-0x800003FF
 ///  @{
 ///  \~english
 ///  \name USB_STATUS Error Codes: Range from 0x80000300 to 0x800003FF
 ///  @{
-#define MV_E_USB_READ               0x80000300  ///< \~chinese ¶Áusb³ö´í                \~english Reading USB error
-#define MV_E_USB_WRITE              0x80000301  ///< \~chinese Ğ´usb³ö´í                \~english Writing USB error
-#define MV_E_USB_DEVICE             0x80000302  ///< \~chinese Éè±¸Òì³£                 \~english Device exception
-#define MV_E_USB_GENICAM            0x80000303  ///< \~chinese GenICamÏà¹Ø´íÎó          \~english GenICam error
-#define MV_E_USB_BANDWIDTH          0x80000304  ///< \~chinese ´ø¿í²»×ã                 \~english Insufficient bandwidth
-#define MV_E_USB_DRIVER             0x80000305  ///< \~chinese Çı¶¯²»Æ¥Åä»òÕßÎ´×°Çı¶¯   \~english Driver mismatch or unmounted drive
-#define MV_E_USB_UNKNOW             0x800003FF  ///< \~chinese USBÎ´ÖªµÄ´íÎó            \~english USB unknown error
+#define MV_E_USB_READ               0x80000300  ///< \~chinese è¯»usbå‡ºé”™                \~english Reading USB error
+#define MV_E_USB_WRITE              0x80000301  ///< \~chinese å†™usbå‡ºé”™                \~english Writing USB error
+#define MV_E_USB_DEVICE             0x80000302  ///< \~chinese è®¾å¤‡å¼‚å¸¸                 \~english Device exception
+#define MV_E_USB_GENICAM            0x80000303  ///< \~chinese GenICamç›¸å…³é”™è¯¯          \~english GenICam error
+#define MV_E_USB_BANDWIDTH          0x80000304  ///< \~chinese å¸¦å®½ä¸è¶³                 \~english Insufficient bandwidth
+#define MV_E_USB_DRIVER             0x80000305  ///< \~chinese é©±åŠ¨ä¸åŒ¹é…æˆ–è€…æœªè£…é©±åŠ¨   \~english Driver mismatch or unmounted drive
+#define MV_E_USB_UNKNOW             0x800003FF  ///< \~chinese USBæœªçŸ¥çš„é”™è¯¯            \~english USB unknown error
 /// @}
 
 /********************************************************************/
 ///  \~chinese
-///  \name Éı¼¶Ê±¶ÔÓ¦µÄ´íÎóÂë:·¶Î§0x80000400-0x800004FF
+///  \name å‡çº§æ—¶å¯¹åº”çš„é”™è¯¯ç :èŒƒå›´0x80000400-0x800004FF
 ///  @{
 ///  \~english
 ///  \name Upgrade Error Codes: Range from 0x80000400 to 0x800004FF
 ///  @{
-#define MV_E_UPG_FILE_MISMATCH      0x80000400  ///< \~chinese Éı¼¶¹Ì¼ş²»Æ¥Åä           \~english Firmware mismatches
-#define MV_E_UPG_LANGUSGE_MISMATCH  0x80000401  ///< \~chinese Éı¼¶¹Ì¼şÓïÑÔ²»Æ¥Åä       \~english Firmware language mismatches
-#define MV_E_UPG_CONFLICT           0x80000402  ///< \~chinese Éı¼¶³åÍ»£¨Éè±¸ÒÑ¾­ÔÚÉı¼¶ÁËÔÙ´ÎÇëÇóÉı¼¶¼´·µ»Ø´Ë´íÎó£© \~english Upgrading conflicted (repeated upgrading requests during device upgrade)
-#define MV_E_UPG_INNER_ERR          0x80000403  ///< \~chinese Éı¼¶Ê±Éè±¸ÄÚ²¿³öÏÖ´íÎó   \~english Camera internal error during upgrade
-#define MV_E_UPG_UNKNOW             0x800004FF  ///< \~chinese Éı¼¶Ê±Î´Öª´íÎó           \~english Unknown error during upgrade
+#define MV_E_UPG_FILE_MISMATCH      0x80000400  ///< \~chinese å‡çº§å›ºä»¶ä¸åŒ¹é…           \~english Firmware mismatches
+#define MV_E_UPG_LANGUSGE_MISMATCH  0x80000401  ///< \~chinese å‡çº§å›ºä»¶è¯­è¨€ä¸åŒ¹é…       \~english Firmware language mismatches
+#define MV_E_UPG_CONFLICT           0x80000402  ///< \~chinese å‡çº§å†²çªï¼ˆè®¾å¤‡å·²ç»åœ¨å‡çº§äº†å†æ¬¡è¯·æ±‚å‡çº§å³è¿”å›æ­¤é”™è¯¯ï¼‰ \~english Upgrading conflicted (repeated upgrading requests during device upgrade)
+#define MV_E_UPG_INNER_ERR          0x80000403  ///< \~chinese å‡çº§æ—¶è®¾å¤‡å†…éƒ¨å‡ºç°é”™è¯¯   \~english Camera internal error during upgrade
+#define MV_E_UPG_UNKNOW             0x800004FF  ///< \~chinese å‡çº§æ—¶æœªçŸ¥é”™è¯¯           \~english Unknown error during upgrade
 /// @}
 
 #endif //_MV_ERROR_DEFINE_H_

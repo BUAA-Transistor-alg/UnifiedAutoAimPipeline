@@ -491,7 +491,7 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     for (auto& g : gimbals_) {
         g->setChassisPosition(0.0f, 0.0f, 0.0f);
         // 底盘位姿 + **当前构型**的关节角包（大小 yaw 构型下自动写 θ_big / θ_small / pitch；
-        // 包未填充（NaN）时抛异常，不会静默用 NaN 解算）
+        // 包未填充（NaN）时抛出异常，不会静默用 NaN 解算）
         applyExtraInputInfoToTree(g->tree(), in.info);
         g->setChassisPosition(0.0f, 0.0f, 0.0f);   // 弹道解算固定以底盘为世界原点
         // 弹速恒为合法值：main 电控遥测构造时给合法初值、写入方只写有效值
@@ -921,7 +921,7 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     // ── 慢目标瞄准点滞回：记录本帧序列“第一个值”选中的瞄准点索引，作为下一帧
     // 第一个值的粘滞点（state_ 已在来源切换时整体清零；首点无效 → -1 = 不粘）。
     // 无论本帧是否启用滞回都记录（下一帧可能切换为慢目标需要基准）。
-    // fast_target 帧不记录（置 -1）：本帧瞄准的是“对齐点”而非某块原生装甲板
+    // fast_target 帧不记录（置 -1）：本帧瞄准的是“对齐点”，没有对应的原生装甲板
     // （item.target_index = kFastAimTargetIndex），不应作为下一帧慢目标粘滞的基准；
     // 判定基准取“本帧是否判定为 fast_target”（即使极端退路下走回逐点解算也不记）。
     state_.last_first_target_index =

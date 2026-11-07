@@ -56,7 +56,7 @@ public:
         int    unlimited_episodes = 0;      // 本帧“无限幅运动”段数（**连续被修正的点算一段**；
                                             // 该指标才是“无限幅运动尽可能少”的度量：
                                             // 目标持续快于大 yaw 平滑能力时是一段连续修正，
-                                            // 而不是多次独立动作）
+                                            // 同一次无限幅运动内部的多个点只计一段）
         bool   over_limit = false;          // 本帧是否发生过越界修正
         double soft_min = 0.0, soft_max = 0.0;   // 本次使用的小 yaw 软限位边界（rad）
         double theta_small_max_abs = 0.0;   // 本帧 |θ_small| 最大值（诊断）

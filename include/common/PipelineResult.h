@@ -140,8 +140,8 @@ struct PipelineResult {
     // 瞄准点不参与目标选择）+ 目标旋转角速度及其可用标志（Predictor::target_omega /
     // omega_valid，供 predict() 判定慢目标；Armor 流水线填写，其余保持不可用）。
     // predictor_valid == false 表示本帧无可用目标预测器：main 弹道线程此时调用
-    // sequence_predictor.invalidate() 而非 predict()（predict_result 保持无效 →
-    // 输出模式进入保持模式）。
+    // sequence_predictor.invalidate()（predict_result 保持无效 → 输出模式进入
+    // 保持模式）。
     bool predictor_valid = false;
     SequencePredictor::Predictor predictor;
 

@@ -42,7 +42,7 @@ void InferShmClient::attachSharedMemory() {
         shm_ = nullptr;
         throw std::runtime_error(std::string("InferShmClient: shmat failed: ") + strerror(errno));
     }
-    // 清理旧的响应计数，避免上次请求的残留响应被误读
+    // 清理残留的响应计数，避免上次请求的响应被误读
     shm_->result_batches = 0;
 }
 
@@ -68,7 +68,7 @@ void InferShmClient::maybeTriggerForceRestart() {
     const auto now = steady_clock::now();
     const auto last_ok = last_ok_.load(std::memory_order_relaxed);
     if (duration_cast<duration<double>>(now - last_ok).count() <= force_restart_timeout_sec_) {
-        return;   // 距上次正常返回未超时限：不算挂死
+        return;   // 距上次正常返回未超时限：不算卡死
     }
 
     // 节流：同一客户端两次强制重启至少间隔配置时限，避免重启期间反复触发
@@ -86,7 +86,7 @@ void InferShmClient::maybeTriggerForceRestart() {
     }
     if (h) {
         std::cout << "[InferShmClient] 距上一次推理正常返回超过 "
-                  << force_restart_timeout_sec_ << "s，判定推理进程挂死，"
+                  << force_restart_timeout_sec_ << "s，判定推理进程卡死，"
                   << "触发强制重启。" << std::endl;
         h();
     }
@@ -125,7 +125,7 @@ bool InferShmClient::runInference(
 
     // 3. 等待响应（推理进程正常时毫秒级返回；用有界超时避免推理进程异常
     //    时本进程永久阻塞——超时则丢弃本批并返回空，由流水线按空结果处理；
-    //    超时且距上次正常返回超过配置时限时判定挂死并触发强制重启）
+    //    超时且距上次正常返回超过配置时限时判定卡死并触发强制重启）
     {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -133,7 +133,7 @@ bool InferShmClient::runInference(
         if (sem_timedwait(resp_sem_, &ts) != 0) {
             std::cerr << "[InferShmClient] sem_timedwait(resp) failed: "
                       << strerror(errno) << "（推理进程未响应，丢弃本批）" << std::endl;
-            if (errno == ETIMEDOUT) maybeTriggerForceRestart();   // 仅响应超时（疑似挂死）时检测
+            if (errno == ETIMEDOUT) maybeTriggerForceRestart();   // 仅响应超时（疑似卡死）时检测
             return false;
         }
     }
@@ -169,7 +169,7 @@ bool InferShmClient::runInference(
     }
     const bool ok = (out_idx == outs.size());
 
-    // 5. 推理正常返回：记录时间（挂死检测从此刻重新计时；正常返回不计算间隔）
+    // 5. 推理正常返回：记录时间（卡死检测从此刻重新计时；正常返回不计算间隔）
     if (ok) {
         const auto now = std::chrono::steady_clock::now();
         last_ok_.store(now, std::memory_order_relaxed);
@@ -185,7 +185,7 @@ void InferShmClient::reconnect() {
     if (resp_sem_) { sem_close(resp_sem_); resp_sem_ = nullptr; }
     openSemaphores();
     if (shm_) shm_->result_batches = 0;   // 清理残留响应计数
-    // 推理进程（重新）就绪：以当前时刻作为"上次推理正常返回"，挂死检测重新计时
+    // 推理进程（重新）就绪：以当前时刻作为"上次推理正常返回"，卡死检测重新计时
     const auto now = std::chrono::steady_clock::now();
     last_ok_.store(now, std::memory_order_relaxed);
     last_ok_valid_.store(true, std::memory_order_relaxed);
