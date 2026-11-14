@@ -59,7 +59,7 @@ else
 fi
 
 # --- 5. Python 依赖安装 ---
-pip install ultralytics==8.4.60 numpy opencv-python matplotlib pyyaml \
+pip3 install ultralytics==8.4.60 numpy opencv-python matplotlib pyyaml \
     onnx onnxslim onnxruntime openvino
 
 echo "全部安装完成。"
