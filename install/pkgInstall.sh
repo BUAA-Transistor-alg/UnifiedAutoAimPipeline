@@ -64,4 +64,16 @@ pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip3 install ultralytics==8.4.60 numpy opencv-python matplotlib pyyaml \
     onnx onnxslim onnxruntime openvino
 
-echo "全部安装完成。"
+echo "修改串口通信权限..."
+
+sudo usermod -a -G dialout $USER
+sudo chmod a+rw /dev/ttyACM0
+cd /etc/udev/rules.d
+sudo touch 99-usb-serial.rules
+KERNEL=="ttyACM0", MODE="0666"
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+echo "修改完成"
+
+echo "请手动安装MVS（已安装则请忽略）"
