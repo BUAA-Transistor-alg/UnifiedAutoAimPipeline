@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "common/Ballistic/GimbalSolver.h"
+#include "common/SelfMotionState.h"
 #include "common/BigSmallYaw/BigSmallYawSplitter.h"
 #include "common/BigSmallYaw/BigSmallYawTrajectoryPlanner.h"
 #include "common/RobotConfig.h"
@@ -97,7 +98,7 @@ int runMode(const std::string& expect) {
     }
 
     // 瞄准解算几何：解出的 yaw 应使 muzzle +y 射线在水平面内指向目标
-    GimbalSolver solver;
+    GimbalSolver solver(std::make_shared<SelfMotionState>());
     const double chassis_yaw = 0.0, pitch = 0.0;
     const float big_joint = want_big_small ? 0.30f : 0.0f;
     const float small_joint_start = want_big_small ? 0.05f : 0.20f;

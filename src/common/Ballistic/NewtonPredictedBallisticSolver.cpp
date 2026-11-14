@@ -42,7 +42,8 @@ NewtonPredictedBallisticSolver::NewtonPredictedBallisticSolver(
 bool NewtonPredictedBallisticSolver::validInput(
     const Predictor& predictor, double extra_predict_time, const LaunchGeometry& geometry) const {
     return predictor && std::isfinite(extra_predict_time) && extra_predict_time >= 0.0 &&
-        geometry.chassis_position.allFinite() && geometry.chassis_rotation.allFinite() &&
+        geometry.chassis_position.allFinite() && geometry.chassis_velocity.allFinite() &&
+        geometry.chassis_rotation.allFinite() &&
         geometry.yaw_position.allFinite() && geometry.pitch_position.allFinite() &&
         geometry.muzzle_offset.allFinite() && positiveFinite(geometry.bullet_velocity) &&
         std::isfinite(geometry.current_yaw) && std::isfinite(geometry.current_pitch) &&

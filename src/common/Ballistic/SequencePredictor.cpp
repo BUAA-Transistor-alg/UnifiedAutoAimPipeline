@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 
 #include "common/RobotConfig.h"
 #include "common/Debug/AimSwitchLog.h"
@@ -112,8 +113,9 @@ PredictedBallisticSolver::Result selectByTargetIndex(
 }
 } // namespace
 
-SequencePredictor::SequencePredictor()
-    : extra_predict_time_(RobotConfig::instance().common.predictedBallistic.extraPredictTime),
+SequencePredictor::SequencePredictor(std::shared_ptr<SelfMotionState> self_motion)
+    : self_motion_(std::move(self_motion)),
+      extra_predict_time_(RobotConfig::instance().common.predictedBallistic.extraPredictTime),
       dt_control_(RobotConfig::instance().common.dtControl()),
       pitch_bias_(RobotConfig::instance().common.predictSequence.pitchBias),
       yaw_bias_(RobotConfig::instance().common.predictSequence.yawBias),
@@ -131,6 +133,9 @@ SequencePredictor::SequencePredictor()
       fire_angle_length_(RobotConfig::instance().common.predictSequence.fireAngleLength),
       min_rotation_tolerance_angle_(
           RobotConfig::instance().common.predictSequence.minRotationToleranceAngle) {
+    if (!self_motion_) {
+        throw std::invalid_argument("SequencePredictor: SelfMotionState 指针为空");
+    }
     // 默认线程数 min(硬件核数/2, 4)；为每个工作线程准备一个独立的
     // GimbalSolver + 各自绑定的 PredictedBallisticSolver
     const size_t T = pool_.size();
@@ -138,7 +143,7 @@ SequencePredictor::SequencePredictor()
     solvers_.reserve(T);
     newton_solvers_.reserve(T);
     for (size_t i = 0; i < T; ++i) {
-        gimbals_.push_back(std::make_shared<GimbalSolver>());
+        gimbals_.push_back(std::make_shared<GimbalSolver>(self_motion_));
         solvers_.emplace_back(gimbals_.back());
         newton_solvers_.emplace_back(gimbals_.back());
     }
@@ -487,13 +492,21 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     const double predictor_age = std::chrono::duration<double>(
         timestamp - predictor.timestamp).count();
     const double extra_predict_time = extra_predict_time_ + predictor_age;
+    // ── 预测点对应的发射时刻（相对本次调用时刻）：返回点索引 ret_idx 在第
+    //    (ret_idx+1)·dt_control 后发射（时间轴与下方 point_time 的 (i+1)·dt 一致）──
+    const auto launchTimeOf = [&](int ret_idx) {
+        return timestamp + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                               std::chrono::duration<double>((ret_idx + 1) * dt_control_));
+    };
     // ── 同步所有线程的独立 GimbalSolver 树（预测弹道解算依赖当前 muzzle 原点与弹速）──
+    // 自身位置/速度按发射时刻查询 SelfMotionState：这里先按第一个返回点的发射时刻同步，
+    // 供 yaw / muzzle 原点与首点几何使用；各解算分支再按自己的 ret_idx 重新查询。
+    // 当前 positionAt 返回最新位置、velocityAt 返回 0（占位），接口按时间点调用。
     for (auto& g : gimbals_) {
-        g->setChassisPosition(0.0f, 0.0f, 0.0f);
         // 底盘位姿 + **当前构型**的关节角包（大小 yaw 构型下自动写 θ_big / θ_small / pitch；
         // 包未填充（NaN）时抛出异常，不会静默用 NaN 解算）
         applyExtraInputInfoToTree(g->tree(), in.info);
-        g->setChassisPosition(0.0f, 0.0f, 0.0f);   // 弹道解算固定以底盘为世界原点
+        g->setSelfMotionTime(launchTimeOf(0));   // 底盘位置（自身上下文）+ 自身平动速度
         // 弹速恒为合法值：main 电控遥测构造时给合法初值、写入方只写有效值
         //（见 common/McuTelemetry.h），因此这里无条件同步
         g->setBulletVelocity(in.bullet_velocity);
@@ -505,6 +518,8 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
     // NEAREST 判据所需的当前 muzzle 原点（world 系）：全部线程树已同步且一致，
     // 目标选择在各 worker 内用该值计算（与原来 solve() 内部判据一致）
     const cv::Vec3f muzzle_origin = gimbals_.front()->muzzleWorldOrigin();
+    // 第一个返回点发射时刻的自身位置：逐点原点换算的基准（占位实现返回最新位置）
+    const cv::Vec3f self_pos_first = self_motion_->positionAt(launchTimeOf(0));
 
     // ── 1. 精确解算点集合（中低速 Armor 按板并行，其余按时间点并行）──
     // 返回序列 = [前 n 个前导精确点（索引 0..n-1）] 后接 [原划分序列
@@ -581,11 +596,8 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         }
         if (plate_radius.empty()) fast_target = false;   // 该时刻无瞄准点：退回原路径
     }
-    // 包装预测器（整个 fast 帧共用一个：按值捕获，工作线程并发调用安全）
-    const PredictedBallisticSolver::Predictor fast_predictor = fast_target
-        ? wrapFastAimPredictor(predictor.function, plate_radius, yaw_world_origin)
-        : PredictedBallisticSolver::Predictor{};
-
+    // 包装预测器在 fast 分支内按该返回点发射时刻的 yaw 原点逐点构造（plate_radius 共用）：
+    // 瞄准点使用的 yaw 原点因此跟随自身位置轨迹，不再固定为第一个点。
     std::vector<std::vector<PredictedBallisticSolver::Result>> candidates_all((size_t)U);
     std::vector<PredictedBallisticSolver::Result> fast_solved((size_t)U);   // 快目标帧的精确点结果
     std::vector<int> fast_plate((size_t)U, -1);    // 快目标帧各精确点选中的真板序号
@@ -600,6 +612,8 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         std::vector<NewtonPredictedBallisticSolver::LaunchGeometry> geometries;
         geometries.reserve((size_t)U);
         for (int ret_idx : solve_idx) {
+            // 该返回点发射时刻的自身位置/速度（写入几何快照：底盘位置 + 弹丸初速度平台项）
+            gimbals_.front()->setSelfMotionTime(launchTimeOf(ret_idx));
             const float yaw_big = in.big_small ? yaw_big_seq[(size_t)ret_idx]
                                                : std::numeric_limits<float>::quiet_NaN();
             geometries.push_back(gimbals_.front()->captureLaunchGeometry(yaw_big));
@@ -634,6 +648,8 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         pool_.run_parallel(U, [&](int idx) {
             const int wid = workerGimbalIndex(next_gimbal_);
             const int ret_idx = solve_idx[(size_t)idx];   // 该实际计算点在返回点序列中的索引
+            // 该返回点发射时刻的自身位置/速度（写入该 worker 独占的云台树与几何快照）
+            gimbals_[(size_t)(wid % T)]->setSelfMotionTime(launchTimeOf(ret_idx));
             // 大小 yaw 构型：该点用“该时刻大 yaw 实际会到哪”求有效 yaw 旋转中心（θ_big(t)）；
             // 单 yaw 构型：传 NaN ⇒ 走原路径（用树当前 yaw 关节角）
             const float yaw_big = in.big_small ? yaw_big_seq[(size_t)ret_idx]
@@ -642,13 +658,19 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
                 // 该精确点只解算这一次：包装预测器（瞄准对齐位置）+ 原迭代求解器
                 // （内部照常迭代弹道飞行时间；中心平动由包装预测器在每次预测时刻重新给出，
                 //   因此提前量里已包含中心平动）
+                // 该返回点发射时刻的 yaw 原点（自身位置轨迹的逐点值）
+                const cv::Vec3f self_offset =
+                    self_motion_->positionAt(launchTimeOf(ret_idx)) - self_pos_first;
+                const cv::Vec3f yaw_origin_u = yaw_world_origin + self_offset;
+                const PredictedBallisticSolver::Predictor fast_predictor_u =
+                    wrapFastAimPredictor(predictor.function, plate_radius, yaw_origin_u);
                 const std::vector<PredictedBallisticSolver::Result> fast_cands =
                     solvers_[(size_t)(wid % T)].solve(
-                        fast_predictor, extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big,
+                        fast_predictor_u, extra_predict_time + (ret_idx + 1) * dt_control_, yaw_big,
                         predictor.masked_indices);   // 屏蔽板：包装预测器下标不变，同样跳过解算
                 // 各板在自己的总预测时间上的实际中心瞄准夹角 → 选板
                 // （异号正在靠近枪线，或 |夹角| 已在容差内刚过枪线也打得到）
-                const int ci = selectFastAimPlate(fast_cands, predictor, yaw_world_origin,
+                const int ci = selectFastAimPlate(fast_cands, predictor, yaw_origin_u,
                                                   plate_tolerance, predictor.target_omega);
                 PredictedBallisticSolver::Result r;
                 if (ci >= 0) {
@@ -725,12 +747,19 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
         return Result{};
     }
 
+    // yaw / muzzle 原点按第一个返回点的发射时刻求得（见上方同步）；其余返回点用
+    // SelfMotionState 在该点发射时刻的位置补上相对位移（self_pos_first 见上方）。
     for (int u = 0; u < U && !fast_target; ++u) {
         if (power_rune_mode) {
             // PowerRune：全帧统一使用决策器选出的靶点
             solved[(size_t)u] = selectByTargetIndex(candidates_all[(size_t)u], power_rune_target);
             continue;
         }
+        // 该返回点发射时刻的自身位置相对首点的位移（用于把原点换算到该时刻）
+        const cv::Vec3f self_offset =
+            self_motion_->positionAt(launchTimeOf(solve_idx[(size_t)u])) - self_pos_first;
+        const cv::Vec3f muzzle_origin_u = muzzle_origin + self_offset;
+        const cv::Vec3f yaw_origin_u = yaw_world_origin + self_offset;
         std::vector<double> angles;
         const std::vector<double>* angles_ptr = nullptr;
         if (angle_filter_enabled && !candidates_all[(size_t)u].empty()) {
@@ -740,12 +769,12 @@ SequencePredictor::Result SequencePredictor::predictImpl(const InputSnapshot& in
                 // 与瞄准点同时预测出来的车体中心（同刻预测中心）
                 const PredictedBallisticSolver::PredictorResult pr = predictor.function(c.predict_time);
                 const cv::Vec3f center(pr.first.x, pr.first.y, pr.first.z);
-                angles[ci] = centerAimAngle(center, c.predicted_point, yaw_world_origin);
+                angles[ci] = centerAimAngle(center, c.predicted_point, yaw_origin_u);
             }
             angles_ptr = &angles;
         }
         solved[(size_t)u] = selectTargetResult(
-            candidates_all[(size_t)u], muzzle_origin, predictor,
+            candidates_all[(size_t)u], muzzle_origin_u, predictor,
             aim_stick_enabled ? sticky_index : -1,
             aim_stick_enabled ? aim_stick_delta : 0.0,
             angles_ptr);

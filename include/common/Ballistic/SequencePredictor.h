@@ -92,6 +92,7 @@
 
 #include "tcs/RobotController.h"
 #include "common/BigSmallYaw/RobotStateForBigSmallYaw.h"
+#include "common/SelfMotionState.h"
 #include "common/TaskPool.h"
 #include "common/Ballistic/GimbalSolver.h"
 #include "common/Ballistic/PredictedBallisticSolver.h"
@@ -239,8 +240,10 @@ public:
                                                   // 与选板所用容差是同一份
     };
 
-    /// 构造时创建内部 GimbalSolver，序列/弹道/偏置参数从 RobotConfig common 段读取
-    SequencePredictor();
+    /// 构造时创建内部 GimbalSolver，序列/弹道/偏置参数从 RobotConfig common 段读取。
+    /// self_motion：自身运动状态提供器（非空）；弹道解算在各预测点对应的发射时刻
+    /// 通过它查询自身位置/速度（未来位置轨迹 / 未来速度轨迹）。
+    explicit SequencePredictor(std::shared_ptr<SelfMotionState> self_motion);
 
     /// 同步内部树（st.strict + 传入的弹速）并生成预测云台控制序列 + 瞄准点序列。
     /// 弹速不再从状态包读取：由 main 维护的电控遥测（common/McuTelemetry.h）作为
@@ -333,6 +336,9 @@ public:
     std::shared_ptr<GimbalSolver> gimbal() const { return gimbals_.front(); }
 
 private:
+    // 自身运动状态提供器（main 构造并注入；GimbalSolver 也各持一份 shared_ptr）
+    std::shared_ptr<SelfMotionState> self_motion_;
+
     // 为每个工作线程准备一个独立的 GimbalSolver（内部 TaskPool 互不竞争）
     std::vector<std::shared_ptr<GimbalSolver>> gimbals_;
     std::vector<PredictedBallisticSolver> solvers_;  // 高速 Armor / PowerRune 保留旧算法

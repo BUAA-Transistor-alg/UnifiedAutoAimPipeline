@@ -43,6 +43,7 @@
 #include <vector>
 
 #include "common/Ballistic/SequencePredictor.h"
+#include "common/SelfMotionState.h"
 #include "common/RobotConfig.h"
 #include "tcs/RobotController.h"
 
@@ -333,7 +334,7 @@ int main() {
                 cfg.common.predictSequence.interpolationRefine,
                 cfg.common.predictSequence.exactLeadPoints);
 
-    SequencePredictor sp;
+    SequencePredictor sp(std::make_shared<SelfMotionState>());
     const auto kNow = std::chrono::steady_clock::now();   // predict 与快照时间戳共用同一时刻
 
     Env env;

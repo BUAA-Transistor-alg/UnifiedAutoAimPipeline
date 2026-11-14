@@ -50,6 +50,7 @@
 #include "common/BigSmallYaw/RobotStateForBigSmallYaw.h"
 #include "common/TransformTree/RobotTfTree.h"
 #include "common/Ballistic/SequencePredictor.h"
+#include "common/SelfMotionState.h"
 #include "common/LatestSlot.h"
 #include "common/McuTelemetry.h"
 #include "common/RobotConfig.h"
@@ -885,7 +886,12 @@ int main(int argc, char** argv) {
     // 预测瞄准点通用类：任何情况下（无论输出模式）每帧调用，生成预测云台控制
     // 序列 + 瞄准点序列；结果写入当帧 OutputContext（predict_result），由
     // GimbalOutput 消费控制序列、VisualizeOutput 消费首个瞄准点（两者均不持有本类）
-    SequencePredictor sequence_predictor;
+    // 自身运动状态提供器：取帧线程写、弹道线程按预测时刻读（线程安全）。
+    // 析构顺序：先于 sequence_predictor 声明 ⇒ 后于它析构；SequencePredictor 与各
+    // GimbalSolver 内部还各持一份 shared_ptr，且 input/ballistic 线程在 main 返回前
+    // 均已 join，因此不会出现对象先于使用者析构。
+    auto self_motion_state = std::make_shared<SelfMotionState>();
+    SequencePredictor sequence_predictor(self_motion_state);
     // 相机投影（与输入模式绑定，两个流水线/可视化共用）
     auto camera_proj = std::make_shared<CameraProjection>(
         camera_params.cameraMatrix, camera_params.distCoeffs,
@@ -1163,6 +1169,17 @@ int main(int argc, char** argv) {
             TimePoint frame_timestamp;
             ExtraInputInfo extra_info;
             if (!input_mode->getNextFrame(frame, frame_timestamp, extra_info)) break;
+
+            // 自身运动状态：位置取与帧同步的 extra_info 底盘坐标（当前相机/大小 yaw
+            // 输入恒为 0，视频回放可取记录值），时间戳取该帧时间戳。
+            // 速度/加速度当前为占位（返回 0），由 SelfMotionState 内部实现决定。
+            {
+                SelfPositionSample self_sample;
+                self_sample.position = cv::Vec3f(static_cast<float>(extra_info.chassis_x),
+                                                 static_cast<float>(extra_info.chassis_y),
+                                                 static_cast<float>(extra_info.chassis_z));
+                self_motion_state->update(self_sample, frame_timestamp);
+            }
 
             // 无论输入源是否产生新帧，都把 frame_timestamp 发布到共享变量：
             // 无新帧时各输入模式也会更新 frame_timestamp 与 extra_info（约定见
