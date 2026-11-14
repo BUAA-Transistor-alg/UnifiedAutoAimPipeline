@@ -10,11 +10,16 @@ TEMP_DIR="$SCRIPT_DIR/pkg_temp"
 # 确保目录存在
 mkdir -p "$TEMP_DIR"
 
+# 0. 更新系统 CA 证书库
+sudo apt update
+sudo apt install --reinstall ca-certificates
+sudo update-ca-certificates --fresh
+
 # --- 1. 下载并安装 GPG 密钥 (使用新方法) ---
 KEY_URL="https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB"
 KEY_FILE="$TEMP_DIR/intel-gpg-key.pub"
 # 将密钥去armor后保存到 trusted.gpg.d 目录
-wget -O "$KEY_FILE" "$KEY_URL" --no-check-certificate
+wget -O "$KEY_FILE" "$KEY_URL" # --no-check-certificate
 sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/intel.gpg "$KEY_FILE"
 # 可选：删除临时密钥文件
 rm -f "$KEY_FILE"
@@ -38,7 +43,7 @@ if grep -q "GenuineIntel" /proc/cpuinfo; then
     echo "检测到 Intel 平台，开始安装 Intel GPU 驱动..."
 
     wget -qO - https://repositories.intel.com/gpu/intel-graphics.key | \
-        sudo gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg --no-check-certificate
+        sudo gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg # --no-check-certificate
 
     echo "deb [arch=amd64,i386 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy unified" | \
         sudo tee /etc/apt/sources.list.d/intel-gpu-jammy.list
