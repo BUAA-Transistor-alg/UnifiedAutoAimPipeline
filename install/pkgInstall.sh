@@ -36,7 +36,8 @@ sudo apt install -y openvino-2024.0.0
 # 安装开发依赖
 sudo apt install -y cmake g++ libopencv-dev libeigen3-dev libceres-dev libyaml-cpp-dev \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-    libudev-dev pkg-config libdw-dev build-essential
+    libudev-dev pkg-config libdw-dev build-essential \
+    python3-pip
 
 # --- 4. 检测是否为 Intel 机器，若是则安装 Intel GPU 驱动 ---
 if grep -q "GenuineIntel" /proc/cpuinfo; then
