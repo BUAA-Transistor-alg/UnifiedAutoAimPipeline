@@ -29,7 +29,7 @@ sudo apt update
 sudo apt install -y openvino-2024.0.0
 
 # 安装开发依赖
-sudo apt install -y libopencv-dev libeigen3-dev libceres-dev libyaml-cpp-dev \
+sudo apt install -y cmake g++ libopencv-dev libeigen3-dev libceres-dev libyaml-cpp-dev \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libudev-dev pkg-config libdw-dev build-essential
 
