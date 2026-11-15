@@ -136,8 +136,8 @@ def convert(source, target):
         args.update(batch="dynamic", dynamic=True, dynamic_spatial=True)
         metadata["args"] = repr(args)
     onnx.helper.set_model_props(model, metadata)
-    # Original mixed-precision export places input Cast nodes after consumers.
-    # Stable topological ordering changes no operations or weights.
+    # 原始混合精度导出的输入 Cast 节点位于消费节点之后；
+    # 按稳定的拓扑顺序重排，不改变任何算子或权重。
     known = {v.name for v in model.graph.input} | {v.name for v in model.graph.initializer} | {""}
     pending = list(model.graph.node)
     ordered = []
@@ -164,8 +164,8 @@ def verify(source, target):
     settings = {"INFERENCE_PRECISION_HINT": "f32", "INFERENCE_NUM_THREADS": 2}
     reports = []
     for height, width in ((480, 640), (320, 320), (384, 512), (640, 480), (640, 640)):
-        # Independent static reference: specialize the original export's constants
-        # with numpy grids. Its Conv/Reshape weights and operators remain original.
+        # 独立的静态对照模型：用 numpy 生成的网格替换原始导出中的常量；
+        # 其 Conv/Reshape 权重与算子保持原样。
         reference_model = onnx.load(str(source))
         reference_model.graph.input[0].type.tensor_type.shape.dim[2].dim_value = height
         reference_model.graph.input[0].type.tensor_type.shape.dim[3].dim_value = width

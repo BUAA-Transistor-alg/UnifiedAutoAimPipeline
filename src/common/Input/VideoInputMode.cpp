@@ -27,7 +27,7 @@ VideoInputMode::VideoInputMode(const string& video_path,
     }
     cout << endl;
 
-    // Initialize default dt from fps
+    // 由帧率初始化默认 dt
     next_dt_ = 1.0f / static_cast<float>(fps_);
 
     if (!extra_info_path_.empty()) {
@@ -50,19 +50,19 @@ void VideoInputMode::parseExtraInputInfoFile() {
     while (getline(file, line)) {
         line_no++;
 
-        // Trim leading/trailing whitespace
+        // 去掉首尾空白字符
         size_t start = 0;
         while (start < line.size() && isspace(static_cast<unsigned char>(line[start])))
             start++;
         size_t end = line.size();
         while (end > start && isspace(static_cast<unsigned char>(line[end - 1])))
             end--;
-        if (start >= end) continue;  // empty line
+        if (start >= end) continue;  // 空行
 
         string trimmed = line.substr(start, end - start);
         if (trimmed[0] == '#') continue;  // 注释 / 表头
 
-        // Split by whitespace (space or tab)
+        // 按空白字符（空格或制表符）切分
         istringstream iss(trimmed);
         vector<string> tokens;
         string token;
@@ -156,7 +156,7 @@ void VideoInputMode::parseExtraInputInfoFile() {
                      << " parse error: " << e.what() << ", skipping: " << trimmed << endl;
             }
         } else {
-            // v1（原格式）
+            // v1 格式
             if (tokens.size() < 8) {
                 cerr << "[VideoInputMode] WARNING: Extra info line " << line_no
                      << " has insufficient fields (" << tokens.size()
@@ -207,20 +207,20 @@ bool VideoInputMode::getNextFrame(cv::Mat& frame,
     while (true) {
         // ── 读一帧视频（含到达末尾时的循环重绕）──
         if (!cap_.read(frame) || frame.empty()) {
-            // Reached end of video — loop back to start
+            // 视频到达末尾，重绕到开头循环播放
             cout << "[VideoInputMode] End of video reached, looping to start." << endl;
             cap_.set(cv::CAP_PROP_POS_FRAMES, 0);
             loop_frame_index_ = 0;
             warned_overflow_ = false;
 
-            // Check if loop_frame_index_ (0) exceeds extra_info_max_frame_
+            // 检查 loop_frame_index_（此时为 0）是否超过 extra_info_max_frame_
             if (!extra_info_map_.empty() && loop_frame_index_ > extra_info_max_frame_) {
                 cerr << "[VideoInputMode] WARNING: loop_frame_index_ " << loop_frame_index_
                      << " exceeds Extra info max frame " << extra_info_max_frame_
                      << ", Extra info will fall back to last valid." << endl;
             }
 
-            // Read the first frame after rewind
+            // 重绕后读取第一帧
             if (!cap_.read(frame) || frame.empty()) {
                 cerr << "[VideoInputMode] Failed to read frame after rewind, try reopen." << endl;
                 reOpenVideoFile();
@@ -237,8 +237,8 @@ bool VideoInputMode::getNextFrame(cv::Mat& frame,
             first_frame_ = false;
         }
 
-        // --- Handle loop reset of Extra info (frame 0 invalid -> reset defaults) ---
-        // Must be done BEFORE extra_info lookup so frame 0 gets the reset values.
+        // --- 处理循环播放时 extra-info 的重置（第 0 帧无效 → 恢复默认值）---
+        // 必须在 extra_info 查找之前完成，保证第 0 帧取到重置后的值。
         if (loop_frame_index_ == 0 && !extra_info_map_.empty()) {
             auto it0 = extra_info_map_.find(0);
             if (it0 == extra_info_map_.end()) {
@@ -249,7 +249,7 @@ bool VideoInputMode::getNextFrame(cv::Mat& frame,
             }
         }
 
-        // --- Populate extra_info from map ---
+        // --- 从 map 填充 extra_info ---
         const ExtraFrameEntry* current_entry = nullptr;   // 当前帧索引在 map 中的条目（若有）
         if (!extra_info_map_.empty()) {
             auto it = extra_info_map_.find(static_cast<int>(loop_frame_index_));
@@ -274,7 +274,7 @@ bool VideoInputMode::getNextFrame(cv::Mat& frame,
 
             if (last_valid_entry_.has_full_info) {
                 // v2 / v3：ExtraInputInfo 按原样还原（未记录的那一包保持 NaN；
-                // v2 没有大小 yaw 包 ⇒ 回放新模式时会立刻在 TfTreeSync 报错，
+                // v2 没有大小 yaw 包 ⇒ 回放大小 yaw 构型时会立刻在 TfTreeSync 报错，
                 // 不会静默用 NaN 算姿态）。
                 extra_info = last_valid_entry_.full_info;
             } else {
@@ -305,7 +305,7 @@ bool VideoInputMode::getNextFrame(cv::Mat& frame,
             extra_info.fillCurrentPackZeros(RobotConfig::instance().common.bigSmallYaw.mode);
         }
 
-        // --- Check overflow warning ---
+        // --- 检查溢出警告 ---
         if (!extra_info_map_.empty() && !warned_overflow_) {
             if (loop_frame_index_ > extra_info_max_frame_) {
                 cerr << "[VideoInputMode] WARNING: loop_frame_index_ " << loop_frame_index_
@@ -328,14 +328,14 @@ bool VideoInputMode::getNextFrame(cv::Mat& frame,
         loop_frame_index_++;
         total_frame_index_++;
 
-        // --- Pre-extract dt for next frame ---
+        // --- 预先取出下一帧的 dt ---
         if (!extra_info_map_.empty()) {
             auto next_it = extra_info_map_.find(static_cast<int>(loop_frame_index_));
             if (next_it != extra_info_map_.end()) {
                 next_dt_ = next_it->second.dt;
             }
 
-            // If looping and frame 1 info is invalid, reset next_dt_
+            // 循环播放时若第 1 帧信息无效，重置 next_dt_
             if (loop_frame_index_ == 1) {
                 auto it1 = extra_info_map_.find(1);
                 if (it1 == extra_info_map_.end()) {

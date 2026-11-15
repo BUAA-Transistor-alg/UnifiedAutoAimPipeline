@@ -11,12 +11,18 @@
 #include "common/RobotConfig.h"
 
 // ============ 配置与独立坐标树初始化 ============
-GimbalSolver::GimbalSolver() : tree_(std::make_shared<RobotTfTree>()) {
+GimbalSolver::GimbalSolver(std::shared_ptr<SelfMotionState> self_motion)
+    : tree_(std::make_shared<RobotTfTree>()), self_motion_(std::move(self_motion)) {
+    if (!self_motion_) {
+        throw std::invalid_argument("GimbalSolver: SelfMotionState 指针为空");
+    }
     // 偏移 / 弹丸 / 搜索参数均来自 RobotConfig（机器配置文件）
     const RobotConfig& cfg = RobotConfig::instance();
     ballistic_ = std::make_shared<BallisticSolver>(
         cfg.common.gimbal.bulletDiameter, cfg.common.gimbal.bulletMass, cfg.common.gimbal.integrationStep);
-    bullet_velocity_    = cfg.common.gimbal.bulletVelocity;
+    // 初始弹速取顶层 mcu_telemetry 的合法初值（运行时由 SequencePredictor 每帧
+    // 用 main 电控遥测的最新值覆盖；此处只是 GimbalSolver 的初始值）
+    bullet_velocity_    = cfg.mcuTelemetry.bulletVelocity.initial;
     distance_threshold_ = cfg.common.gimbal.distanceThreshold;
     distance_iterate_threshold_ = cfg.common.gimbal.distanceIterateThreshold;
     stop_z_             = cfg.common.gimbal.stopZ;
@@ -44,6 +50,7 @@ GimbalSolver::LaunchGeometry GimbalSolver::captureLaunchGeometry(float yawBig) c
     if (auto n = tree_->manager().getNode(RobotTfTree::PITCH)) {
         geometry.current_pitch = n->getEuler()[1];
     }
+    geometry.chassis_velocity = self_velocity_;
     geometry.bullet_velocity = bullet_velocity_;
     geometry.pitch_min = pitch_min_;
     geometry.pitch_max = pitch_max_;
@@ -77,12 +84,20 @@ GimbalSolver::LaunchState GimbalSolver::evaluateLaunchState(const LaunchGeometry
     const Eigen::Vector3d direction_in_yaw = Rx * Eigen::Vector3d::UnitY();
     LaunchState state;
     state.position = geometry.chassis_position + Rc * (geometry.yaw_position + Rz * muzzle_in_yaw);
-    state.velocity = geometry.bullet_velocity * Rc * Rz * direction_in_yaw;
+    state.velocity = geometry.bullet_velocity * Rc * Rz * direction_in_yaw +
+                     geometry.chassis_velocity;   // 弹丸世界初速度 = 枪管相对速度 + 平台速度
     state.position_jacobian.col(0) = Rc * dRz * muzzle_in_yaw;
     state.position_jacobian.col(1) = Rc * Rz * dRx * geometry.muzzle_offset;
     state.velocity_jacobian.col(0) = geometry.bullet_velocity * Rc * dRz * direction_in_yaw;
     state.velocity_jacobian.col(1) = geometry.bullet_velocity * Rc * Rz * dRx * Eigen::Vector3d::UnitY();
     return state;
+}
+
+void GimbalSolver::setSelfMotionTime(std::chrono::steady_clock::time_point timestamp) {
+    const cv::Vec3f position = self_motion_->positionAt(timestamp);
+    const cv::Vec3f velocity = self_motion_->velocityAt(timestamp);
+    tree_->setChassisPosition(position[0], position[1], position[2]);
+    self_velocity_ = Eigen::Vector3d(velocity[0], velocity[1], velocity[2]);
 }
 
 void GimbalSolver::setChassisPosition(float x, float y, float z) {
@@ -113,7 +128,7 @@ void GimbalSolver::setYawSmall(float yaw_small) {
 //     p_big + Rz(θ_big)·p_small
 // （p_big = yaw_big 节点相对 chassis 的位置，p_small = yaw_small 节点相对 yaw_big 的
 //   位置 = 配置里小 yaw 轴相对大 yaw 轴的偏移，随大 yaw 旋转）。
-// 由于两级都绕 z 旋转且 pitch 及以下全部挂在 yaw_small 之下，把旋转中心这样取定后，
+// 由于两级都绕 z 旋转且 pitch 及以下全部位于 yaw_small 之下，把旋转中心这样取定后，
 // 「绕总角 θ_big+θ_small 旋转」的表达式与单 yaw 构型完全同形，解算公式无需修改。
 // ============================================================================
 cv::Vec3f GimbalSolver::effectiveYawPos(float yawBig) const {

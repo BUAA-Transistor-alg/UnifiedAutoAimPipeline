@@ -42,7 +42,8 @@ NewtonPredictedBallisticSolver::NewtonPredictedBallisticSolver(
 bool NewtonPredictedBallisticSolver::validInput(
     const Predictor& predictor, double extra_predict_time, const LaunchGeometry& geometry) const {
     return predictor && std::isfinite(extra_predict_time) && extra_predict_time >= 0.0 &&
-        geometry.chassis_position.allFinite() && geometry.chassis_rotation.allFinite() &&
+        geometry.chassis_position.allFinite() && geometry.chassis_velocity.allFinite() &&
+        geometry.chassis_rotation.allFinite() &&
         geometry.yaw_position.allFinite() && geometry.pitch_position.allFinite() &&
         geometry.muzzle_offset.allFinite() && positiveFinite(geometry.bullet_velocity) &&
         std::isfinite(geometry.current_yaw) && std::isfinite(geometry.current_pitch) &&
@@ -220,7 +221,7 @@ NewtonPredictedBallisticSolver::Result NewtonPredictedBallisticSolver::packResul
     result.gimbal.yaw = static_cast<float>(std::remainder(q[0], 2.0 * kPi));
     result.gimbal.pitch = static_cast<float>(q[1]);
     result.gimbal.flight_time = q[2];
-    // 新算法此字段为同一命中时刻的三维残差，而非轨迹到静态目标的最近距离。
+    // 此字段为同一命中时刻的三维残差。
     result.gimbal.distance = evaluation.residual.norm();
     const double endpoint_z = evaluation.target_position.z() + evaluation.residual.z();
     result.success = result.gimbal.distance <= distance_tolerance_ &&

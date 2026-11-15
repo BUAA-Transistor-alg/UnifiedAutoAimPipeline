@@ -1,15 +1,15 @@
 // mpc_angle_align_test.cpp — 「MPC 每拍把参考整圈对齐到实测方位角」的行为回归测试
 //
-// ★ 回归对象（与 azimuth_wrap_test 同一故障的两层修复之第 2 层）：
+// ★ 回归对象（与 azimuth_wrap_test 覆盖同一故障的第 2 层）：
 //   参考序列只在 McuMpcController::set()（上位机每帧一次）对齐过圈数；100Hz 的拍之间，
-//   若实测 psi_b = chassis_azimuth + θ_b 因底盘跨过 ±π 而跳了 ±2π，参考还在旧的一圈，
+//   若实测 psi_b = chassis_azimuth + θ_b 因底盘跨过 ±π 而跳了 ±2π，参考仍停在原来的圈，
 //   代价里就出现 w_psi_b·(2π)² ≈ 39.5 的整圈残差（正常跟踪 ~4e-4）⇒ 每圈一个力矩脉冲。
-//   修复：DualYawMpcController::solveWith() 每拍把整条参考整体平移整数圈对齐到当拍实测值。
+//   行为：DualYawMpcController::solveWith() 每拍把整条参考整体平移整数圈对齐到当拍实测值。
 //
 // 本测试直接从**公开 API**（离线 step(measurement, ref, ref)）验证该性质：
 //   把同一条参考序列整体加 k·2π（k = ±1, ±2, ±3, ±5，模拟"参考停在别的圈"），
 //   得到的两轴力矩 / 预测 / 对齐后的参考序列必须与 k = 0 逐位相同（≤1e-12）——
-//   修复前这些结果会相差几个数量级（一个近乎饱和、一个几乎不动）。
+//   若不做整圈平移，这些结果会相差几个数量级（一个近乎饱和、一个几乎不动）。
 //   同时断言"未对齐时残差确实是整圈"，把这个故障的触发条件固化在测试里。
 //
 // 编译运行（需要子模组已构建出 libtcbs.so；不需要相机/模型/串口）：
@@ -152,7 +152,7 @@ void testWholeTurnInvariance() {
                 makeRef(meas, -1.0).front(),
                 std::fabs(makeRef(meas, -1.0).front() - meas.psi_b));
     check(std::fabs(std::fabs(makeRef(meas, -1.0).front() - meas.psi_b) - (kTwoPi - lead)) < 1e-9,
-          "k=-1 的未对齐残差 = 2π − 超前量（= 修复前代价里那个 2π 残差）");
+          "k=-1 的未对齐残差 = 2π − 超前量（该残差直接进入代价）");
     // 代价量级：w_psi_b·r²/2 ⇒ 18.5 vs 0.02（相差约 1000 倍）
     const double cost_bad = 1.0 * std::pow(kTwoPi - lead, 2) / 2.0;
     const double cost_ok = 1.0 * lead * lead / 2.0;

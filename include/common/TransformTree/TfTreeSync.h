@@ -5,8 +5,8 @@
 // （ArmorPipeline stage4/stage5、PowerRunePipeline stage4、VisualizeOutput）每帧都要把
 // 该帧信息同步进自己那棵 RobotTfTree，因此**统一走本文件的两个函数**：
 //   - 按 RobotConfig 的构型取对应包（不会把单 yaw 的关节角按双 yaw 语义写进树）；
-//   - 当前构型包为 NaN（未填充/构型不匹配：例如用单 yaw 录制的 v2 视频回放新模式）
-//     时**立刻抛 std::runtime_error**，而不是用 NaN 算出一条看似正常的姿态。
+//   - 当前构型包为 NaN（未填充/构型不匹配：例如用单 yaw 录制的 v2 视频回放大小 yaw
+//     构型）时**立刻抛出 std::runtime_error**，避免用 NaN 算出一条看似正常的姿态。
 #ifndef TF_TREE_SYNC_H
 #define TF_TREE_SYNC_H
 

@@ -7,9 +7,9 @@
 
 namespace {
 
-// 第一级滤波（y_axis_filter）位置坐标限位参数与级联阈值原先为本文件内的硬编码常量，
-// 现已全部提取到 config power_rune.y_axis_filter / power_rune.cascade。
-// 下面两个 builder 逐个字段赋值（而非依赖聚合初始化顺序），避免新增参数时错位。
+// 第一级滤波（y_axis_filter）位置坐标限位参数与级联阈值全部来自
+// config power_rune.y_axis_filter / power_rune.cascade。
+// 下面两个 builder 逐个字段赋值，避免依赖聚合初始化顺序导致新增参数时错位。
 
 YAxisFilter::Params makeYAxisFilterParams(const RobotConfig& cfg) {
     const RobotConfig::PowerRuneParams::YAxisFilterParams& c = cfg.powerRune.yAxisFilter;
@@ -109,7 +109,7 @@ PowerRunePipeline::PowerRunePipeline(const std::array<int, NUM_QUEUES>& queue_ma
         cfg.powerRune.inputWidth, cfg.powerRune.inputHeight);
     // 推理器在独立进程 power_rune_infer_process 中（仅推理一步；预处理/后处理在本
     // 进程），本阶段经共享内存通信调用，推理进程未启动时阻塞等待。
-    // 推理挂死强制重启时限取自 config common.infer_force_restart_timeout_sec
+    // 推理卡死强制重启时限取自 config common.infer_force_restart_timeout_sec
     s2_.client = std::make_unique<Infer::InferShmClient>(cfg.powerRune.shmKey,
                                                          cfg.common.inferForceRestartTimeoutSec);
 

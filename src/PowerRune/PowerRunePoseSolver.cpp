@@ -17,7 +17,7 @@ cv::Vec3f PowerRunePoseSolver::rotateVector(const cv::Vec3f& v,
     float c = std::cos(angle);
     float s = std::sin(angle);
     float dot = axis.dot(v);
-    // Rodrigues' rotation formula: v*cos + (k×v)*sin + k*(k·v)*(1-cos)
+    // Rodrigues 旋转公式：v*cos + (k×v)*sin + k*(k·v)*(1-cos)
     return v * c + axis.cross(v) * s + axis * dot * (1.0f - c);
 }
 

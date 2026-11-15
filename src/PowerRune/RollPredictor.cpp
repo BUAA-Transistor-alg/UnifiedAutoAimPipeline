@@ -251,7 +251,7 @@ void RollPredictor::getVisualizationPoints(
         raw_points.emplace_back(t, dp.continuous_roll * static_cast<float>(direction_));
     }
 
-    // ---- 生成拟合曲线：从 t_min（最旧的 t）到 t=0 ----
+    // ---- 生成拟合曲线：从 t_min（最早的 t）到 t=0 ----
     float t_min = raw_points.front().first;  // 最负的值
 
     if (num_samples < 2) num_samples = 2;

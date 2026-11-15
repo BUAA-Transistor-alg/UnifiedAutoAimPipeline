@@ -9,8 +9,8 @@
   3. 安装前清理目标位置的「屏蔽残留」：指向 /dev/null 的符号链接（systemctl mask 的产物）
      与 0 字节文件（**systemd 把空 unit 文件同样视为 masked**）——两者都会让服务永远起不来；
   4. sudo install 到 /etc/systemd/system/ → **sync 落盘** → 回读校验内容 → daemon-reload →
-     enable --now，最后核实真实状态（is-enabled / is-active），失败时给可操作的排查入口，
-     而不是假装成功；
+     enable --now，最后核实真实状态（is-enabled / is-active），失败时给出可操作的
+     排查入口；
   5. 支持 status / restart / stop / start / logs / print / uninstall。
 
 为什么必须 sync + 回读校验（真机踩过的坑）：
@@ -305,7 +305,7 @@ def cmd_install(cfg, user, python, watchdog_path, args):
         raise SystemExit(f"[install_service] {dest} 是目录，请先人工删除后再安装")
 
     # ── 安装前：拆掉任何会让服务起不来的旧状态 ──
-    # 屏蔽链接（mask）与 0 字节文件（空 unit 同样被判为 masked）都必须先删掉；
+    # 屏蔽链接（mask）与 0 字节文件（空 unit 同样被判定为 masked）都必须先删掉；
     # 普通旧文件也一并删除，避免 install 的属主/时间戳残留造成困惑。
     if state != "missing":
         run(sudo_prefix() + ["systemctl", "unmask", cfg.service_name], dry=dry)

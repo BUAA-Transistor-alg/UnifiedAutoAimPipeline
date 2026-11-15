@@ -33,7 +33,7 @@ public:
     void setEuler(const std::string& name, const cv::Vec3f& euler);
 
     // ── 解锁 / 上锁 ──
-    // 解锁：允许修改节点的坐标与欧拉角，同时清空旧的变换缓存。
+    // 解锁：允许修改节点的坐标与欧拉角，同时清空当前的变换缓存。
     void unlock();
     // 上锁并递归计算所有节点相对根节点的快速变换缓存。
     void lockAndComputeCache();

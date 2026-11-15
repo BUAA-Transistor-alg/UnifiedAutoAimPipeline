@@ -63,24 +63,24 @@ extern "C" {
 #endif 
 
 
-/****************************** ch: ÕªÒª | en: Instructions**********************************************/
+/****************************** ch: æ‘˜è¦ | en: Instructions**********************************************/
 
 /** 
 *   @~chinese
-*     ¸ÃÍ·ÎÄ¼þÖ÷Òª°üº¬9²¿·Ö£º
-*     1.Ïà»úµÄ¿ØÖÆºÍÈ¡Á÷½Ó¿Ú
-*     2.Ïà»úÊôÐÔÍòÄÜÅäÖÃ½Ó¿Ú&¶ÁÐ´¼Ä´æÆ÷½Ó¿Ú
-*     3.Ïà»úÉý¼¶
-*     4.×¢²áÒì³£»Øµ÷ºÍÊÂ¼þ½Ó¿Ú
-*     5.½öGigEÉè±¸Ö§³ÖµÄ½Ó¿Ú
-*     6.½öCameraLink Éè±¸Ö§³ÖµÄ½Ó¿Ú
-*     7.½öU3VÉè±¸Ö§³ÖµÄ½Ó¿Ú
-*     8.GenTLÏà¹Ø½Ó¿Ú
-*     9.Í¼Ïñ±£´æ¡¢¸ñÊ½×ª»»µÈÏà¹Ø½Ó¿Ú
+*     è¯¥å¤´æ–‡ä»¶ä¸»è¦åŒ…å«9éƒ¨åˆ†ï¼š
+*     1.ç›¸æœºçš„æŽ§åˆ¶å’Œå–æµæŽ¥å£
+*     2.ç›¸æœºå±žæ€§ä¸‡èƒ½é…ç½®æŽ¥å£&è¯»å†™å¯„å­˜å™¨æŽ¥å£
+*     3.ç›¸æœºå‡çº§
+*     4.æ³¨å†Œå¼‚å¸¸å›žè°ƒå’Œäº‹ä»¶æŽ¥å£
+*     5.ä»…GigEè®¾å¤‡æ”¯æŒçš„æŽ¥å£
+*     6.ä»…CameraLink è®¾å¤‡æ”¯æŒçš„æŽ¥å£
+*     7.ä»…U3Vè®¾å¤‡æ”¯æŒçš„æŽ¥å£
+*     8.GenTLç›¸å…³æŽ¥å£
+*     9.å›¾åƒä¿å­˜ã€æ ¼å¼è½¬æ¢ç­‰ç›¸å…³æŽ¥å£
 
 *   @~english
 *     The document mainly consists of nine parts:
-*     1.Camera control and streaming¡¤
+*     1.Camera control and streamingÂ·
 *     2.Camera attribute nodes set and obtained universal interface
 *     3.Camera upgrade and read-write register memory interface
 *     4.Enrol abnormal callbacks and event interface
@@ -93,13 +93,13 @@ extern "C" {
 
 
 
-/**************************Part1 ch: Ïà»úµÄ¿ØÖÆºÍÈ¡Á÷½Ó¿Ú | en: Camera control and streaming******************************************/
+/**************************Part1 ch: ç›¸æœºçš„æŽ§åˆ¶å’Œå–æµæŽ¥å£ | en: Camera control and streaming******************************************/
 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief    ³õÊ¼»¯SDK
- *  @return   ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief    åˆå§‹åŒ–SDK
+ *  @return   æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
 
  *  @~english
  *  @brief  Initialize SDK  
@@ -109,8 +109,8 @@ MV_CAMCTRL_API int __stdcall MV_CC_Initialize();
 
 /********************************************************************//**
  *  @~chinese
- *  @brief    ·´³õÊ¼»¯SDK£¬ÊÍ·Å×ÊÔ´
- *  @return   ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief    ååˆå§‹åŒ–SDKï¼Œé‡Šæ”¾èµ„æº
+ *  @return   æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
 
  *  @~english
  *  @brief   Terminate SDK  
@@ -120,11 +120,11 @@ MV_CAMCTRL_API int __stdcall MV_CC_Finalize();
 
 /*
  *  @~chinese
- *  @brief  »ñÈ¡SDK°æ±¾ºÅ
- *  @return ·µ»Ø4×Ö½Ú°æ±¾ºÅ
-            |Ö÷    |´Î    |ÐÞÕý  |  ²âÊÔ|
+ *  @brief  èŽ·å–SDKç‰ˆæœ¬å·
+ *  @return è¿”å›ž4å­—èŠ‚ç‰ˆæœ¬å·
+            |ä¸»    |æ¬¡    |ä¿®æ­£  |  æµ‹è¯•|
              8bits  8bits  8bits  8bits
- *  @remarks ±ÈÈç·µ»ØÖµÎª0x01000001£¬¼´SDK°æ±¾ºÅÎªV1.0.0.1¡£
+ *  @remarks æ¯”å¦‚è¿”å›žå€¼ä¸º0x01000001ï¼Œå³SDKç‰ˆæœ¬å·ä¸ºV1.0.0.1ã€‚
  
  *  @~english
  *  @brief  Get SDK Version
@@ -137,8 +137,8 @@ MV_CAMCTRL_API unsigned int __stdcall MV_CC_GetSDKVersion();
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Ö§³ÖµÄ´«Êä²ã
- *  @return Ö§³ÖµÄ´«Êä²ã±àºÅ 
+ *  @brief  èŽ·å–æ”¯æŒçš„ä¼ è¾“å±‚
+ *  @return æ”¯æŒçš„ä¼ è¾“å±‚ç¼–å· 
 
  *  @~english
  *  @brief  Get supported Transport Layer
@@ -148,13 +148,13 @@ MV_CAMCTRL_API int __stdcall MV_CC_EnumerateTls();
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ã¶¾ÙÉè±¸
- *  @param  nTLayerType                 [IN]            Ã¶¾Ù´«Êä²ã, ²ÎÊý¶¨Òå²Î¼ûCameraParams.h¶¨Òå, Èç: #define MV_GIGE_DEVICE 0x00000001 GigEÉè±¸
- *  @param  pstDevList                  [IN][OUT]       Éè±¸ÁÐ±í
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Éè±¸ÁÐ±íµÄÄÚ´æÊÇÔÚSDKÄÚ²¿·ÖÅäµÄ£¬¶àÏß³Ìµ÷ÓÃ¸Ã½Ó¿ÚÊ±»á½øÐÐÉè±¸ÁÐ±íÄÚ´æµÄÊÍ·ÅºÍÉêÇë,½¨Òé¾¡Á¿±ÜÃâ¶àÏß³ÌÃ¶¾Ù²Ù×÷¡£
- *  @remarks ²ÎÊýÃ¶¾Ù´«Êä²ã£¬ÊÊÅä´«ÈëMV_GIGE_DEVICE¡¢MV_1394_DEVICE¡¢MV_USB_DEVICE¡¢MV_CAMERALINK_DEVICE£»MV_GIGE_DEVICE¸Ã²ÎÊý
-             ´«³öËùÓÐGiGEÏà¹ØµÄÉè±¸ÐÅÏ¢£¨°üº¬ÐéÄâGiGEºÍGenTLÏÂµÄGiGEÉè±¸£©£¬MV_USB_DEVICE¸Ã²ÎÊý´«³öËùÓÐUSBÉè±¸£¬°üº¬ÐéÄâUSBÉè±¸¡£
+ *  @brief  æžšä¸¾è®¾å¤‡
+ *  @param  nTLayerType                 [IN]            æžšä¸¾ä¼ è¾“å±‚, å‚æ•°å®šä¹‰å‚è§CameraParams.hå®šä¹‰, å¦‚: #define MV_GIGE_DEVICE 0x00000001 GigEè®¾å¤‡
+ *  @param  pstDevList                  [IN][OUT]       è®¾å¤‡åˆ—è¡¨
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è®¾å¤‡åˆ—è¡¨çš„å†…å­˜æ˜¯åœ¨SDKå†…éƒ¨åˆ†é…çš„ï¼Œå¤šçº¿ç¨‹è°ƒç”¨è¯¥æŽ¥å£æ—¶ä¼šè¿›è¡Œè®¾å¤‡åˆ—è¡¨å†…å­˜çš„é‡Šæ”¾å’Œç”³è¯·,å»ºè®®å°½é‡é¿å…å¤šçº¿ç¨‹æžšä¸¾æ“ä½œã€‚
+ *  @remarks å‚æ•°æžšä¸¾ä¼ è¾“å±‚ï¼Œé€‚é…ä¼ å…¥MV_GIGE_DEVICEã€MV_1394_DEVICEã€MV_USB_DEVICEã€MV_CAMERALINK_DEVICEï¼›MV_GIGE_DEVICEè¯¥å‚æ•°
+             ä¼ å‡ºæ‰€æœ‰GiGEç›¸å…³çš„è®¾å¤‡ä¿¡æ¯ï¼ˆåŒ…å«è™šæ‹ŸGiGEå’ŒGenTLä¸‹çš„GiGEè®¾å¤‡ï¼‰ï¼ŒMV_USB_DEVICEè¯¥å‚æ•°ä¼ å‡ºæ‰€æœ‰USBè®¾å¤‡ï¼ŒåŒ…å«è™šæ‹ŸUSBè®¾å¤‡ã€‚
 
  *  @~english
  *  @brief  Enumerate Device
@@ -163,21 +163,21 @@ MV_CAMCTRL_API int __stdcall MV_CC_EnumerateTls();
  *  @return Success, return MV_OK. Failure, return error code 
  *  @remarks The memory of the device list is allocated within the SDK. When the interface is invoked by multiple threads, the memory of the device list will be released and applied
              It is recommended to avoid multithreaded enumeration operations as much as possible.
- *  @remarks Transmission layer of enumeration, param only include MV_GIGE_DEVICE¡¢MV_1394_DEVICE¡¢MV_USB_DEVICE¡¢MV_CAMERALINK_DEVICE;
+ *  @remarks Transmission layer of enumeration, param only include MV_GIGE_DEVICEã€MV_1394_DEVICEã€MV_USB_DEVICEã€MV_CAMERALINK_DEVICE;
              MV_GIGE_DEVICE can output virtual and GenTL GiGE devices, MV_USB_DEVICE can output all USB devices, include virtual usb devices.
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_EnumDevices(IN unsigned int nTLayerType, IN OUT MV_CC_DEVICE_INFO_LIST* pstDevList);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ¸ù¾Ý³§ÉÌÃû×ÖÃ¶¾ÙÉè±¸
- *  @param  nTLayerType                 [IN]            Ã¶¾Ù´«Êä²ã, ²ÎÊý¶¨Òå²Î¼ûCameraParams.h¶¨Òå, Èç: #define MV_GIGE_DEVICE 0x00000001 GigEÉè±¸
- *  @param  pstDevList                  [IN][OUT]       Éè±¸ÁÐ±í
- *  @param  strManufacturerName         [IN]            ³§ÉÌÃû×Ö
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ²ÎÊýÃ¶¾Ù´«Êä²ã£¬ÊÊÅä´«ÈëMV_GIGE_DEVICE¡¢MV_1394_DEVICE¡¢MV_USB_DEVICE¡¢MV_CAMERALINK_DEVICE£»MV_GIGE_DEVICE¸Ã²ÎÊý
-            ´«³öËùÓÐGiGEÏà¹ØµÄÉè±¸ÐÅÏ¢£¨°üº¬ÐéÄâGiGEºÍGenTLÏÂµÄGiGEÉè±¸£©£¬MV_USB_DEVICE¸Ã²ÎÊý´«³öËùÓÐUSBÉè±¸£¬°üº¬ÐéÄâUSBÉè±¸¡£
- *  @remarks Éè±¸ÁÐ±íµÄÄÚ´æÊÇÔÚSDKÄÚ²¿·ÖÅäµÄ£¬¶àÏß³Ìµ÷ÓÃ¸Ã½Ó¿ÚÊ±»á½øÐÐÉè±¸ÁÐ±íÄÚ´æµÄÊÍ·ÅºÍÉêÇë,½¨Òé¾¡Á¿±ÜÃâ¶àÏß³ÌÃ¶¾Ù²Ù×÷¡£
+ *  @brief  æ ¹æ®åŽ‚å•†åå­—æžšä¸¾è®¾å¤‡
+ *  @param  nTLayerType                 [IN]            æžšä¸¾ä¼ è¾“å±‚, å‚æ•°å®šä¹‰å‚è§CameraParams.hå®šä¹‰, å¦‚: #define MV_GIGE_DEVICE 0x00000001 GigEè®¾å¤‡
+ *  @param  pstDevList                  [IN][OUT]       è®¾å¤‡åˆ—è¡¨
+ *  @param  strManufacturerName         [IN]            åŽ‚å•†åå­—
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks å‚æ•°æžšä¸¾ä¼ è¾“å±‚ï¼Œé€‚é…ä¼ å…¥MV_GIGE_DEVICEã€MV_1394_DEVICEã€MV_USB_DEVICEã€MV_CAMERALINK_DEVICEï¼›MV_GIGE_DEVICEè¯¥å‚æ•°
+            ä¼ å‡ºæ‰€æœ‰GiGEç›¸å…³çš„è®¾å¤‡ä¿¡æ¯ï¼ˆåŒ…å«è™šæ‹ŸGiGEå’ŒGenTLä¸‹çš„GiGEè®¾å¤‡ï¼‰ï¼ŒMV_USB_DEVICEè¯¥å‚æ•°ä¼ å‡ºæ‰€æœ‰USBè®¾å¤‡ï¼ŒåŒ…å«è™šæ‹ŸUSBè®¾å¤‡ã€‚
+ *  @remarks è®¾å¤‡åˆ—è¡¨çš„å†…å­˜æ˜¯åœ¨SDKå†…éƒ¨åˆ†é…çš„ï¼Œå¤šçº¿ç¨‹è°ƒç”¨è¯¥æŽ¥å£æ—¶ä¼šè¿›è¡Œè®¾å¤‡åˆ—è¡¨å†…å­˜çš„é‡Šæ”¾å’Œç”³è¯·,å»ºè®®å°½é‡é¿å…å¤šçº¿ç¨‹æžšä¸¾æ“ä½œã€‚
 
  *  @~english
  *  @brief  Enumerate device according to manufacture name
@@ -185,7 +185,7 @@ MV_CAMCTRL_API int __stdcall MV_CC_EnumDevices(IN unsigned int nTLayerType, IN O
  *  @param  pstDevList                  [IN][OUT]       Device list
  *  @param  strManufacturerName         [IN]            Manufacture Name
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks Transmission layer of enumeration, param only include MV_GIGE_DEVICE¡¢MV_1394_DEVICE¡¢MV_USB_DEVICE¡¢MV_CAMERALINK_DEVICE;
+ *  @remarks Transmission layer of enumeration, param only include MV_GIGE_DEVICEã€MV_1394_DEVICEã€MV_USB_DEVICEã€MV_CAMERALINK_DEVICE;
              MV_GIGE_DEVICE can output virtual and GenTL GiGE devices, MV_USB_DEVICE can output all USB devices, include virtual usb devices.
  *  @remarks The memory of the device list is allocated within the SDK. When the interface is invoked by multiple threads, the memory of the device list will be released and applied.
              It is recommended to avoid multithreaded enumeration operations as much as possible.
@@ -195,14 +195,14 @@ MV_CAMCTRL_API int __stdcall MV_CC_EnumDevicesEx(IN unsigned int nTLayerType, IN
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ã¶¾ÙÉè±¸À©Õ¹£¨¿ÉÖ¸¶¨ÅÅÐò·½Ê½Ã¶¾Ù¡¢¸ù¾Ý³§ÉÌÃû×Ö¹ýÂË£©
- *  @param  nTLayerType                 [IN]            Ã¶¾Ù´«Êä²ã£¨Çø·ÖÃ¿Ò»ÖÖ´«Êä²ãÀàÐÍ£¬²»ñîºÏ£©, ²ÎÊý¶¨Òå²Î¼ûCameraParams.h¶¨Òå, Èç: #define MV_GIGE_DEVICE 0x00000001 GigEÉè±¸
- *  @param  pstDevList                  [IN][OUT]       Éè±¸ÁÐ±í
- *  @param  strManufacturerName         [IN]            ³§ÉÌÃû×Ö£¨¿É´«NULL£¬¼´²»¹ýÂË£©
- *  @param  enSortMethod                [IN]            ÅÅÐò·½Ê½
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Éè±¸ÁÐ±íµÄÄÚ´æÊÇÔÚSDKÄÚ²¿·ÖÅäµÄ£¬¶àÏß³Ìµ÷ÓÃ¸Ã½Ó¿ÚÊ±»á½øÐÐÉè±¸ÁÐ±íÄÚ´æµÄÊÍ·ÅºÍÉêÇë,½¨Òé¾¡Á¿±ÜÃâ¶àÏß³ÌÃ¶¾Ù²Ù×÷
-             strManufacturerName¿É´«ÈëNULL£¬Èô´«ÈëNULLÔò·µ»ØÅÅºÃÐòµÄËùÓÐÉè±¸ÁÐ±í,Èô²»ÎªNULLÔòÖ»·µ»ØÅÅºÃÐòµÄÖ¸¶¨³§ÉÌÉè±¸ÁÐ±í¡£
+ *  @brief  æžšä¸¾è®¾å¤‡æ‰©å±•ï¼ˆå¯æŒ‡å®šæŽ’åºæ–¹å¼æžšä¸¾ã€æ ¹æ®åŽ‚å•†åå­—è¿‡æ»¤ï¼‰
+ *  @param  nTLayerType                 [IN]            æžšä¸¾ä¼ è¾“å±‚ï¼ˆåŒºåˆ†æ¯ä¸€ç§ä¼ è¾“å±‚ç±»åž‹ï¼Œä¸è€¦åˆï¼‰, å‚æ•°å®šä¹‰å‚è§CameraParams.hå®šä¹‰, å¦‚: #define MV_GIGE_DEVICE 0x00000001 GigEè®¾å¤‡
+ *  @param  pstDevList                  [IN][OUT]       è®¾å¤‡åˆ—è¡¨
+ *  @param  strManufacturerName         [IN]            åŽ‚å•†åå­—ï¼ˆå¯ä¼ NULLï¼Œå³ä¸è¿‡æ»¤ï¼‰
+ *  @param  enSortMethod                [IN]            æŽ’åºæ–¹å¼
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è®¾å¤‡åˆ—è¡¨çš„å†…å­˜æ˜¯åœ¨SDKå†…éƒ¨åˆ†é…çš„ï¼Œå¤šçº¿ç¨‹è°ƒç”¨è¯¥æŽ¥å£æ—¶ä¼šè¿›è¡Œè®¾å¤‡åˆ—è¡¨å†…å­˜çš„é‡Šæ”¾å’Œç”³è¯·,å»ºè®®å°½é‡é¿å…å¤šçº¿ç¨‹æžšä¸¾æ“ä½œ
+             strManufacturerNameå¯ä¼ å…¥NULLï¼Œè‹¥ä¼ å…¥NULLåˆ™è¿”å›žæŽ’å¥½åºçš„æ‰€æœ‰è®¾å¤‡åˆ—è¡¨,è‹¥ä¸ä¸ºNULLåˆ™åªè¿”å›žæŽ’å¥½åºçš„æŒ‡å®šåŽ‚å•†è®¾å¤‡åˆ—è¡¨ã€‚
 
  *  @~english
  *  @brief  Enumerate device according to the specified ordering
@@ -220,14 +220,14 @@ MV_CAMCTRL_API int __stdcall MV_CC_EnumDevicesEx2(IN unsigned int nTLayerType, I
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Éè±¸ÊÇ·ñ¿É´ï
- *  @param  pstDevInfo                  [IN]            Éè±¸ÐÅÏ¢½á¹¹Ìå
- *  @param  nAccessMode                 [IN]            ·ÃÎÊÈ¨ÏÞ,²ÎÊý¶¨Òå²Î¼ûCameraParams.h¶¨Òå, Èç:#define MV_ACCESS_Exclusive 1 
- *  @remarks ¶ÁÈ¡Éè±¸CCP¼Ä´æÆ÷µÄÖµ£¬ÅÐ¶Ïµ±Ç°×´Ì¬ÊÇ·ñ¾ßÓÐÄ³ÖÖ·ÃÎÊÈ¨ÏÞ
-             Èç¹ûÉè±¸²»Ö§³ÖMV_ACCESS_ExclusiveWithSwitch¡¢MV_ACCESS_ControlWithSwitch¡¢MV_ACCESS_ControlSwitchEnableWithKeyÕâÈýÖÖÄ£Ê½£¬½Ó¿Ú·µ»Øfalse¡£
-             Ä¿Ç°Éè±¸²»Ö§³ÖÕâ3ÖÖÇÀÕ¼Ä£Ê½£¬¹ú¼ÊÉÏÖ÷Á÷µÄ³§ÉÌµÄÉè±¸Ò²¶¼ÔÝ²»Ö§³ÖÕâ3ÖÖÄ£Ê½¡£
-             ¸Ã½Ó¿ÚÖ§³Ö ÐéÄâÏà»ú£¬GIGEÏà»ú£¬U3VÏà»ú£¬×ÔÑÐÍø¿¨Éè±¸¡£
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸,²»Ö§³Öµ¼Èë.cti·½Ê½²É¼¯¿¨Éè±¸¡£
+ *  @brief  è®¾å¤‡æ˜¯å¦å¯è¾¾
+ *  @param  pstDevInfo                  [IN]            è®¾å¤‡ä¿¡æ¯ç»“æž„ä½“
+ *  @param  nAccessMode                 [IN]            è®¿é—®æƒé™,å‚æ•°å®šä¹‰å‚è§CameraParams.hå®šä¹‰, å¦‚:#define MV_ACCESS_Exclusive 1 
+ *  @remarks è¯»å–è®¾å¤‡CCPå¯„å­˜å™¨çš„å€¼ï¼Œåˆ¤æ–­å½“å‰çŠ¶æ€æ˜¯å¦å…·æœ‰æŸç§è®¿é—®æƒé™
+             å¦‚æžœè®¾å¤‡ä¸æ”¯æŒMV_ACCESS_ExclusiveWithSwitchã€MV_ACCESS_ControlWithSwitchã€MV_ACCESS_ControlSwitchEnableWithKeyè¿™ä¸‰ç§æ¨¡å¼ï¼ŒæŽ¥å£è¿”å›žfalseã€‚
+             ç›®å‰è®¾å¤‡ä¸æ”¯æŒè¿™3ç§æŠ¢å æ¨¡å¼ï¼Œå›½é™…ä¸Šä¸»æµçš„åŽ‚å•†çš„è®¾å¤‡ä¹Ÿéƒ½æš‚ä¸æ”¯æŒè¿™3ç§æ¨¡å¼ã€‚
+             è¯¥æŽ¥å£æ”¯æŒ è™šæ‹Ÿç›¸æœºï¼ŒGIGEç›¸æœºï¼ŒU3Vç›¸æœºï¼Œè‡ªç ”ç½‘å¡è®¾å¤‡ã€‚
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡,ä¸æ”¯æŒå¯¼å…¥.ctiæ–¹å¼é‡‡é›†å¡è®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Is the device accessible
@@ -243,99 +243,99 @@ MV_CAMCTRL_API bool __stdcall MV_CC_IsDeviceAccessible(IN MV_CC_DEVICE_INFO* pst
 
 /********************************************************************//**
  *  @~chinese
- *  @brief   Ã¶¾Ù²É¼¯¿¨
- *  @param   nTLayerType  [IN] ²É¼¯¿¨½Ó¿ÚÀàÐÍ
- *  @param   pInterfaceInfoList [IN][OUT] ²É¼¯¿¨ÁÐ±í
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief   æžšä¸¾é‡‡é›†å¡
+ *  @param   nTLayerType  [IN] é‡‡é›†å¡æŽ¥å£ç±»åž‹
+ *  @param   pInterfaceInfoList [IN][OUT] é‡‡é›†å¡åˆ—è¡¨
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
 
  *  @~english
- *  @brief   Ã¶¾Ù²É¼¯¿¨
- *  @param   nTLayerType  [IN] ²É¼¯¿¨½Ó¿ÚÀàÐÍ
- *  @param   pInterfaceInfoList [IN][OUT] ²É¼¯¿¨ÁÐ±í
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief   æžšä¸¾é‡‡é›†å¡
+ *  @param   nTLayerType  [IN] é‡‡é›†å¡æŽ¥å£ç±»åž‹
+ *  @param   pInterfaceInfoList [IN][OUT] é‡‡é›†å¡åˆ—è¡¨
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_EnumInterfaces(IN unsigned int nTLayerType, IN OUT MV_INTERFACE_INFO_LIST* pInterfaceInfoList);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief   ´´½¨²É¼¯¿¨¾ä±ú
- *  @param   handle  [OUT] ²É¼¯¿¨¾ä±ú
- *  @param   pInterfaceInfo [IN] ²É¼¯¿¨ÐÅÏ¢
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief   åˆ›å»ºé‡‡é›†å¡å¥æŸ„
+ *  @param   handle  [OUT] é‡‡é›†å¡å¥æŸ„
+ *  @param   pInterfaceInfo [IN] é‡‡é›†å¡ä¿¡æ¯
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
 
  *  @~english
- *  @brief   ´´½¨²É¼¯¿¨¾ä±ú
- *  @param   handle  [OUT] ²É¼¯¿¨¾ä±ú
- *  @param   pInterfaceInfo [IN] ²É¼¯¿¨ÐÅÏ¢
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief   åˆ›å»ºé‡‡é›†å¡å¥æŸ„
+ *  @param   handle  [OUT] é‡‡é›†å¡å¥æŸ„
+ *  @param   pInterfaceInfo [IN] é‡‡é›†å¡ä¿¡æ¯
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_CreateInterface(IN OUT void ** handle, IN MV_INTERFACE_INFO* pInterfaceInfo);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief   Í¨¹ý²É¼¯¿¨ID´´½¨²É¼¯¿¨¾ä±ú
- *  @param   handle  [[OUT] ²É¼¯¿¨¾ä±ú
- *  @param   pInterfaceID  [IN] ²É¼¯¿¨ID
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief   é€šè¿‡é‡‡é›†å¡IDåˆ›å»ºé‡‡é›†å¡å¥æŸ„
+ *  @param   handle  [[OUT] é‡‡é›†å¡å¥æŸ„
+ *  @param   pInterfaceID  [IN] é‡‡é›†å¡ID
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
 
  *  @~english
- *  @brief   Í¨¹ý²É¼¯¿¨ID´´½¨²É¼¯¿¨¾ä±ú
- *  @param   handle  [IN][OUT] ²É¼¯¿¨¾ä±ú
- *  @param   pInterfaceID  [IN] ²É¼¯¿¨ID
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief   é€šè¿‡é‡‡é›†å¡IDåˆ›å»ºé‡‡é›†å¡å¥æŸ„
+ *  @param   handle  [IN][OUT] é‡‡é›†å¡å¥æŸ„
+ *  @param   pInterfaceID  [IN] é‡‡é›†å¡ID
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_CreateInterfaceByID(IN OUT void ** handle, IN char* pInterfaceID);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief   ´ò¿ª²É¼¯¿¨
- *  @param   handle   [IN] ²É¼¯¿¨¾ä±ú
- *  @param   pReserved  [IN] Ô¤Áô£¬Ö±½ÓÌîNULL
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief   æ‰“å¼€é‡‡é›†å¡
+ *  @param   handle   [IN] é‡‡é›†å¡å¥æŸ„
+ *  @param   pReserved  [IN] é¢„ç•™ï¼Œç›´æŽ¥å¡«NULL
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
 
  *  @~english
- *  @brief   ´ò¿ª²É¼¯¿¨
- *  @param   handle   [IN] ²É¼¯¿¨¾ä±ú
- *  @param   pReserved  [IN] Ô¤Áô£¬Ö±½ÓÌîNULL
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief   æ‰“å¼€é‡‡é›†å¡
+ *  @param   handle   [IN] é‡‡é›†å¡å¥æŸ„
+ *  @param   pReserved  [IN] é¢„ç•™ï¼Œç›´æŽ¥å¡«NULL
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_OpenInterface(IN void* handle, IN char* pReserved);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief   ¹Ø±Õ²É¼¯¿¨
- *  @param   handle  [IN]²É¼¯¿¨¾ä±ú
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief   å…³é—­é‡‡é›†å¡
+ *  @param   handle  [IN]é‡‡é›†å¡å¥æŸ„
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
 
  *  @~english
- *  @brief   ¹Ø±Õ²É¼¯¿¨
- *  @param   handle  [IN]²É¼¯¿¨¾ä±ú
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief   å…³é—­é‡‡é›†å¡
+ *  @param   handle  [IN]é‡‡é›†å¡å¥æŸ„
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_CloseInterface(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief   Ïú»Ù²É¼¯¿¨¾ä±ú
- *  @param   handle  [IN]²É¼¯¿¨¾ä±ú
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief   é”€æ¯é‡‡é›†å¡å¥æŸ„
+ *  @param   handle  [IN]é‡‡é›†å¡å¥æŸ„
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
 
  *  @~english
- *  @brief   Ïú»Ù²É¼¯¿¨¾ä±ú
- *  @param   handle  [IN]²É¼¯¿¨¾ä±ú
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief   é”€æ¯é‡‡é›†å¡å¥æŸ„
+ *  @param   handle  [IN]é‡‡é›†å¡å¥æŸ„
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
 ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_DestroyInterface(IN void* handle);
 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ´´½¨Éè±¸¾ä±ú
- *  @param  handle                      [IN][OUT]       Éè±¸¾ä±ú
- *  @param  pstDevInfo                  [IN]            Éè±¸ÐÅÏ¢½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸ù¾ÝÊäÈëµÄÉè±¸ÐÅÏ¢£¬´´½¨¿âÄÚ²¿±ØÐëµÄ×ÊÔ´ºÍ³õÊ¼»¯ÄÚ²¿Ä£¿é
-             Í¨¹ý¸Ã½Ó¿Ú´´½¨¾ä±ú£¬µ÷ÓÃSDK½Ó¿Ú£¬»áÄ¬ÈÏÉú³ÉSDKÈÕÖ¾ÎÄ¼þ£¬Èç¹û²»ÐèÒªÉú³ÉÈÕÖ¾ÎÄ¼þ£¬¿ÉÒÔÍ¨¹ýMV_CC_CreateHandleWithoutLog´´½¨¾ä±ú
+ *  @brief  åˆ›å»ºè®¾å¤‡å¥æŸ„
+ *  @param  handle                      [IN][OUT]       è®¾å¤‡å¥æŸ„
+ *  @param  pstDevInfo                  [IN]            è®¾å¤‡ä¿¡æ¯ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks æ ¹æ®è¾“å…¥çš„è®¾å¤‡ä¿¡æ¯ï¼Œåˆ›å»ºåº“å†…éƒ¨å¿…é¡»çš„èµ„æºå’Œåˆå§‹åŒ–å†…éƒ¨æ¨¡å—
+             é€šè¿‡è¯¥æŽ¥å£åˆ›å»ºå¥æŸ„ï¼Œè°ƒç”¨SDKæŽ¥å£ï¼Œä¼šé»˜è®¤ç”ŸæˆSDKæ—¥å¿—æ–‡ä»¶ï¼Œå¦‚æžœä¸éœ€è¦ç”Ÿæˆæ—¥å¿—æ–‡ä»¶ï¼Œå¯ä»¥é€šè¿‡MV_CC_CreateHandleWithoutLogåˆ›å»ºå¥æŸ„
  
  *  @~english
  *  @brief  Create Device Handle
@@ -350,12 +350,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_CreateHandle(IN OUT void ** handle, IN const 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ´´½¨Éè±¸¾ä±ú£¬²»Éú³ÉÈÕÖ¾
- *  @param  handle                      [IN][OUT]       Éè±¸¾ä±ú
- *  @param  pstDevInfo                  [IN]            Éè±¸ÐÅÏ¢½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸ù¾ÝÊäÈëµÄÉè±¸ÐÅÏ¢£¬´´½¨¿âÄÚ²¿±ØÐëµÄ×ÊÔ´ºÍ³õÊ¼»¯ÄÚ²¿Ä£¿é
-             Í¨¹ý¸Ã½Ó¿Ú´´½¨¾ä±ú£¬µ÷ÓÃSDK½Ó¿Ú£¬²»»áÄ¬ÈÏÉú³ÉSDKÈÕÖ¾ÎÄ¼þ£¬Èç¹ûÐèÒªÉú³ÉÈÕÖ¾ÎÄ¼þ¿ÉÒÔÍ¨¹ýMV_CC_CreateHandle´´½¨¾ä±ú£¬ÈÕÖ¾ÎÄ¼þ×Ô¶¯Éú³É
+ *  @brief  åˆ›å»ºè®¾å¤‡å¥æŸ„ï¼Œä¸ç”Ÿæˆæ—¥å¿—
+ *  @param  handle                      [IN][OUT]       è®¾å¤‡å¥æŸ„
+ *  @param  pstDevInfo                  [IN]            è®¾å¤‡ä¿¡æ¯ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks æ ¹æ®è¾“å…¥çš„è®¾å¤‡ä¿¡æ¯ï¼Œåˆ›å»ºåº“å†…éƒ¨å¿…é¡»çš„èµ„æºå’Œåˆå§‹åŒ–å†…éƒ¨æ¨¡å—
+             é€šè¿‡è¯¥æŽ¥å£åˆ›å»ºå¥æŸ„ï¼Œè°ƒç”¨SDKæŽ¥å£ï¼Œä¸ä¼šé»˜è®¤ç”ŸæˆSDKæ—¥å¿—æ–‡ä»¶ï¼Œå¦‚æžœéœ€è¦ç”Ÿæˆæ—¥å¿—æ–‡ä»¶å¯ä»¥é€šè¿‡MV_CC_CreateHandleåˆ›å»ºå¥æŸ„ï¼Œæ—¥å¿—æ–‡ä»¶è‡ªåŠ¨ç”Ÿæˆ
  
  *  @~english
  *  @brief  Create Device Handle without log
@@ -370,9 +370,9 @@ MV_CAMCTRL_API int __stdcall MV_CC_CreateHandleWithoutLog(IN OUT void ** handle,
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ïú»ÙÉè±¸¾ä±ú
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  é”€æ¯è®¾å¤‡å¥æŸ„
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
  
  *  @~english
  *  @brief  Destroy Device Handle
@@ -383,15 +383,15 @@ MV_CAMCTRL_API int __stdcall MV_CC_DestroyHandle(IN void * handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ´ò¿ªÉè±¸
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nAccessMode                 [IN]            ·ÃÎÊÈ¨ÏÞ, ²ÎÊý¶¨Òå²Î¼ûCameraParams.h¶¨Òå, Èç:#define MV_ACCESS_Exclusive 1
- *  @param  nSwitchoverKey              [IN]            ÇÐ»»·ÃÎÊÈ¨ÏÞÊ±µÄÃÜÔ¿
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸ù¾ÝÉèÖÃµÄÉè±¸²ÎÊý£¬ÕÒµ½¶ÔÓ¦µÄÉè±¸£¬Á¬½ÓÉè±¸, µ÷ÓÃ½Ó¿ÚÊ±¿É²»´«ÈënAccessModeºÍnSwitchoverKey£¬´ËÊ±Ä¬ÈÏÉè±¸·ÃÎÊÄ£Ê½Îª¶ÀÕ¼È¨ÏÞ¡£
-             Ä¿Ç°Éè±¸ÔÝ²»Ö§³ÖMV_ACCESS_ExclusiveWithSwitch¡¢MV_ACCESS_ControlWithSwitch¡¢MV_ACCESS_ControlSwitchEnable¡¢MV_ACCESS_ControlSwitchEnableWithKeyÕâËÄÖÖÇÀÕ¼Ä£Ê½
-             ¶ÔÓÚU3VÉè±¸£¬nAccessMode¡¢nSwitchoverKeyÕâÁ½¸ö²ÎÊýÎÞÐ§
-             ¸Ã½Ó¿ÚÖ§³ÖÍø¿ÚÉè±¸²»Ã¶¾ÙÖ±½Ó´ò¿ª£¬²»Ö§³ÖU¿ÚºÍGenTLÉè±¸²»Ã¶¾Ù´ò¿ªÉè±¸
+ *  @brief  æ‰“å¼€è®¾å¤‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nAccessMode                 [IN]            è®¿é—®æƒé™, å‚æ•°å®šä¹‰å‚è§CameraParams.hå®šä¹‰, å¦‚:#define MV_ACCESS_Exclusive 1
+ *  @param  nSwitchoverKey              [IN]            åˆ‡æ¢è®¿é—®æƒé™æ—¶çš„å¯†é’¥
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks æ ¹æ®è®¾ç½®çš„è®¾å¤‡å‚æ•°ï¼Œæ‰¾åˆ°å¯¹åº”çš„è®¾å¤‡ï¼Œè¿žæŽ¥è®¾å¤‡, è°ƒç”¨æŽ¥å£æ—¶å¯ä¸ä¼ å…¥nAccessModeå’ŒnSwitchoverKeyï¼Œæ­¤æ—¶é»˜è®¤è®¾å¤‡è®¿é—®æ¨¡å¼ä¸ºç‹¬å æƒé™ã€‚
+             ç›®å‰è®¾å¤‡æš‚ä¸æ”¯æŒMV_ACCESS_ExclusiveWithSwitchã€MV_ACCESS_ControlWithSwitchã€MV_ACCESS_ControlSwitchEnableã€MV_ACCESS_ControlSwitchEnableWithKeyè¿™å››ç§æŠ¢å æ¨¡å¼
+             å¯¹äºŽU3Vè®¾å¤‡ï¼ŒnAccessModeã€nSwitchoverKeyè¿™ä¸¤ä¸ªå‚æ•°æ— æ•ˆ
+             è¯¥æŽ¥å£æ”¯æŒç½‘å£è®¾å¤‡ä¸æžšä¸¾ç›´æŽ¥æ‰“å¼€ï¼Œä¸æ”¯æŒUå£å’ŒGenTLè®¾å¤‡ä¸æžšä¸¾æ‰“å¼€è®¾å¤‡
  
  *  @~english
  *  @brief  Open Device
@@ -402,7 +402,7 @@ MV_CAMCTRL_API int __stdcall MV_CC_DestroyHandle(IN void * handle);
  *  @remarks Find specific device and connect according to set device parameters.When calling the interface, the input of nAccessMode and nSwitchoverKey is optional, 
              and the device access mode is exclusive. Currently the device does not support the following preemption modes:
              MV_ACCESS_ExclusiveWithSwitch, MV_ACCESS_ControlWithSwitch, MV_ACCESS_ControlSwitchEnableWithKey; For USB3Vision device, nAccessMode, nSwitchoverKey are invalid. 
-             This Interface support open without enumeration by GEV device£¬USB device and GenTL device don't support .
+             This Interface support open without enumeration by GEV deviceï¼ŒUSB device and GenTL device don't support .
  ************************************************************************/
 #ifndef __cplusplus
 MV_CAMCTRL_API int __stdcall MV_CC_OpenDevice(IN void* handle, IN unsigned int nAccessMode, IN unsigned short nSwitchoverKey);
@@ -412,10 +412,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_OpenDevice(IN void* handle, IN unsigned int n
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ¹Ø±ÕÉè±¸
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ýMV_CC_OpenDeviceÁ¬½ÓÉè±¸ºó£¬¿ÉÒÔÍ¨¹ý¸Ã½Ó¿Ú¶Ï¿ªÉè±¸Á¬½Ó£¬ÊÍ·Å×ÊÔ´
+ *  @brief  å…³é—­è®¾å¤‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks é€šè¿‡MV_CC_OpenDeviceè¿žæŽ¥è®¾å¤‡åŽï¼Œå¯ä»¥é€šè¿‡è¯¥æŽ¥å£æ–­å¼€è®¾å¤‡è¿žæŽ¥ï¼Œé‡Šæ”¾èµ„æº
  
  *  @~english
  *  @brief  Close Device
@@ -427,9 +427,9 @@ MV_CAMCTRL_API int __stdcall MV_CC_CloseDevice(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÅÐ¶ÏÉè±¸ÊÇ·ñ´¦ÓÚÁ¬½Ó×´Ì¬
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return Éè±¸´¦ÓÚÁ¬½Ó×´Ì¬£¬·µ»Øtrue£»Ã»Á¬½Ó»òÊ§È¥Á¬½Ó£¬·µ»Øfalse
+ *  @brief  åˆ¤æ–­è®¾å¤‡æ˜¯å¦å¤„äºŽè¿žæŽ¥çŠ¶æ€
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return è®¾å¤‡å¤„äºŽè¿žæŽ¥çŠ¶æ€ï¼Œè¿”å›žtrueï¼›æ²¡è¿žæŽ¥æˆ–å¤±åŽ»è¿žæŽ¥ï¼Œè¿”å›žfalse
  
  *  @~english
  *  @brief  Is The Device Connected
@@ -440,16 +440,16 @@ MV_CAMCTRL_API bool __stdcall MV_CC_IsDeviceConnected(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áÍ¼ÏñÊý¾Ý»Øµ÷
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  cbOutput                    [IN]            »Øµ÷º¯ÊýÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ý¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃÍ¼ÏñÊý¾Ý»Øµ÷º¯Êý£¬ÔÚMV_CC_CreateHandleÖ®ºó¼´¿Éµ÷ÓÃ, Í¼ÏñÊý¾Ý²É¼¯ÓÐÁ½ÖÖ·½Ê½£¬Á½ÖÖ·½Ê½²»ÄÜ¸´ÓÃ£º
-             ·½Ê½Ò»£ºµ÷ÓÃMV_CC_RegisterImageCallBackExÉèÖÃÍ¼ÏñÊý¾Ý»Øµ÷º¯Êý£¬È»ºóµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬²É¼¯µÄÍ¼ÏñÊý¾ÝÔÚÉèÖÃµÄ»Øµ÷º¯ÊýÖÐ·µ»Ø
-             ·½Ê½¶þ£ºµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬È»ºóÔÚÓ¦ÓÃ²ãÑ­»·µ÷ÓÃMV_CC_GetOneFrameTimeout»ñÈ¡Ö¸¶¨ÏñËØ¸ñÊ½µÄÖ¡Êý¾Ý£¬
-             »ñÈ¡Ö¡Êý¾ÝÊ±ÉÏ²ãÓ¦ÓÃ³ÌÐòÐèÒª¸ù¾ÝÖ¡ÂÊ¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  æ³¨å†Œå›¾åƒæ•°æ®å›žè°ƒ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  cbOutput                    [IN]            å›žè°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æŽ¥å£å¯ä»¥è®¾ç½®å›¾åƒæ•°æ®å›žè°ƒå‡½æ•°ï¼Œåœ¨MV_CC_CreateHandleä¹‹åŽå³å¯è°ƒç”¨, å›¾åƒæ•°æ®é‡‡é›†æœ‰ä¸¤ç§æ–¹å¼ï¼Œä¸¤ç§æ–¹å¼ä¸èƒ½å¤ç”¨ï¼š
+             æ–¹å¼ä¸€ï¼šè°ƒç”¨MV_CC_RegisterImageCallBackExè®¾ç½®å›¾åƒæ•°æ®å›žè°ƒå‡½æ•°ï¼Œç„¶åŽè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œé‡‡é›†çš„å›¾åƒæ•°æ®åœ¨è®¾ç½®çš„å›žè°ƒå‡½æ•°ä¸­è¿”å›ž
+             æ–¹å¼äºŒï¼šè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œç„¶åŽåœ¨åº”ç”¨å±‚å¾ªçŽ¯è°ƒç”¨MV_CC_GetOneFrameTimeoutèŽ·å–æŒ‡å®šåƒç´ æ ¼å¼çš„å¸§æ•°æ®ï¼Œ
+             èŽ·å–å¸§æ•°æ®æ—¶ä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§çŽ‡æŽ§åˆ¶å¥½è°ƒç”¨è¯¥æŽ¥å£çš„é¢‘çŽ‡ã€‚
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Register the image callback function
@@ -468,16 +468,16 @@ MV_CAMCTRL_API int __stdcall MV_CC_RegisterImageCallBackEx(IN void* handle,
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áÍ¼ÏñÊý¾Ý»Øµ÷£¬RGB
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  cbOutput                    [IN]            »Øµ÷º¯ÊýÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ý¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃÍ¼ÏñÊý¾Ý»Øµ÷º¯Êý£¬ÔÚMV_CC_CreateHandleÖ®ºó¼´¿Éµ÷ÓÃ¡£Í¼ÏñÊý¾Ý²É¼¯ÓÐÁ½ÖÖ·½Ê½£¬Á½ÖÖ·½Ê½²»ÄÜ¸´ÓÃ£º
-             ·½Ê½Ò»£ºµ÷ÓÃMV_CC_RegisterImageCallBackForRGBÉèÖÃRGB24¸ñÊ½Í¼ÏñÊý¾Ý»Øµ÷º¯Êý£¬È»ºóµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬²É¼¯µÄÍ¼ÏñÊý¾ÝÔÚÉèÖÃµÄ»Øµ÷º¯ÊýÖÐ·µ»Ø¡£
-             ·½Ê½¶þ£ºµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬È»ºóÔÚÓ¦ÓÃ²ãÑ­»·µ÷ÓÃMV_CC_GetImageForRGB»ñÈ¡RGB24¸ñÊ½µÄÖ¡Êý¾Ý,
-                      »ñÈ¡Ö¡Êý¾ÝÊ±ÉÏ²ãÓ¦ÓÃ³ÌÐòÐèÒª¸ù¾ÝÖ¡ÂÊ¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£ 
+ *  @brief  æ³¨å†Œå›¾åƒæ•°æ®å›žè°ƒï¼ŒRGB
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  cbOutput                    [IN]            å›žè°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æŽ¥å£å¯ä»¥è®¾ç½®å›¾åƒæ•°æ®å›žè°ƒå‡½æ•°ï¼Œåœ¨MV_CC_CreateHandleä¹‹åŽå³å¯è°ƒç”¨ã€‚å›¾åƒæ•°æ®é‡‡é›†æœ‰ä¸¤ç§æ–¹å¼ï¼Œä¸¤ç§æ–¹å¼ä¸èƒ½å¤ç”¨ï¼š
+             æ–¹å¼ä¸€ï¼šè°ƒç”¨MV_CC_RegisterImageCallBackForRGBè®¾ç½®RGB24æ ¼å¼å›¾åƒæ•°æ®å›žè°ƒå‡½æ•°ï¼Œç„¶åŽè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œé‡‡é›†çš„å›¾åƒæ•°æ®åœ¨è®¾ç½®çš„å›žè°ƒå‡½æ•°ä¸­è¿”å›žã€‚
+             æ–¹å¼äºŒï¼šè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œç„¶åŽåœ¨åº”ç”¨å±‚å¾ªçŽ¯è°ƒç”¨MV_CC_GetImageForRGBèŽ·å–RGB24æ ¼å¼çš„å¸§æ•°æ®,
+                      èŽ·å–å¸§æ•°æ®æ—¶ä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§çŽ‡æŽ§åˆ¶å¥½è°ƒç”¨è¯¥æŽ¥å£çš„é¢‘çŽ‡ã€‚
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚ 
  
  *  @~english
  *  @brief  register image data callback, RGB
@@ -496,16 +496,16 @@ MV_CAMCTRL_API int __stdcall MV_CC_RegisterImageCallBackForRGB(IN void* handle,
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áÍ¼ÏñÊý¾Ý»Øµ÷£¬BGR
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  cbOutput                    [IN]            »Øµ÷º¯ÊýÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ý¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃÍ¼ÏñÊý¾Ý»Øµ÷º¯Êý£¬ÔÚMV_CC_CreateHandleÖ®ºó¼´¿Éµ÷ÓÃ¡£Í¼ÏñÊý¾Ý²É¼¯ÓÐÁ½ÖÖ·½Ê½£¬Á½ÖÖ·½Ê½²»ÄÜ¸´ÓÃ:
-             ·½Ê½Ò»£ºµ÷ÓÃMV_CC_RegisterImageCallBackForBGRÉèÖÃBGR24Í¼ÏñÊý¾Ý»Øµ÷º¯Êý£¬È»ºóµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬²É¼¯µÄÍ¼ÏñÊý¾ÝÔÚÉèÖÃµÄ»Øµ÷º¯ÊýÖÐ·µ»Ø¡£
-             ·½Ê½¶þ£ºµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬È»ºóÔÚÓ¦ÓÃ²ãÑ­»·µ÷ÓÃMV_CC_GetImageForBGR»ñÈ¡BGR24¸ñÊ½µÄÖ¡Êý¾Ý,
-                      »ñÈ¡Ö¡Êý¾ÝÊ±ÉÏ²ãÓ¦ÓÃ³ÌÐòÐèÒª¸ù¾ÝÖ¡ÂÊ¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£ 
+ *  @brief  æ³¨å†Œå›¾åƒæ•°æ®å›žè°ƒï¼ŒBGR
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  cbOutput                    [IN]            å›žè°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æŽ¥å£å¯ä»¥è®¾ç½®å›¾åƒæ•°æ®å›žè°ƒå‡½æ•°ï¼Œåœ¨MV_CC_CreateHandleä¹‹åŽå³å¯è°ƒç”¨ã€‚å›¾åƒæ•°æ®é‡‡é›†æœ‰ä¸¤ç§æ–¹å¼ï¼Œä¸¤ç§æ–¹å¼ä¸èƒ½å¤ç”¨:
+             æ–¹å¼ä¸€ï¼šè°ƒç”¨MV_CC_RegisterImageCallBackForBGRè®¾ç½®BGR24å›¾åƒæ•°æ®å›žè°ƒå‡½æ•°ï¼Œç„¶åŽè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œé‡‡é›†çš„å›¾åƒæ•°æ®åœ¨è®¾ç½®çš„å›žè°ƒå‡½æ•°ä¸­è¿”å›žã€‚
+             æ–¹å¼äºŒï¼šè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œç„¶åŽåœ¨åº”ç”¨å±‚å¾ªçŽ¯è°ƒç”¨MV_CC_GetImageForBGRèŽ·å–BGR24æ ¼å¼çš„å¸§æ•°æ®,
+                      èŽ·å–å¸§æ•°æ®æ—¶ä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§çŽ‡æŽ§åˆ¶å¥½è°ƒç”¨è¯¥æŽ¥å£çš„é¢‘çŽ‡ã€‚
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚ 
  
  *  @~english
  *  @brief  register image data callback, BGR
@@ -524,10 +524,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_RegisterImageCallBackForBGR(IN void* handle,
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ¿ªÊ¼È¡Á÷
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  å¼€å§‹å–æµ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Start Grabbing
@@ -539,10 +539,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_StartGrabbing(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í£Ö¹È¡Á÷
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£ 
+ *  @brief  åœæ­¢å–æµ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚ 
  
  *  @~english
  *  @brief  Stop Grabbing
@@ -554,18 +554,18 @@ MV_CAMCTRL_API int __stdcall MV_CC_StopGrabbing(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Ò»Ö¡RGBÊý¾Ý£¬´Ëº¯ÊýÎª²éÑ¯Ê½»ñÈ¡£¬Ã¿´Îµ÷ÓÃ²éÑ¯ÄÚ²¿
-            »º´æÓÐÎÞÊý¾Ý£¬ÓÐÊý¾ÝÔò»ñÈ¡Êý¾Ý£¬ÎÞÊý¾Ý·µ»Ø´íÎóÂë
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pData                       [IN][OUT]       Í¼ÏñÊý¾Ý½ÓÊÕÖ¸Õë
- *  @param  nDataSize                   [IN]            ½ÓÊÕ»º´æ´óÐ¡
- *  @param  pstFrameInfo                [IN][OUT]       Í¼ÏñÐÅÏ¢½á¹¹Ìå
- *  @param  nMsec                       [IN]            µÈ´ý³¬Ê±Ê±¼ä
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Ã¿´Îµ÷ÓÃ¸Ã½Ó¿Ú£¬½«²éÑ¯ÄÚ²¿»º´æÊÇ·ñÓÐÊý¾Ý£¬Èç¹ûÓÐÊý¾ÝÔò×ª»»³ÉRGB24¸ñÊ½·µ»Ø£¬Èç¹ûÃ»ÓÐÊý¾ÝÔò·µ»Ø´íÎóÂë¡£
-             ÒòÎªÍ¼Ïñ×ª»»³ÉRGB24¸ñÊ½ÓÐºÄÊ±£¬ËùÒÔµ±Êý¾ÝÖ¡ÂÊ¹ý¸ßÊ±¸Ã½Ó¿Ú¿ÉÄÜ»áµ¼ÖÂ¶ªÖ¡¡£µ÷ÓÃ¸Ã½Ó¿Ú»ñÈ¡Í¼ÏñÊý¾ÝÖ¡Ö®Ç°ÐèÒªÏÈµ÷ÓÃMV_CC_StartGrabbingÆô¶¯Í¼Ïñ²É¼¯¡£
-             ¸Ã½Ó¿ÚÎªÖ÷¶¯Ê½»ñÈ¡Ö¡Êý¾Ý£¬ÉÏ²ãÓ¦ÓÃ³ÌÐòÐèÒª¸ù¾ÝÖ¡ÂÊ£¬¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  èŽ·å–ä¸€å¸§RGBæ•°æ®ï¼Œæ­¤å‡½æ•°ä¸ºæŸ¥è¯¢å¼èŽ·å–ï¼Œæ¯æ¬¡è°ƒç”¨æŸ¥è¯¢å†…éƒ¨
+            ç¼“å­˜æœ‰æ— æ•°æ®ï¼Œæœ‰æ•°æ®åˆ™èŽ·å–æ•°æ®ï¼Œæ— æ•°æ®è¿”å›žé”™è¯¯ç 
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pData                       [IN][OUT]       å›¾åƒæ•°æ®æŽ¥æ”¶æŒ‡é’ˆ
+ *  @param  nDataSize                   [IN]            æŽ¥æ”¶ç¼“å­˜å¤§å°
+ *  @param  pstFrameInfo                [IN][OUT]       å›¾åƒä¿¡æ¯ç»“æž„ä½“
+ *  @param  nMsec                       [IN]            ç­‰å¾…è¶…æ—¶æ—¶é—´
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks æ¯æ¬¡è°ƒç”¨è¯¥æŽ¥å£ï¼Œå°†æŸ¥è¯¢å†…éƒ¨ç¼“å­˜æ˜¯å¦æœ‰æ•°æ®ï¼Œå¦‚æžœæœ‰æ•°æ®åˆ™è½¬æ¢æˆRGB24æ ¼å¼è¿”å›žï¼Œå¦‚æžœæ²¡æœ‰æ•°æ®åˆ™è¿”å›žé”™è¯¯ç ã€‚
+             å› ä¸ºå›¾åƒè½¬æ¢æˆRGB24æ ¼å¼æœ‰è€—æ—¶ï¼Œæ‰€ä»¥å½“æ•°æ®å¸§çŽ‡è¿‡é«˜æ—¶è¯¥æŽ¥å£å¯èƒ½ä¼šå¯¼è‡´ä¸¢å¸§ã€‚è°ƒç”¨è¯¥æŽ¥å£èŽ·å–å›¾åƒæ•°æ®å¸§ä¹‹å‰éœ€è¦å…ˆè°ƒç”¨MV_CC_StartGrabbingå¯åŠ¨å›¾åƒé‡‡é›†ã€‚
+             è¯¥æŽ¥å£ä¸ºä¸»åŠ¨å¼èŽ·å–å¸§æ•°æ®ï¼Œä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§çŽ‡ï¼ŒæŽ§åˆ¶å¥½è°ƒç”¨è¯¥æŽ¥å£çš„é¢‘çŽ‡ã€‚
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Get one frame of RGB data, this function is using query to get data
@@ -586,18 +586,18 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetImageForRGB(IN void* handle, IN OUT unsign
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Ò»Ö¡BGRÊý¾Ý£¬´Ëº¯ÊýÎª²éÑ¯Ê½»ñÈ¡£¬Ã¿´Îµ÷ÓÃ²éÑ¯ÄÚ²¿
-            »º´æÓÐÎÞÊý¾Ý£¬ÓÐÊý¾ÝÔò»ñÈ¡Êý¾Ý£¬ÎÞÊý¾Ý·µ»Ø´íÎóÂë
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pData                       [IN][OUT]       Í¼ÏñÊý¾Ý½ÓÊÕÖ¸Õë
- *  @param  nDataSize                   [IN]            ½ÓÊÕ»º´æ´óÐ¡
- *  @param  pstFrameInfo                [IN][OUT]       Í¼ÏñÐÅÏ¢½á¹¹Ìå
- *  @param  nMsec                       [IN]            µÈ´ý³¬Ê±Ê±¼ä
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Ã¿´Îµ÷ÓÃ¸Ã½Ó¿Ú£¬½«²éÑ¯ÄÚ²¿»º´æÊÇ·ñÓÐÊý¾Ý£¬Èç¹ûÓÐÊý¾ÝÔò×ª»»³ÉBGR24¸ñÊ½·µ»Ø£¬Èç¹ûÃ»ÓÐÊý¾ÝÔò·µ»Ø´íÎóÂë¡£
-             ÒòÎªÍ¼Ïñ×ª»»³ÉBGR24¸ñÊ½ÓÐºÄÊ±£¬ËùÒÔµ±Êý¾ÝÖ¡ÂÊ¹ý¸ßÊ±¸Ã½Ó¿Ú¿ÉÄÜ»áµ¼ÖÂ¶ªÖ¡.µ÷ÓÃ¸Ã½Ó¿Ú»ñÈ¡Í¼ÏñÊý¾ÝÖ¡Ö®Ç°ÐèÒªÏÈµ÷ÓÃMV_CC_StartGrabbingÆô¶¯Í¼Ïñ²É¼¯¡£
-             ¸Ã½Ó¿ÚÎªÖ÷¶¯Ê½»ñÈ¡Ö¡Êý¾Ý£¬ÉÏ²ãÓ¦ÓÃ³ÌÐòÐèÒª¸ù¾ÝÖ¡ÂÊ£¬¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  èŽ·å–ä¸€å¸§BGRæ•°æ®ï¼Œæ­¤å‡½æ•°ä¸ºæŸ¥è¯¢å¼èŽ·å–ï¼Œæ¯æ¬¡è°ƒç”¨æŸ¥è¯¢å†…éƒ¨
+            ç¼“å­˜æœ‰æ— æ•°æ®ï¼Œæœ‰æ•°æ®åˆ™èŽ·å–æ•°æ®ï¼Œæ— æ•°æ®è¿”å›žé”™è¯¯ç 
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pData                       [IN][OUT]       å›¾åƒæ•°æ®æŽ¥æ”¶æŒ‡é’ˆ
+ *  @param  nDataSize                   [IN]            æŽ¥æ”¶ç¼“å­˜å¤§å°
+ *  @param  pstFrameInfo                [IN][OUT]       å›¾åƒä¿¡æ¯ç»“æž„ä½“
+ *  @param  nMsec                       [IN]            ç­‰å¾…è¶…æ—¶æ—¶é—´
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks æ¯æ¬¡è°ƒç”¨è¯¥æŽ¥å£ï¼Œå°†æŸ¥è¯¢å†…éƒ¨ç¼“å­˜æ˜¯å¦æœ‰æ•°æ®ï¼Œå¦‚æžœæœ‰æ•°æ®åˆ™è½¬æ¢æˆBGR24æ ¼å¼è¿”å›žï¼Œå¦‚æžœæ²¡æœ‰æ•°æ®åˆ™è¿”å›žé”™è¯¯ç ã€‚
+             å› ä¸ºå›¾åƒè½¬æ¢æˆBGR24æ ¼å¼æœ‰è€—æ—¶ï¼Œæ‰€ä»¥å½“æ•°æ®å¸§çŽ‡è¿‡é«˜æ—¶è¯¥æŽ¥å£å¯èƒ½ä¼šå¯¼è‡´ä¸¢å¸§.è°ƒç”¨è¯¥æŽ¥å£èŽ·å–å›¾åƒæ•°æ®å¸§ä¹‹å‰éœ€è¦å…ˆè°ƒç”¨MV_CC_StartGrabbingå¯åŠ¨å›¾åƒé‡‡é›†ã€‚
+             è¯¥æŽ¥å£ä¸ºä¸»åŠ¨å¼èŽ·å–å¸§æ•°æ®ï¼Œä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§çŽ‡ï¼ŒæŽ§åˆ¶å¥½è°ƒç”¨è¯¥æŽ¥å£çš„é¢‘çŽ‡ã€‚
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Get one frame of BGR data, this function is using query to get data
@@ -619,18 +619,18 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetImageForBGR(IN void* handle, IN OUT unsign
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ê¹ÓÃÄÚ²¿»º´æ»ñÈ¡Ò»Ö¡Í¼Æ¬£¨ÓëMV_CC_Display²»ÄÜÍ¬Ê±Ê¹ÓÃ£©
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFrame                    [IN][OUT]       Í¼ÏñÊý¾ÝºÍÍ¼ÏñÐÅÏ¢
- *  @param  nMsec                       [IN]            µÈ´ý³¬Ê±Ê±¼ä£¬ÊäÈëINFINITEÊ±±íÊ¾ÎÞÏÞµÈ´ý£¬Ö±µ½ÊÕµ½Ò»Ö¡Êý¾Ý»òÕßÍ£Ö¹È¡Á÷
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks µ÷ÓÃ¸Ã½Ó¿Ú»ñÈ¡Í¼ÏñÊý¾ÝÖ¡Ö®Ç°ÐèÒªÏÈµ÷ÓÃMV_CC_StartGrabbingÆô¶¯Í¼Ïñ²É¼¯¡£¸Ã½Ó¿ÚÎªÖ÷¶¯Ê½»ñÈ¡Ö¡Êý¾Ý£¬ÉÏ²ãÓ¦ÓÃ³ÌÐòÐèÒª¸ù¾ÝÖ¡ÂÊ£¬¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ,
-             ¸Ã½Ó¿ÚÖ§³ÖÉèÖÃ³¬Ê±Ê±¼ä£¬SDKÄÚ²¿µÈ´ýÖ±µ½ÓÐÊý¾ÝÊ±·µ»Ø£¬¿ÉÒÔÔö¼ÓÈ¡Á÷Æ½ÎÈÐÔ£¬ÊÊºÏÓÃÓÚ¶ÔÆ½ÎÈÐÔÒªÇó½Ï¸ßµÄ³¡ºÏ¡£
-             ¸Ã½Ó¿ÚÓëMV_CC_FreeImageBufferÅäÌ×Ê¹ÓÃ£¬µ±´¦ÀíÍêÈ¡µ½µÄÊý¾Ýºó£¬ÐèÒªÓÃMV_CC_FreeImageBuffer½Ó¿Ú½«pFrameÄÚµÄÊý¾ÝÖ¸ÕëÈ¨ÏÞ½øÐÐÊÍ·Å¡£
-             ¸Ã½Ó¿ÚÓëMV_CC_GetOneFrameTimeoutÏà±È£¬ÓÐ×Å¸ü¸ßµÄÐ§ÂÊ¡£ÇÒÆäÈ¡Á÷»º´æµÄ·ÖÅäÊÇÓÉsdkÄÚ²¿×Ô¶¯·ÖÅäµÄ£¬¶øMV_CC_GetOneFrameTimeout½Ó¿ÚÊÇÐèÒª¿Í»§×ÔÐÐ·ÖÅä¡£
-             ¸Ã½Ó¿ÚÔÚµ÷ÓÃMV_CC_DisplayºóÎÞ·¨È¡Á÷¡£
-             ¸Ã½Ó¿Ú¶ÔÓÚU3V¡¢GIGEÉè±¸¾ù¿ÉÖ§³Ö¡£
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  ä½¿ç”¨å†…éƒ¨ç¼“å­˜èŽ·å–ä¸€å¸§å›¾ç‰‡ï¼ˆä¸ŽMV_CC_Displayä¸èƒ½åŒæ—¶ä½¿ç”¨ï¼‰
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFrame                    [IN][OUT]       å›¾åƒæ•°æ®å’Œå›¾åƒä¿¡æ¯
+ *  @param  nMsec                       [IN]            ç­‰å¾…è¶…æ—¶æ—¶é—´ï¼Œè¾“å…¥INFINITEæ—¶è¡¨ç¤ºæ— é™ç­‰å¾…ï¼Œç›´åˆ°æ”¶åˆ°ä¸€å¸§æ•°æ®æˆ–è€…åœæ­¢å–æµ
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è°ƒç”¨è¯¥æŽ¥å£èŽ·å–å›¾åƒæ•°æ®å¸§ä¹‹å‰éœ€è¦å…ˆè°ƒç”¨MV_CC_StartGrabbingå¯åŠ¨å›¾åƒé‡‡é›†ã€‚è¯¥æŽ¥å£ä¸ºä¸»åŠ¨å¼èŽ·å–å¸§æ•°æ®ï¼Œä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§çŽ‡ï¼ŒæŽ§åˆ¶å¥½è°ƒç”¨è¯¥æŽ¥å£çš„é¢‘çŽ‡,
+             è¯¥æŽ¥å£æ”¯æŒè®¾ç½®è¶…æ—¶æ—¶é—´ï¼ŒSDKå†…éƒ¨ç­‰å¾…ç›´åˆ°æœ‰æ•°æ®æ—¶è¿”å›žï¼Œå¯ä»¥å¢žåŠ å–æµå¹³ç¨³æ€§ï¼Œé€‚åˆç”¨äºŽå¯¹å¹³ç¨³æ€§è¦æ±‚è¾ƒé«˜çš„åœºåˆã€‚
+             è¯¥æŽ¥å£ä¸ŽMV_CC_FreeImageBufferé…å¥—ä½¿ç”¨ï¼Œå½“å¤„ç†å®Œå–åˆ°çš„æ•°æ®åŽï¼Œéœ€è¦ç”¨MV_CC_FreeImageBufferæŽ¥å£å°†pFrameå†…çš„æ•°æ®æŒ‡é’ˆæƒé™è¿›è¡Œé‡Šæ”¾ã€‚
+             è¯¥æŽ¥å£ä¸ŽMV_CC_GetOneFrameTimeoutç›¸æ¯”ï¼Œæœ‰ç€æ›´é«˜çš„æ•ˆçŽ‡ã€‚ä¸”å…¶å–æµç¼“å­˜çš„åˆ†é…æ˜¯ç”±sdkå†…éƒ¨è‡ªåŠ¨åˆ†é…çš„ï¼Œè€ŒMV_CC_GetOneFrameTimeoutæŽ¥å£æ˜¯éœ€è¦å®¢æˆ·è‡ªè¡Œåˆ†é…ã€‚
+             è¯¥æŽ¥å£åœ¨è°ƒç”¨MV_CC_DisplayåŽæ— æ³•å–æµã€‚
+             è¯¥æŽ¥å£å¯¹äºŽU3Vã€GIGEè®¾å¤‡å‡å¯æ”¯æŒã€‚
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Get a frame of an image using an internal cache
@@ -650,14 +650,14 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetImageBuffer(IN void* handle, IN OUT MV_FRA
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÊÍ·ÅÍ¼Ïñ»º´æ(´Ë½Ó¿ÚÓÃÓÚÊÍ·Å²»ÔÙÊ¹ÓÃµÄÍ¼Ïñ»º´æ£¬ÓëMV_CC_GetImageBufferÅäÌ×Ê¹ÓÃ)
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFrame                    [IN]            Í¼ÏñÊý¾ÝºÍÍ¼ÏñÊý¾Ý
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÓëMV_CC_GetImageBufferÅäÌ×Ê¹ÓÃ£¬Ê¹ÓÃMV_CC_GetImageBuffer½Ó¿ÚÈ¡µ½µÄÍ¼ÏñÊý¾ÝpFrame£¬ÐèÒªÓÃMV_CC_FreeImageBuffer½Ó¿Ú½øÐÐÈ¨ÏÞÊÍ·Å
-             ¸Ã½Ó¿Ú¶ÔÓÚÈ¡Á÷Ð§ÂÊ¸ßÓÚGetOneFrameTimeout½Ó¿Ú£¬ÇÒGetImageBufferÔÚ²»½øÐÐFreeµÄÇé¿öÏÂ£¬×î´óÖ§³ÖÊä³öµÄ½ÚµãÊýÓëSetImageNode½Ó¿ÚËùÉèÖÃµÄ½ÚµãÊýÏàµÈ£¬Ä¬ÈÏ½ÚµãÊýÊÇ1
-             ¸Ã½Ó¿Ú¶ÔÓÚU3V¡¢GIGEÉè±¸¾ù¿ÉÖ§³Ö
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  é‡Šæ”¾å›¾åƒç¼“å­˜(æ­¤æŽ¥å£ç”¨äºŽé‡Šæ”¾ä¸å†ä½¿ç”¨çš„å›¾åƒç¼“å­˜ï¼Œä¸ŽMV_CC_GetImageBufferé…å¥—ä½¿ç”¨)
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFrame                    [IN]            å›¾åƒæ•°æ®å’Œå›¾åƒæ•°æ®
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£ä¸ŽMV_CC_GetImageBufferé…å¥—ä½¿ç”¨ï¼Œä½¿ç”¨MV_CC_GetImageBufferæŽ¥å£å–åˆ°çš„å›¾åƒæ•°æ®pFrameï¼Œéœ€è¦ç”¨MV_CC_FreeImageBufferæŽ¥å£è¿›è¡Œæƒé™é‡Šæ”¾
+             è¯¥æŽ¥å£å¯¹äºŽå–æµæ•ˆçŽ‡é«˜äºŽGetOneFrameTimeoutæŽ¥å£ï¼Œä¸”GetImageBufferåœ¨ä¸è¿›è¡ŒFreeçš„æƒ…å†µä¸‹ï¼Œæœ€å¤§æ”¯æŒè¾“å‡ºçš„èŠ‚ç‚¹æ•°ä¸ŽSetImageNodeæŽ¥å£æ‰€è®¾ç½®çš„èŠ‚ç‚¹æ•°ç›¸ç­‰ï¼Œé»˜è®¤èŠ‚ç‚¹æ•°æ˜¯1
+             è¯¥æŽ¥å£å¯¹äºŽU3Vã€GIGEè®¾å¤‡å‡å¯æ”¯æŒ
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Free image buffer(this interface can free image buffer, used with MV_CC_GetImageBuffer)
@@ -674,18 +674,18 @@ MV_CAMCTRL_API int __stdcall MV_CC_FreeImageBuffer(IN void* handle, IN MV_FRAME_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ²ÉÓÃ³¬Ê±»úÖÆ»ñÈ¡Ò»Ö¡Í¼Æ¬£¬SDKÄÚ²¿µÈ´ýÖ±µ½ÓÐÊý¾ÝÊ±·µ»Ø
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pData                       [IN][OUT]       Í¼ÏñÊý¾Ý½ÓÊÕÖ¸Õë
- *  @param  nDataSize                   [IN]            ½ÓÊÕ»º´æ´óÐ¡
- *  @param  pstFrameInfo                [IN][OUT]       Í¼ÏñÐÅÏ¢½á¹¹Ìå
- *  @param  nMsec                       [IN]            µÈ´ý³¬Ê±Ê±¼ä
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks µ÷ÓÃ¸Ã½Ó¿Ú»ñÈ¡Í¼ÏñÊý¾ÝÖ¡Ö®Ç°ÐèÒªÏÈµ÷ÓÃMV_CC_StartGrabbingÆô¶¯Í¼Ïñ²É¼¯
-             ¸Ã½Ó¿ÚÎªÖ÷¶¯Ê½»ñÈ¡Ö¡Êý¾Ý£¬ÉÏ²ãÓ¦ÓÃ³ÌÐòÐèÒª¸ù¾ÝÖ¡ÂÊ£¬¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ
-             ¸Ã½Ó¿ÚÖ§³ÖÉèÖÃ³¬Ê±Ê±¼ä£¬SDKÄÚ²¿µÈ´ýÖ±µ½ÓÐÊý¾ÝÊ±·µ»Ø£¬¿ÉÒÔÔö¼ÓÈ¡Á÷Æ½ÎÈÐÔ£¬ÊÊºÏÓÃÓÚ¶ÔÆ½ÎÈÐÔÒªÇó½Ï¸ßµÄ³¡ºÏ
-             ¸Ã½Ó¿Ú¶ÔÓÚU3V¡¢GIGEÉè±¸¾ù¿ÉÖ§³Ö
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  é‡‡ç”¨è¶…æ—¶æœºåˆ¶èŽ·å–ä¸€å¸§å›¾ç‰‡ï¼ŒSDKå†…éƒ¨ç­‰å¾…ç›´åˆ°æœ‰æ•°æ®æ—¶è¿”å›ž
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pData                       [IN][OUT]       å›¾åƒæ•°æ®æŽ¥æ”¶æŒ‡é’ˆ
+ *  @param  nDataSize                   [IN]            æŽ¥æ”¶ç¼“å­˜å¤§å°
+ *  @param  pstFrameInfo                [IN][OUT]       å›¾åƒä¿¡æ¯ç»“æž„ä½“
+ *  @param  nMsec                       [IN]            ç­‰å¾…è¶…æ—¶æ—¶é—´
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è°ƒç”¨è¯¥æŽ¥å£èŽ·å–å›¾åƒæ•°æ®å¸§ä¹‹å‰éœ€è¦å…ˆè°ƒç”¨MV_CC_StartGrabbingå¯åŠ¨å›¾åƒé‡‡é›†
+             è¯¥æŽ¥å£ä¸ºä¸»åŠ¨å¼èŽ·å–å¸§æ•°æ®ï¼Œä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§çŽ‡ï¼ŒæŽ§åˆ¶å¥½è°ƒç”¨è¯¥æŽ¥å£çš„é¢‘çŽ‡
+             è¯¥æŽ¥å£æ”¯æŒè®¾ç½®è¶…æ—¶æ—¶é—´ï¼ŒSDKå†…éƒ¨ç­‰å¾…ç›´åˆ°æœ‰æ•°æ®æ—¶è¿”å›žï¼Œå¯ä»¥å¢žåŠ å–æµå¹³ç¨³æ€§ï¼Œé€‚åˆç”¨äºŽå¯¹å¹³ç¨³æ€§è¦æ±‚è¾ƒé«˜çš„åœºåˆ
+             è¯¥æŽ¥å£å¯¹äºŽU3Vã€GIGEè®¾å¤‡å‡å¯æ”¯æŒ
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Timeout mechanism is used to get image, and the SDK waits inside until the data is returned
@@ -705,14 +705,14 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetOneFrameTimeout(IN void* handle, IN OUT un
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Çå³ýÈ¡Á÷Êý¾Ý»º´æ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÔÊÐíÓÃ»§ÔÚ²»Í£Ö¹È¡Á÷µÄÊ±ºò£¬¾ÍÄÜÇå³ý»º´æÖÐ²»ÐèÒªµÄÍ¼Ïñ
-             ¸Ã½Ó¿ÚÔÚÁ¬ÐøÄ£Ê½ÇÐ´¥·¢Ä£Ê½ºó£¬¿ÉÒÔÇå³ýÀúÊ·Êý¾Ý¡£
+ *  @brief  æ¸…é™¤å–æµæ•°æ®ç¼“å­˜
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£å…è®¸ç”¨æˆ·åœ¨ä¸åœæ­¢å–æµçš„æ—¶å€™ï¼Œå°±èƒ½æ¸…é™¤ç¼“å­˜ä¸­ä¸éœ€è¦çš„å›¾åƒ
+             è¯¥æŽ¥å£åœ¨è¿žç»­æ¨¡å¼åˆ‡è§¦å‘æ¨¡å¼åŽï¼Œå¯ä»¥æ¸…é™¤åŽ†å²æ•°æ®ã€‚
  
  *  @~english
- *  @brief  if Image buffers has retrieved the data£¬Clear them
+ *  @brief  if Image buffers has retrieved the dataï¼ŒClear them
  *  @param  handle                      [IN]            Device handle
  *  @return Success, return MV_OK. Failure, return error code
  *  @remarks This interface allows user to clear the unnecessary images from the buffer memory without stopping acquisition.
@@ -722,10 +722,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_ClearImageBuffer(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡µ±Ç°Í¼Ïñ»º´æÇøµÄÓÐÐ§Í¼Ïñ¸öÊý
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnValidImageNum             [IN][OUT]       µ±Ç°Í¼Ïñ»º´æÇøÖÐÓÐÐ§Í¼Ïñ¸öÊýµÄÖ¸Õë
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief  èŽ·å–å½“å‰å›¾åƒç¼“å­˜åŒºçš„æœ‰æ•ˆå›¾åƒä¸ªæ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnValidImageNum             [IN][OUT]       å½“å‰å›¾åƒç¼“å­˜åŒºä¸­æœ‰æ•ˆå›¾åƒä¸ªæ•°çš„æŒ‡é’ˆ
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
  *  @remarks 
  
  *  @~english
@@ -739,11 +739,11 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetValidImageNum(IN void* handle, IN OUT unsi
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÏÔÊ¾Ò»Ö¡Í¼Ïñ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstDisplayInfo              [IN]            Í¼ÏñÐÅÏ¢
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ÓëÉè±¸ÀàÐÍÎÞ¹Ø
+ *  @brief  æ˜¾ç¤ºä¸€å¸§å›¾åƒ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstDisplayInfo              [IN]            å›¾åƒä¿¡æ¯
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks ä¸Žè®¾å¤‡ç±»åž‹æ— å…³
 
  *  @~english
  *  @brief  Display one frame image
@@ -756,13 +756,13 @@ MV_CAMCTRL_API int __stdcall MV_CC_DisplayOneFrame(IN void* handle, IN MV_DISPLA
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÏÔÊ¾Ò»Ö¡Í¼Ïñ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  hWnd                        [IN]            ´°¿Ú¾ä±ú
- *  @param  pstDisplayInfo              [IN]            Í¼ÏñÐÅÏ¢
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÖ§³ÖPixelType_Gvsp_RGB8_Packed£¬PixelType_Gvsp_BGR8_Packed£¬PixelType_Gvsp_Mono8ÈýÖÖÏñËØ¸ñÊ½µÄäÖÈ¾¿í¸ß´óÐ¡ÖÁintÀàÐÍ
- *           ÆäÓàÏñËØ¸ñÊ½äÖÈ¾½öÖ§³Ö¿í¸ßÖÁshort
+ *  @brief  æ˜¾ç¤ºä¸€å¸§å›¾åƒ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  hWnd                        [IN]            çª—å£å¥æŸ„
+ *  @param  pstDisplayInfo              [IN]            å›¾åƒä¿¡æ¯
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£æ”¯æŒPixelType_Gvsp_RGB8_Packedï¼ŒPixelType_Gvsp_BGR8_Packedï¼ŒPixelType_Gvsp_Mono8ä¸‰ç§åƒç´ æ ¼å¼çš„æ¸²æŸ“å®½é«˜å¤§å°è‡³intç±»åž‹
+ *           å…¶ä½™åƒç´ æ ¼å¼æ¸²æŸ“ä»…æ”¯æŒå®½é«˜è‡³short
  
  *  @~english
  *  @brief  Display one frame image
@@ -777,13 +777,13 @@ MV_CAMCTRL_API int __stdcall MV_CC_DisplayOneFrameEx(IN void* handle, IN void* h
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃSDKÄÚ²¿Í¼Ïñ»º´æ½Úµã¸öÊý£¬´óÓÚµÈÓÚ1£¬ÔÚ×¥Í¼Ç°µ÷ÓÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nNum                        [IN]            »º´æ½Úµã¸öÊý
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks µ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃSDKÄÚ²¿Í¼Ïñ»º´æ½Úµã¸öÊý£¬ÔÚµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼×¥Í¼Ç°µ÷ÓÃ¡£
-             ÔÚSDKÖÐÄ¬ÈÏÊÇ1¸ö½Úµã¡£
-             ¶ÔÓÚCameraLinkÉè±¸£º¸Ã½Ó¿Ú²»Ö§³Ö´®¿Ú·½Ê½Á¬½Ó,µ«Ö§³ÖGenTL·½Ê½Á¬½Ó¡£
+ *  @brief  è®¾ç½®SDKå†…éƒ¨å›¾åƒç¼“å­˜èŠ‚ç‚¹ä¸ªæ•°ï¼Œå¤§äºŽç­‰äºŽ1ï¼Œåœ¨æŠ“å›¾å‰è°ƒç”¨
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nNum                        [IN]            ç¼“å­˜èŠ‚ç‚¹ä¸ªæ•°
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è°ƒç”¨è¯¥æŽ¥å£å¯ä»¥è®¾ç½®SDKå†…éƒ¨å›¾åƒç¼“å­˜èŠ‚ç‚¹ä¸ªæ•°ï¼Œåœ¨è°ƒç”¨MV_CC_StartGrabbingå¼€å§‹æŠ“å›¾å‰è°ƒç”¨ã€‚
+             åœ¨SDKä¸­é»˜è®¤æ˜¯1ä¸ªèŠ‚ç‚¹ã€‚
+             å¯¹äºŽCameraLinkè®¾å¤‡ï¼šè¯¥æŽ¥å£ä¸æ”¯æŒä¸²å£æ–¹å¼è¿žæŽ¥,ä½†æ”¯æŒGenTLæ–¹å¼è¿žæŽ¥ã€‚
  
  *  @~english
  *  @brief  Set the number of the internal image cache nodes in SDK, Greater than or equal to 1, to be called before the capture
@@ -798,19 +798,19 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetImageNodeNum(IN void* handle, IN unsigned 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÈ¡Á÷²ßÂÔ£¨¸Ã½Ó¿ÚÖ»Ö§³ÖwindowsÆ½Ì¨£©
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  enGrabStrategy              [IN]            ²ßÂÔÃ¶¾ÙÖµ
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿Ú¶¨ÒåÁËËÄÖÖÈ¡Á÷²ßÂÔ£¬ÓÃ»§¿ÉÒÔ¸ù¾ÝÊµ¼ÊÐèÇó½øÐÐÑ¡Ôñ¡£¾ßÌåÃèÊöÈçÏÂ£º
-             OneByOne:´Ó¾Éµ½ÐÂÒ»Ö¡Ò»Ö¡µÄ´ÓÊä³ö»º´æÁÐ±íÖÐ»ñÈ¡Í¼Ïñ£¬´ò¿ªÉè±¸ºóÄ¬ÈÏÎª¸Ã²ßÂÔ
-             LatestImagesOnly:½ö´ÓÊä³ö»º´æÁÐ±íÖÐ»ñÈ¡×îÐÂµÄÒ»Ö¡Í¼Ïñ£¬Í¬Ê±Çå¿ÕÊä³ö»º´æÁÐ±í
-             LatestImages:´ÓÊä³ö»º´æÁÐ±íÖÐ»ñÈ¡×îÐÂµÄOutputQueueSizeÖ¡Í¼Ïñ£¬ÆäÖÐOutputQueueSize·¶Î§Îª1-ImageNodeNum£¬¿ÉÓÃMV_CC_SetOutputQueueSize½Ó¿ÚÉèÖÃ£¬ImageNodeNumÄ¬ÈÏÎª1£¬
-                          ¿ÉÓÃMV_CC_SetImageNodeNum½Ó¿ÚÉèÖÃ OutputQueueSizeÉèÖÃ³É1µÈÍ¬ÓÚLatestImagesOnly²ßÂÔ£¬OutputQueueSizeÉèÖÃ³ÉImageNodeNumµÈÍ¬ÓÚOneByOne²ßÂÔ
-             UpcomingImage:ÔÚµ÷ÓÃÈ¡Á÷½Ó¿ÚÊ±ºöÂÔÊä³ö»º´æÁÐ±íÖÐËùÓÐÍ¼Ïñ£¬²¢µÈ´ýÉè±¸¼´½«Éú³ÉµÄÒ»Ö¡Í¼Ïñ¡£¸Ã²ßÂÔÖ»Ö§³ÖGigEÉè±¸£¬²»Ö§³ÖU3VÉè±¸
+ *  @brief  è®¾ç½®å–æµç­–ç•¥ï¼ˆè¯¥æŽ¥å£åªæ”¯æŒwindowså¹³å°ï¼‰
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  enGrabStrategy              [IN]            ç­–ç•¥æžšä¸¾å€¼
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£å®šä¹‰äº†å››ç§å–æµç­–ç•¥ï¼Œç”¨æˆ·å¯ä»¥æ ¹æ®å®žé™…éœ€æ±‚è¿›è¡Œé€‰æ‹©ã€‚å…·ä½“æè¿°å¦‚ä¸‹ï¼š
+             OneByOne:ä»Žæ—§åˆ°æ–°ä¸€å¸§ä¸€å¸§çš„ä»Žè¾“å‡ºç¼“å­˜åˆ—è¡¨ä¸­èŽ·å–å›¾åƒï¼Œæ‰“å¼€è®¾å¤‡åŽé»˜è®¤ä¸ºè¯¥ç­–ç•¥
+             LatestImagesOnly:ä»…ä»Žè¾“å‡ºç¼“å­˜åˆ—è¡¨ä¸­èŽ·å–æœ€æ–°çš„ä¸€å¸§å›¾åƒï¼ŒåŒæ—¶æ¸…ç©ºè¾“å‡ºç¼“å­˜åˆ—è¡¨
+             LatestImages:ä»Žè¾“å‡ºç¼“å­˜åˆ—è¡¨ä¸­èŽ·å–æœ€æ–°çš„OutputQueueSizeå¸§å›¾åƒï¼Œå…¶ä¸­OutputQueueSizeèŒƒå›´ä¸º1-ImageNodeNumï¼Œå¯ç”¨MV_CC_SetOutputQueueSizeæŽ¥å£è®¾ç½®ï¼ŒImageNodeNumé»˜è®¤ä¸º1ï¼Œ
+                          å¯ç”¨MV_CC_SetImageNodeNumæŽ¥å£è®¾ç½® OutputQueueSizeè®¾ç½®æˆ1ç­‰åŒäºŽLatestImagesOnlyç­–ç•¥ï¼ŒOutputQueueSizeè®¾ç½®æˆImageNodeNumç­‰åŒäºŽOneByOneç­–ç•¥
+             UpcomingImage:åœ¨è°ƒç”¨å–æµæŽ¥å£æ—¶å¿½ç•¥è¾“å‡ºç¼“å­˜åˆ—è¡¨ä¸­æ‰€æœ‰å›¾åƒï¼Œå¹¶ç­‰å¾…è®¾å¤‡å³å°†ç”Ÿæˆçš„ä¸€å¸§å›¾åƒã€‚è¯¥ç­–ç•¥åªæ”¯æŒGigEè®¾å¤‡ï¼Œä¸æ”¯æŒU3Vè®¾å¤‡
  
  *  @~english
- *  @brief  Set Grab Strategy£¨This interface only supports windows platform£©
+ *  @brief  Set Grab Strategyï¼ˆThis interface only supports windows platformï¼‰
  *  @param  handle                      [IN]            Device handle
  *  @param  enGrabStrategy              [IN]            The value of Grab Strategy
  *  @return Success, return MV_OK. Failure, return error code
@@ -827,14 +827,14 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetGrabStrategy(IN void* handle, IN MV_GRAB_S
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÊä³ö»º´æ¸öÊý£¨¸Ã½Ó¿ÚÖ»Ö§³ÖwindowsÆ½Ì¨£¬Ö»ÓÐÔÚMV_GrabStrategy_LatestImages²ßÂÔÏÂ²ÅÓÐÐ§£¬·¶Î§£º1-ImageNodeNum£©
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nOutputQueueSize            [IN]            Êä³ö»º´æ¸öÊý
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÐèÓëLatestImagesÈ¡Á÷²ßÂÔÅäÌ×µ÷ÓÃ£¬ÓÃÓÚÉèÖÃLatestImages²ßÂÔÏÂ×î¶àÔÊÐí»º´æÍ¼ÏñµÄ¸öÊý¡£¿ÉÒÔÔÚÈ¡Á÷¹ý³ÌÖÐ¶¯Ì¬µ÷½ÚÊä³ö»º´æ¸öÊý
+ *  @brief  è®¾ç½®è¾“å‡ºç¼“å­˜ä¸ªæ•°ï¼ˆè¯¥æŽ¥å£åªæ”¯æŒwindowså¹³å°ï¼Œåªæœ‰åœ¨MV_GrabStrategy_LatestImagesç­–ç•¥ä¸‹æ‰æœ‰æ•ˆï¼ŒèŒƒå›´ï¼š1-ImageNodeNumï¼‰
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nOutputQueueSize            [IN]            è¾“å‡ºç¼“å­˜ä¸ªæ•°
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£éœ€ä¸ŽLatestImageså–æµç­–ç•¥é…å¥—è°ƒç”¨ï¼Œç”¨äºŽè®¾ç½®LatestImagesç­–ç•¥ä¸‹æœ€å¤šå…è®¸ç¼“å­˜å›¾åƒçš„ä¸ªæ•°ã€‚å¯ä»¥åœ¨å–æµè¿‡ç¨‹ä¸­åŠ¨æ€è°ƒèŠ‚è¾“å‡ºç¼“å­˜ä¸ªæ•°
  
  *  @~english
- *  @brief  Set The Size of Output Queue(This interface only supports windows platform, Only work under the strategy of MV_GrabStrategy_LatestImages£¬rang£º1-ImageNodeNum)
+ *  @brief  Set The Size of Output Queue(This interface only supports windows platform, Only work under the strategy of MV_GrabStrategy_LatestImagesï¼Œrangï¼š1-ImageNodeNum)
  *  @param  handle                      [IN]            Device handle
  *  @param  nOutputQueueSize            [IN]            The Size of Output Queue
  *  @return Success, return MV_OK. Failure, return error code
@@ -845,32 +845,32 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetOutputQueueSize(IN void* handle, IN unsign
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éè±¸ÐÅÏ¢£¬È¡Á÷Ö®Ç°µ÷ÓÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstDevInfo                  [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓÐ¹ØÉè±¸ÐÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Ö§³ÖÓÃ»§ÔÚ´ò¿ªÉè±¸ºó»ñÈ¡Éè±¸ÐÅÏ¢£¬²»Ö§³ÖGenTLÉè±¸
-             Èô¸ÃÉè±¸ÊÇGigEÉè±¸£¬Ôòµ÷ÓÃ¸Ã½Ó¿Ú´æÔÚ×èÈû·çÏÕ£¬Òò´Ë²»½¨ÒéÔÚÈ¡Á÷¹ý³ÌÖÐµ÷ÓÃ¸Ã½Ó¿Ú¡£
+ *  @brief  èŽ·å–è®¾å¤‡ä¿¡æ¯ï¼Œå–æµä¹‹å‰è°ƒç”¨
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstDevInfo                  [IN][OUT]       è¿”å›žç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡ä¿¡æ¯ç»“æž„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks æ”¯æŒç”¨æˆ·åœ¨æ‰“å¼€è®¾å¤‡åŽèŽ·å–è®¾å¤‡ä¿¡æ¯ï¼Œä¸æ”¯æŒGenTLè®¾å¤‡
+             è‹¥è¯¥è®¾å¤‡æ˜¯GigEè®¾å¤‡ï¼Œåˆ™è°ƒç”¨è¯¥æŽ¥å£å­˜åœ¨é˜»å¡žé£Žé™©ï¼Œå› æ­¤ä¸å»ºè®®åœ¨å–æµè¿‡ç¨‹ä¸­è°ƒç”¨è¯¥æŽ¥å£ã€‚
  
  *  @~english
  *  @brief  Get device information
  *  @param  handle                      [IN]            Device handle
  *  @param  pstDevInfo                  [IN][OUT]       Structure pointer of device information
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks The API support users to access device information after opening the device£¬don't support GenTL Devices
+ *  @remarks The API support users to access device information after opening the deviceï¼Œdon't support GenTL Devices
              If the device is a GigE camera, there is a blocking risk in calling the interface, so it is not recommended to call the interface during the fetching process. 
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_GetDeviceInfo(IN void * handle, IN OUT MV_CC_DEVICE_INFO* pstDevInfo);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡¸÷ÖÖÀàÐÍµÄÐÅÏ¢
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstInfo                     [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓÐ¹ØÉè±¸¸÷ÖÖÀàÐÍµÄÐÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ½Ó¿ÚÀïÃæÊäÈëÐèÒª»ñÈ¡µÄÐÅÏ¢ÀàÐÍ£¨Ö¸¶¨MV_ALL_MATCH_INFO½á¹¹ÌåÖÐµÄnTypeÀàÐÍ£©£¬»ñÈ¡¶ÔÓ¦µÄÐÅÏ¢£¨ÔÚMV_ALL_MATCH_INFO½á¹¹ÌåÖÐpInfoÀï·µ»Ø£©
-             ¸Ã½Ó¿ÚµÄµ÷ÓÃÇ°ÖÃÌõ¼þÈ¡¾öÓÚËù»ñÈ¡µÄÐÅÏ¢ÀàÐÍ£¬»ñÈ¡GigEÉè±¸µÄMV_MATCH_TYPE_NET_DETECTÐÅÏ¢ÐèÔÚ¿ªÆô×¥Í¼Ö®ºóµ÷ÓÃ£¬»ñÈ¡U3VÉè±¸µÄMV_MATCH_TYPE_USB_DETECTÐÅÏ¢ÐèÔÚ´ò¿ªÉè±¸Ö®ºóµ÷ÓÃ
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£ 
+ *  @brief  èŽ·å–å„ç§ç±»åž‹çš„ä¿¡æ¯
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstInfo                     [IN][OUT]       è¿”å›žç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å„ç§ç±»åž‹çš„ä¿¡æ¯ç»“æž„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks æŽ¥å£é‡Œé¢è¾“å…¥éœ€è¦èŽ·å–çš„ä¿¡æ¯ç±»åž‹ï¼ˆæŒ‡å®šMV_ALL_MATCH_INFOç»“æž„ä½“ä¸­çš„nTypeç±»åž‹ï¼‰ï¼ŒèŽ·å–å¯¹åº”çš„ä¿¡æ¯ï¼ˆåœ¨MV_ALL_MATCH_INFOç»“æž„ä½“ä¸­pInfoé‡Œè¿”å›žï¼‰
+             è¯¥æŽ¥å£çš„è°ƒç”¨å‰ç½®æ¡ä»¶å–å†³äºŽæ‰€èŽ·å–çš„ä¿¡æ¯ç±»åž‹ï¼ŒèŽ·å–GigEè®¾å¤‡çš„MV_MATCH_TYPE_NET_DETECTä¿¡æ¯éœ€åœ¨å¼€å¯æŠ“å›¾ä¹‹åŽè°ƒç”¨ï¼ŒèŽ·å–U3Vè®¾å¤‡çš„MV_MATCH_TYPE_USB_DETECTä¿¡æ¯éœ€åœ¨æ‰“å¼€è®¾å¤‡ä¹‹åŽè°ƒç”¨
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚ 
  
  *  @~english
  *  @brief  Get various type of information
@@ -886,16 +886,16 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetAllMatchInfo(IN void* handle, IN OUT MV_AL
 
 
 
-/*******************Part2 ch: Ïà»úÊôÐÔÍòÄÜÅäÖÃ½Ó¿Ú | en: Camera attribute nodes universal interface*******************/
+/*******************Part2 ch: ç›¸æœºå±žæ€§ä¸‡èƒ½é…ç½®æŽ¥å£ | en: Camera attribute nodes universal interface*******************/
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡IntegerÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ£¬Èç»ñÈ¡¿í¶ÈÐÅÏ¢ÔòÎª"Width"
- *  @param  pstIntValue                 [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓÐ¹ØÉè±¸ÊôÐÔ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡intÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£
+ *  @brief  èŽ·å–Integerå±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼ï¼Œå¦‚èŽ·å–å®½åº¦ä¿¡æ¯åˆ™ä¸º"Width"
+ *  @param  pstIntValue                 [IN][OUT]       è¿”å›žç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å±žæ€§ç»“æž„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥èŽ·å–intç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚
  
  *  @~english
  *  @brief  Get Integer value
@@ -909,12 +909,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetIntValueEx(IN void* handle,IN const char* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃIntegerÐÍÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ£¬Èç»ñÈ¡¿í¶ÈÐÅÏ¢ÔòÎª"Width"
- *  @param  nValue                      [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôÐÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃintÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£
+ *  @brief  è®¾ç½®Integeråž‹å±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼ï¼Œå¦‚èŽ·å–å®½åº¦ä¿¡æ¯åˆ™ä¸º"Width"
+ *  @param  nValue                      [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±žæ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥è®¾ç½®intç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚
  
  *  @~english
  *  @brief  Set Integer value
@@ -928,12 +928,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetIntValueEx(IN void* handle,IN const char* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡EnumÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ£¬Èç»ñÈ¡ÏñËØ¸ñÊ½ÐÅÏ¢ÔòÎª"PixelFormat"
- *  @param  pstEnumValue                [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓÐ¹ØÉè±¸ÊôÐÔ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡EnumÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£
+ *  @brief  èŽ·å–Enumå±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼ï¼Œå¦‚èŽ·å–åƒç´ æ ¼å¼ä¿¡æ¯åˆ™ä¸º"PixelFormat"
+ *  @param  pstEnumValue                [IN][OUT]       è¿”å›žç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å±žæ€§ç»“æž„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥èŽ·å–Enumç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚
  
  *  @~english
  *  @brief  Get Enum value
@@ -947,12 +947,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetEnumValue(IN void* handle,IN const char* s
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃEnumÐÍÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ£¬Èç»ñÈ¡ÏñËØ¸ñÊ½ÐÅÏ¢ÔòÎª"PixelFormat"
- *  @param  nValue                      [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôÐÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃEnumÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£
+ *  @brief  è®¾ç½®Enumåž‹å±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼ï¼Œå¦‚èŽ·å–åƒç´ æ ¼å¼ä¿¡æ¯åˆ™ä¸º"PixelFormat"
+ *  @param  nValue                      [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±žæ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥è®¾ç½®Enumç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚
  
  *  @~english
  *  @brief  Set Enum value
@@ -966,12 +966,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetEnumValue(IN void* handle,IN const char* s
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡EnumÐÍ½ÚµãÖ¸¶¨ÖµµÄ·ûºÅ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ£¬Èç»ñÈ¡ÏñËØ¸ñÊ½ÐÅÏ¢ÔòÎª"PixelFormat"
- *  @param  pstEnumEntry                [IN][OUT]           ÏëÒª»ñÈ¡µÄÉè±¸µÄÊôÐÔ·ûºÅ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡EnumÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµËù¶ÔÓ¦µÄ·ûºÅ¡£
+ *  @brief  èŽ·å–Enumåž‹èŠ‚ç‚¹æŒ‡å®šå€¼çš„ç¬¦å·
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼ï¼Œå¦‚èŽ·å–åƒç´ æ ¼å¼ä¿¡æ¯åˆ™ä¸º"PixelFormat"
+ *  @param  pstEnumEntry                [IN][OUT]           æƒ³è¦èŽ·å–çš„è®¾å¤‡çš„å±žæ€§ç¬¦å·
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥èŽ·å–Enumç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼æ‰€å¯¹åº”çš„ç¬¦å·ã€‚
  
  *  @~english
  *  @brief  Get the symbolic of the specified value of the Enum type node
@@ -985,12 +985,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetEnumEntrySymbolic(IN void* handle,IN const
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃEnumÐÍÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ£¬Èç»ñÈ¡ÏñËØ¸ñÊ½ÐÅÏ¢ÔòÎª"PixelFormat"
- *  @param  strValue                    [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôÐÔ×Ö·û´®
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃEnumÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£
+ *  @brief  è®¾ç½®Enumåž‹å±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼ï¼Œå¦‚èŽ·å–åƒç´ æ ¼å¼ä¿¡æ¯åˆ™ä¸º"PixelFormat"
+ *  @param  strValue                    [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±žæ€§å­—ç¬¦ä¸²
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥è®¾ç½®Enumç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚
            
  *  @~english
  *  @brief  Set Enum value
@@ -1004,12 +1004,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetEnumValueByString(IN void* handle,IN const
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡FloatÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ
- *  @param  pstFloatValue               [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓÐ¹ØÉè±¸ÊôÐÔ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡floatÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£
+ *  @brief  èŽ·å–Floatå±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼
+ *  @param  pstFloatValue               [IN][OUT]       è¿”å›žç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å±žæ€§ç»“æž„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥èŽ·å–floatç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚
  
  *  @~english
  *  @brief  Get Float value
@@ -1023,12 +1023,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetFloatValue(IN void* handle,IN const char* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃfloatÐÍÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ
- *  @param  fValue                      [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôÐÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃfloatÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£
+ *  @brief  è®¾ç½®floatåž‹å±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼
+ *  @param  fValue                      [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±žæ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥è®¾ç½®floatç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚
  
  *  @~english
  *  @brief  Set float value
@@ -1042,12 +1042,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetFloatValue(IN void* handle,IN const char* 
     
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡BooleanÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ
- *  @param  pbValue                     [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓÐ¹ØÉè±¸ÊôÐÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡boolÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£
+ *  @brief  èŽ·å–Booleanå±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼
+ *  @param  pbValue                     [IN][OUT]       è¿”å›žç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å±žæ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥èŽ·å–boolç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚
  
  *  @~english
  *  @brief  Get Boolean value
@@ -1061,12 +1061,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetBoolValue(IN void* handle,IN const char* s
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃBooleanÐÍÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ
- *  @param  bValue                      [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôÐÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃboolÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£
+ *  @brief  è®¾ç½®Booleanåž‹å±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼
+ *  @param  bValue                      [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±žæ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥è®¾ç½®boolç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚
  
  *  @~english
  *  @brief  Set Boolean value
@@ -1080,12 +1080,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetBoolValue(IN void* handle,IN const char* s
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡StringÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ
- *  @param  pstStringValue              [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓÐ¹ØÉè±¸ÊôÐÔ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡stringÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£
+ *  @brief  èŽ·å–Stringå±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼
+ *  @param  pstStringValue              [IN][OUT]       è¿”å›žç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å±žæ€§ç»“æž„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥èŽ·å–stringç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚
  
  *  @~english
  *  @brief  Get String value
@@ -1099,12 +1099,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetStringValue(IN void* handle,IN const char*
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃStringÐÍÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ
- *  @param  strValue                    [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôÐÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃstringÀàÐÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£
+ *  @brief  è®¾ç½®Stringåž‹å±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼
+ *  @param  strValue                    [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±žæ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥è®¾ç½®stringç±»åž‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚
  
  *  @~english
  *  @brief  Set String value
@@ -1118,11 +1118,11 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetStringValue(IN void* handle,IN const char*
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃCommandÐÍÊôÐÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôÐÔ¼üÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃÖ¸¶¨µÄCommandÀàÐÍ½Úµã¡£
+ *  @brief  è®¾ç½®Commandåž‹å±žæ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±žæ€§é”®å€¼
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥è®¾ç½®æŒ‡å®šçš„Commandç±»åž‹èŠ‚ç‚¹ã€‚
  
  *  @~english
  *  @brief  Send Command
@@ -1137,13 +1137,13 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetCommandValue(IN void* handle,IN const char
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ¶ÁÄÚ´æ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pBuffer                     [IN][OUT]       ×÷Îª·µ»ØÖµÊ¹ÓÃ£¬±£´æ¶Áµ½µÄÄÚ´æÖµ£¨GEVÉè±¸ÄÚ´æÖµÊÇ°´ÕÕ´ó¶ËÄ£Ê½´æ´¢µÄ£¬ÆäËüÐ­ÒéÉè±¸°´ÕÕÐ¡¶Ë´æ´¢£©
- *  @param  nAddress                    [IN]            ´ý¶ÁÈ¡µÄÄÚ´æµØÖ·£¬¸ÃµØÖ·¿ÉÒÔ´ÓÉè±¸µÄCamera.xmlÎÄ¼þÖÐ»ñÈ¡£¬ÐÎÈçxxx_RegAddrµÄxml½ÚµãÖµ
- *  @param  nLength                     [IN]            ´ý¶ÁÈ¡µÄÄÚ´æ³¤¶È
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ·ÃÎÊÉè±¸£¬¶ÁÈ¡Ä³¶Î¼Ä´æÆ÷µÄÊý¾Ý¡£
+ *  @brief  è¯»å†…å­˜
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pBuffer                     [IN][OUT]       ä½œä¸ºè¿”å›žå€¼ä½¿ç”¨ï¼Œä¿å­˜è¯»åˆ°çš„å†…å­˜å€¼ï¼ˆGEVè®¾å¤‡å†…å­˜å€¼æ˜¯æŒ‰ç…§å¤§ç«¯æ¨¡å¼å­˜å‚¨çš„ï¼Œå…¶å®ƒåè®®è®¾å¤‡æŒ‰ç…§å°ç«¯å­˜å‚¨ï¼‰
+ *  @param  nAddress                    [IN]            å¾…è¯»å–çš„å†…å­˜åœ°å€ï¼Œè¯¥åœ°å€å¯ä»¥ä»Žè®¾å¤‡çš„Camera.xmlæ–‡ä»¶ä¸­èŽ·å–ï¼Œå½¢å¦‚xxx_RegAddrçš„xmlèŠ‚ç‚¹å€¼
+ *  @param  nLength                     [IN]            å¾…è¯»å–çš„å†…å­˜é•¿åº¦
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è®¿é—®è®¾å¤‡ï¼Œè¯»å–æŸæ®µå¯„å­˜å™¨çš„æ•°æ®ã€‚
  
  *  @~english
  *  @brief  Read Memory
@@ -1158,13 +1158,13 @@ MV_CAMCTRL_API int __stdcall MV_CC_ReadMemory(IN void* handle , IN OUT void *pBu
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ð´ÄÚ´æ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pBuffer                     [IN]            ´ýÐ´ÈëµÄÄÚ´æÖµ£¨×¢ÒâGEVÉè±¸ÄÚ´æÖµÒª°´ÕÕ´ó¶ËÄ£Ê½´æ´¢£¬ÆäËüÐ­ÒéÉè±¸°´ÕÕÐ¡¶Ë´æ´¢£©
- *  @param  nAddress                    [IN]            ´ýÐ´ÈëµÄÄÚ´æµØÖ·£¬¸ÃµØÖ·¿ÉÒÔ´ÓÉè±¸µÄCamera.xmlÎÄ¼þÖÐ»ñÈ¡£¬ÐÎÈçxxx_RegAddrµÄxml½ÚµãÖµ
- *  @param  nLength                     [IN]            ´ýÐ´ÈëµÄÄÚ´æ³¤¶È
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ·ÃÎÊÉè±¸£¬°ÑÒ»¶ÎÊý¾ÝÐ´ÈëÄ³¶Î¼Ä´æÆ÷¡£
+ *  @brief  å†™å†…å­˜
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pBuffer                     [IN]            å¾…å†™å…¥çš„å†…å­˜å€¼ï¼ˆæ³¨æ„GEVè®¾å¤‡å†…å­˜å€¼è¦æŒ‰ç…§å¤§ç«¯æ¨¡å¼å­˜å‚¨ï¼Œå…¶å®ƒåè®®è®¾å¤‡æŒ‰ç…§å°ç«¯å­˜å‚¨ï¼‰
+ *  @param  nAddress                    [IN]            å¾…å†™å…¥çš„å†…å­˜åœ°å€ï¼Œè¯¥åœ°å€å¯ä»¥ä»Žè®¾å¤‡çš„Camera.xmlæ–‡ä»¶ä¸­èŽ·å–ï¼Œå½¢å¦‚xxx_RegAddrçš„xmlèŠ‚ç‚¹å€¼
+ *  @param  nLength                     [IN]            å¾…å†™å…¥çš„å†…å­˜é•¿åº¦
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è®¿é—®è®¾å¤‡ï¼ŒæŠŠä¸€æ®µæ•°æ®å†™å…¥æŸæ®µå¯„å­˜å™¨ã€‚
  
  *  @~english
  *  @brief  Write Memory
@@ -1181,9 +1181,9 @@ MV_CAMCTRL_API int __stdcall MV_CC_WriteMemory(IN void* handle, IN const void *p
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Çå³ýGenICam½Úµã»º´æ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief  æ¸…é™¤GenICamèŠ‚ç‚¹ç¼“å­˜
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
  
  *  @~english
  *  @brief  Invalidate GenICam Nodes
@@ -1194,14 +1194,14 @@ MV_CAMCTRL_API int __stdcall MV_CC_InvalidateNodes(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éè±¸ÊôÐÔÊ÷XML
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pData                       [IN][OUT]       XMLÊý¾Ý½ÓÊÕ»º´æ
- *  @param  nDataSize                   [IN]            ½ÓÊÕ»º´æ´óÐ¡
- *  @param  pnDataLen                   [IN][OUT]       Êµ¼ÊÊý¾Ý´óÐ¡
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks µ±pDataÎªNULL»ònDataSize±ÈÊµ¼ÊµÄxmlÎÄ¼þÐ¡Ê±£¬²»¿½±´Êý¾Ý£¬ÓÉpnDataLen·µ»ØxmlÎÄ¼þ´óÐ¡
-             µ±pDataÎªÓÐÐ§»º´æµØÖ·£¬ÇÒ»º´æ×ã¹»´óÊ±£¬¿½±´ÍêÕûÊý¾Ý±£´æÔÚ¸Ã»º´æÀïÃæ£¬²¢ÓÉpnDataLen·µ»ØxmlÎÄ¼þÊµ¼Ê´óÐ¡¡£
+ *  @brief  èŽ·å–è®¾å¤‡å±žæ€§æ ‘XML
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pData                       [IN][OUT]       XMLæ•°æ®æŽ¥æ”¶ç¼“å­˜
+ *  @param  nDataSize                   [IN]            æŽ¥æ”¶ç¼“å­˜å¤§å°
+ *  @param  pnDataLen                   [IN][OUT]       å®žé™…æ•°æ®å¤§å°
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks å½“pDataä¸ºNULLæˆ–nDataSizeæ¯”å®žé™…çš„xmlæ–‡ä»¶å°æ—¶ï¼Œä¸æ‹·è´æ•°æ®ï¼Œç”±pnDataLenè¿”å›žxmlæ–‡ä»¶å¤§å°
+             å½“pDataä¸ºæœ‰æ•ˆç¼“å­˜åœ°å€ï¼Œä¸”ç¼“å­˜è¶³å¤Ÿå¤§æ—¶ï¼Œæ‹·è´å®Œæ•´æ•°æ®ä¿å­˜åœ¨è¯¥ç¼“å­˜é‡Œé¢ï¼Œå¹¶ç”±pnDataLenè¿”å›žxmlæ–‡ä»¶å®žé™…å¤§å°ã€‚
  
  *  @~english
  *  @brief  Get camera feature tree XML
@@ -1217,11 +1217,11 @@ MV_CAMCTRL_API int __stdcall MV_XML_GetGenICamXML(IN void* handle, IN OUT unsign
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñµÃµ±Ç°½ÚµãµÄ·ÃÎÊÄ£Ê½
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strName                     [IN]            ½ÚµãÃû³Æ
- *  @param  penAccessMode               [IN][OUT]       ½ÚµãµÄ·ÃÎÊÄ£Ê½
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief  èŽ·å¾—å½“å‰èŠ‚ç‚¹çš„è®¿é—®æ¨¡å¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strName                     [IN]            èŠ‚ç‚¹åç§°
+ *  @param  penAccessMode               [IN][OUT]       èŠ‚ç‚¹çš„è®¿é—®æ¨¡å¼
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
 
  *  @~english
  *  @brief  Get Access mode of cur node
@@ -1234,12 +1234,12 @@ MV_CAMCTRL_API int __stdcall MV_XML_GetNodeAccessMode(IN void* handle, IN const 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñµÃµ±Ç°½ÚµãµÄÀàÐÍ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strName                     [IN]            ½ÚµãÃû³Æ
- *  @param  penInterfaceType            [IN][OUT]       ½ÚµãµÄÀàÐÍ
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿Ú¿ÉÒÔÔÚµ÷ÓÃÍòÄÜ½Ó¿ÚÖ®Ç°£¬ÌáÇ°ÖªµÀ½ÚµãÀàÐÍ£¬·½±ãÓÃ»§Ñ¡ÔñºÏÊÊµÄÍòÄÜ½Ó¿Ú½øÐÐ½ÚµãÖµµÄÉèÖÃºÍ»ñÈ¡¡£
+ *  @brief  èŽ·å¾—å½“å‰èŠ‚ç‚¹çš„ç±»åž‹
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strName                     [IN]            èŠ‚ç‚¹åç§°
+ *  @param  penInterfaceType            [IN][OUT]       èŠ‚ç‚¹çš„ç±»åž‹
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£å¯ä»¥åœ¨è°ƒç”¨ä¸‡èƒ½æŽ¥å£ä¹‹å‰ï¼Œæå‰çŸ¥é“èŠ‚ç‚¹ç±»åž‹ï¼Œæ–¹ä¾¿ç”¨æˆ·é€‰æ‹©åˆé€‚çš„ä¸‡èƒ½æŽ¥å£è¿›è¡ŒèŠ‚ç‚¹å€¼çš„è®¾ç½®å’ŒèŽ·å–ã€‚
 
  *  @~english
  *  @brief  Get Interface Type of cur node
@@ -1253,10 +1253,10 @@ MV_CAMCTRL_API int __stdcall MV_XML_GetNodeInterfaceType(IN void* handle, IN con
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ±£´æÉè±¸ÊôÐÔ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strFileName                 [IN]            ÊôÐÔÎÄ¼þÃû
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  ä¿å­˜è®¾å¤‡å±žæ€§
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strFileName                 [IN]            å±žæ€§æ–‡ä»¶å
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
  
  *  @~english
  *  @brief  Save camera feature
@@ -1268,10 +1268,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_FeatureSave(IN void* handle, IN const char* s
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  µ¼ÈëÉè±¸ÊôÐÔ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strFileName                 [IN]            ÊôÐÔÎÄ¼þÃû
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  å¯¼å…¥è®¾å¤‡å±žæ€§
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strFileName                 [IN]            å±žæ€§æ–‡ä»¶å
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
  
  *  @~english
  *  @brief  Load camera feature
@@ -1283,10 +1283,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_FeatureLoad(IN void* handle, IN const char* s
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ´ÓÉè±¸¶ÁÈ¡ÎÄ¼þ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFileAccess               [IN]            ÎÄ¼þ´æÈ¡½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  ä»Žè®¾å¤‡è¯»å–æ–‡ä»¶
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFileAccess               [IN]            æ–‡ä»¶å­˜å–ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
  
  *  @~english
  *  @brief  Read the file from the camera
@@ -1299,10 +1299,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_FileAccessRead(IN void* handle, IN MV_CC_FILE
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ´ÓÉè±¸¶ÁÈ¡ÎÄ¼þ,ÎÄ¼þÊÇDataÊý¾Ý
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFileAccess               [IN]            ÎÄ¼þ´æÈ¡½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë ±ÜÃâÎÄ¼þ²Ù×÷È¨ÏÞÎÊÌâ¶ÁÊ§°Ü 
+ *  @brief  ä»Žè®¾å¤‡è¯»å–æ–‡ä»¶,æ–‡ä»¶æ˜¯Dataæ•°æ®
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFileAccess               [IN]            æ–‡ä»¶å­˜å–ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  é¿å…æ–‡ä»¶æ“ä½œæƒé™é—®é¢˜è¯»å¤±è´¥ 
  
  *  @~english
  *  @brief  Read the file data from the camera
@@ -1314,10 +1314,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_FileAccessReadEx(IN void* handle, IN OUT MV_C
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ½«ÎÄ¼þÐ´ÈëÉè±¸
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFileAccess               [IN]            ÎÄ¼þ´æÈ¡½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief  å°†æ–‡ä»¶å†™å…¥è®¾å¤‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFileAccess               [IN]            æ–‡ä»¶å­˜å–ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
  
  *  @~english
  *  @brief  Write the file to camera
@@ -1330,11 +1330,11 @@ MV_CAMCTRL_API int __stdcall MV_CC_FileAccessWrite(IN void* handle, IN MV_CC_FIL
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ½«»º´æ(buffer)Ð´ÈëÉè±¸
- *  @param  handle                        [IN]            Éè±¸¾ä±ú
- *  @param  pstFileAccessEx               [IN][OUT]       ÎÄ¼þ´æÈ¡½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÖ±½ÓÊ¹ÓÃ»º´æÊý¾Ý£¬½øÐÐ¶ÁÐ´²Ù×÷£¬±ÜÃâÖ±½Ó²Ù×÷ÎÄ¼þ³öÏÖÎÞÈ¨ÏÞµÄÎÊÌâ,ÊÇMV_CC_FileAccessWriteµÄÀ©Õ¹½Ó¿Ú
+ *  @brief  å°†ç¼“å­˜(buffer)å†™å…¥è®¾å¤‡
+ *  @param  handle                        [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFileAccessEx               [IN][OUT]       æ–‡ä»¶å­˜å–ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£ç›´æŽ¥ä½¿ç”¨ç¼“å­˜æ•°æ®ï¼Œè¿›è¡Œè¯»å†™æ“ä½œï¼Œé¿å…ç›´æŽ¥æ“ä½œæ–‡ä»¶å‡ºçŽ°æ— æƒé™çš„é—®é¢˜,æ˜¯MV_CC_FileAccessWriteçš„æ‰©å±•æŽ¥å£
  
  *  @~english
  *  @brief  Write the data(buffer) to camera
@@ -1348,10 +1348,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_FileAccessWriteEx(IN void* handle, IN OUT MV_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡ÎÄ¼þ´æÈ¡µÄ½ø¶È
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFileAccessProgress       [IN][OUT]       ½ø¶ÈÄÚÈÝ
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë £¨µ±Ç°ÎÄ¼þ´æÈ¡µÄ×´Ì¬£©
+ *  @brief  èŽ·å–æ–‡ä»¶å­˜å–çš„è¿›åº¦
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFileAccessProgress       [IN][OUT]       è¿›åº¦å†…å®¹
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  ï¼ˆå½“å‰æ–‡ä»¶å­˜å–çš„çŠ¶æ€ï¼‰
  
  *  @~english
  *  @brief  Get File Access Progress 
@@ -1362,16 +1362,16 @@ MV_CAMCTRL_API int __stdcall MV_CC_FileAccessWriteEx(IN void* handle, IN OUT MV_
 MV_CAMCTRL_API int __stdcall MV_CC_GetFileAccessProgress(IN void* handle, IN OUT MV_CC_FILE_ACCESS_PROGRESS * pstFileAccessProgress);
 
 
-/*******************Part3 ch: Ïà»úÉý¼¶ | en: Camera upgrade *******************/
+/*******************Part3 ch: ç›¸æœºå‡çº§ | en: Camera upgrade *******************/
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Éè±¸±¾µØÉý¼¶
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strFilePathName             [IN]            ÎÄ¼þÃû
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ý¸Ã½Ó¿Ú¿ÉÒÔ½«Éý¼¶¹Ì¼þÎÄ¼þ·¢ËÍ¸øÉè±¸½øÐÐÉý¼¶¡£
-             ¸Ã½Ó¿ÚÐèÒªµÈ´ýÉý¼¶¹Ì¼þÎÄ¼þ³É¹¦´«¸øÉè±¸¶ËÖ®ºóÔÙ·µ»Ø£¬ÏìÓ¦Ê±¼ä¿ÉÄÜ½Ï³¤¡£
+ *  @brief  è®¾å¤‡æœ¬åœ°å‡çº§
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strFilePathName             [IN]            æ–‡ä»¶å
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æŽ¥å£å¯ä»¥å°†å‡çº§å›ºä»¶æ–‡ä»¶å‘é€ç»™è®¾å¤‡è¿›è¡Œå‡çº§ã€‚
+             è¯¥æŽ¥å£éœ€è¦ç­‰å¾…å‡çº§å›ºä»¶æ–‡ä»¶æˆåŠŸä¼ ç»™è®¾å¤‡ç«¯ä¹‹åŽå†è¿”å›žï¼Œå“åº”æ—¶é—´å¯èƒ½è¾ƒé•¿ã€‚
  
  *  @~english
  *  @brief  Device Local Upgrade
@@ -1386,10 +1386,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_LocalUpgrade(IN void* handle, IN const void* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éý¼¶½ø¶È
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnProcess                   [IN][OUT]       ½ø¶È½ÓÊÕµØÖ·
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  èŽ·å–å‡çº§è¿›åº¦
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnProcess                   [IN][OUT]       è¿›åº¦æŽ¥æ”¶åœ°å€
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
  
  *  @~english
  *  @brief  Get Upgrade Progress
@@ -1400,17 +1400,17 @@ MV_CAMCTRL_API int __stdcall MV_CC_LocalUpgrade(IN void* handle, IN const void* 
 MV_CAMCTRL_API int __stdcall MV_CC_GetUpgradeProcess(IN void* handle, IN OUT unsigned int* pnProcess);
 
 
-/*******************Part4  ch: ×¢²áÒì³£»Øµ÷ºÍÊÂ¼þ½Ó¿Ú | en: Enrol abnormal callbacks and event interface*******************/
+/*******************Part4  ch: æ³¨å†Œå¼‚å¸¸å›žè°ƒå’Œäº‹ä»¶æŽ¥å£ | en: Enrol abnormal callbacks and event interface*******************/
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áÒì³£ÏûÏ¢»Øµ÷£¬ÔÚ´ò¿ªÉè±¸Ö®ºóµ÷ÓÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  cbException                 [IN]            Òì³£»Øµ÷º¯ÊýÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÐèÒªÔÚMV_CC_OpenDevice´ò¿ªÉè±¸Ö®ºóµ÷ÓÃ¡£
-             Éè±¸Òì³£¶Ï¿ªÁ¬½Óºó¿ÉÒÔÔÚ»Øµ÷ÀïÃæ»ñÈ¡µ½Òì³£ÏûÏ¢£¬GigEÉè±¸µôÏßÖ®ºóÐèÒªÏÈµ÷ÓÃMV_CC_CloseDevice½Ó¿Ú¹Ø±ÕÉè±¸£¬ÔÙµ÷ÓÃMV_CC_OpenDevice½Ó¿ÚÖØÐÂ´ò¿ªÉè±¸¡£
+ *  @brief  æ³¨å†Œå¼‚å¸¸æ¶ˆæ¯å›žè°ƒï¼Œåœ¨æ‰“å¼€è®¾å¤‡ä¹‹åŽè°ƒç”¨
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  cbException                 [IN]            å¼‚å¸¸å›žè°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£éœ€è¦åœ¨MV_CC_OpenDeviceæ‰“å¼€è®¾å¤‡ä¹‹åŽè°ƒç”¨ã€‚
+             è®¾å¤‡å¼‚å¸¸æ–­å¼€è¿žæŽ¥åŽå¯ä»¥åœ¨å›žè°ƒé‡Œé¢èŽ·å–åˆ°å¼‚å¸¸æ¶ˆæ¯ï¼ŒGigEè®¾å¤‡æŽ‰çº¿ä¹‹åŽéœ€è¦å…ˆè°ƒç”¨MV_CC_CloseDeviceæŽ¥å£å…³é—­è®¾å¤‡ï¼Œå†è°ƒç”¨MV_CC_OpenDeviceæŽ¥å£é‡æ–°æ‰“å¼€è®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Register Exception Message CallBack, call after open device
@@ -1426,13 +1426,13 @@ MV_CAMCTRL_API int __stdcall MV_CC_RegisterExceptionCallBack(IN void* handle, IN
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áÈ«²¿ÊÂ¼þ»Øµ÷£¬ÔÚ´ò¿ªÉè±¸Ö®ºóµ÷ÓÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  cbEvent                     [IN]            ÊÂ¼þ»Øµ÷º¯ÊýÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ý¸Ã½Ó¿ÚÉèÖÃÊÂ¼þ»Øµ÷£¬¿ÉÒÔÔÚ»Øµ÷º¯ÊýÀïÃæ»ñÈ¡²É¼¯¡¢ÆØ¹âµÈÊÂ¼þÐÅÏ¢
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  æ³¨å†Œå…¨éƒ¨äº‹ä»¶å›žè°ƒï¼Œåœ¨æ‰“å¼€è®¾å¤‡ä¹‹åŽè°ƒç”¨
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  cbEvent                     [IN]            äº‹ä»¶å›žè°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æŽ¥å£è®¾ç½®äº‹ä»¶å›žè°ƒï¼Œå¯ä»¥åœ¨å›žè°ƒå‡½æ•°é‡Œé¢èŽ·å–é‡‡é›†ã€æ›å…‰ç­‰äº‹ä»¶ä¿¡æ¯
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Register event callback, which is called after the device is opened
@@ -1447,14 +1447,14 @@ MV_CAMCTRL_API int __stdcall MV_CC_RegisterAllEventCallBack(IN void* handle, IN 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áµ¥¸öÊÂ¼þ»Øµ÷£¬ÔÚ´ò¿ªÉè±¸Ö®ºóµ÷ÓÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strEventName                [IN]            ÊÂ¼þÃû³Æ
- *  @param  cbEvent                     [IN]            ÊÂ¼þ»Øµ÷º¯ÊýÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ý¸Ã½Ó¿ÚÉèÖÃÊÂ¼þ»Øµ÷£¬¿ÉÒÔÔÚ»Øµ÷º¯ÊýÀïÃæ»ñÈ¡²É¼¯¡¢ÆØ¹âµÈÊÂ¼þÐÅÏ¢¡£
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  æ³¨å†Œå•ä¸ªäº‹ä»¶å›žè°ƒï¼Œåœ¨æ‰“å¼€è®¾å¤‡ä¹‹åŽè°ƒç”¨
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strEventName                [IN]            äº‹ä»¶åç§°
+ *  @param  cbEvent                     [IN]            äº‹ä»¶å›žè°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æŽ¥å£è®¾ç½®äº‹ä»¶å›žè°ƒï¼Œå¯ä»¥åœ¨å›žè°ƒå‡½æ•°é‡Œé¢èŽ·å–é‡‡é›†ã€æ›å…‰ç­‰äº‹ä»¶ä¿¡æ¯ã€‚
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Register single event callback, which is called after the device is opened
@@ -1469,15 +1469,15 @@ MV_CAMCTRL_API int __stdcall MV_CC_RegisterAllEventCallBack(IN void* handle, IN 
 MV_CAMCTRL_API int __stdcall MV_CC_RegisterEventCallBackEx(IN void* handle, IN const char* strEventName, IN void(__stdcall* cbEvent)(MV_EVENT_OUT_INFO * pEventInfo, void* pUser), IN void* pUser);
 
 
-/*******************Part5 ch: ½öGigEÉè±¸Ö§³ÖµÄ½Ó¿Ú | en: Only support GigE interface*******************/
+/*******************Part5 ch: ä»…GigEè®¾å¤‡æ”¯æŒçš„æŽ¥å£ | en: Only support GigE interface*******************/
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÃ¶¾Ù³¬Ê±Ê±¼ä£¬½öÖ§³ÖGigEÐ­Òé£¬·¶Î§ 1 - UINT_MAX£¬£¨°üÀ¨1£¬²»°üÀ¨UINT_MAX£©
- *  @param  nMilTimeout                 [IN]            ³¬Ê±Ê±¼ä£¬Ä¬ÈÏ100ms
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ÔÚµ÷ÓÃMV_CC_EnumDevicesµÈÃ¶¾Ù½Ó¿ÚÇ°Ê¹ÓÃ¸Ã½Ó¿Ú£¬¿ÉÉèÖÃÃ¶¾ÙGIGEÉè±¸µÄÍø¿¨×î´ó³¬Ê±Ê±¼ä£¨Ä¬ÈÏ100ms£©,¿ÉÒÔ¼õÉÙ×î´ó³¬Ê±Ê±¼ä£¬À´¼Ó¿ìÃ¶¾ÙGIGEÉè±¸µÄËÙ¶È
- *  @remarks ¸Ã½Ó¿Ú½öÖ§³ÖÊäÈëÎÞ·ûºÅÕûÊý
+ *  @brief  è®¾ç½®æžšä¸¾è¶…æ—¶æ—¶é—´ï¼Œä»…æ”¯æŒGigEåè®®ï¼ŒèŒƒå›´ 1 - UINT_MAXï¼Œï¼ˆåŒ…æ‹¬1ï¼Œä¸åŒ…æ‹¬UINT_MAXï¼‰
+ *  @param  nMilTimeout                 [IN]            è¶…æ—¶æ—¶é—´ï¼Œé»˜è®¤100ms
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks åœ¨è°ƒç”¨MV_CC_EnumDevicesç­‰æžšä¸¾æŽ¥å£å‰ä½¿ç”¨è¯¥æŽ¥å£ï¼Œå¯è®¾ç½®æžšä¸¾GIGEè®¾å¤‡çš„ç½‘å¡æœ€å¤§è¶…æ—¶æ—¶é—´ï¼ˆé»˜è®¤100msï¼‰,å¯ä»¥å‡å°‘æœ€å¤§è¶…æ—¶æ—¶é—´ï¼Œæ¥åŠ å¿«æžšä¸¾GIGEè®¾å¤‡çš„é€Ÿåº¦
+ *  @remarks è¯¥æŽ¥å£ä»…æ”¯æŒè¾“å…¥æ— ç¬¦å·æ•´æ•°
 
  *  @~english
  *  @brief  Set enumerate device timeout,only support GigE,range 1 - UINT_MAX,(the minimum value is greater than or equal to 1,maximum value less than UINT_MAX)
@@ -1490,14 +1490,14 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_SetEnumDevTimeout(IN unsigned int nMilTimeo
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ç¿ÖÆIP
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nIP                         [IN]            ÉèÖÃµÄIP
- *  @param  nSubNetMask                 [IN]            ×ÓÍøÑÚÂë
- *  @param  nDefaultGateWay             [IN]            Ä¬ÈÏÍø¹Ø
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Ç¿ÖÆÉèÖÃÉè±¸ÍøÂç²ÎÊý£¨°üÀ¨IP¡¢×ÓÍøÑÚÂë¡¢Ä¬ÈÏÍø¹Ø£©£¬Ç¿ÖÆÉèÖÃÖ®ºó½«ÐèÒªÖØÐÂ´´½¨Éè±¸¾ä±ú£¬½öGigEVisionÉè±¸Ö§³Ö
-             Èç¹ûÉè±¸ÎªDHCPµÄ×´Ì¬£¬µ÷ÓÃ¸Ã½Ó¿ÚÇ¿ÖÆÉèÖÃÉè±¸ÍøÂç²ÎÊýÖ®ºóÉè±¸½«»áÖØÆô¡£
+ *  @brief  å¼ºåˆ¶IP
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nIP                         [IN]            è®¾ç½®çš„IP
+ *  @param  nSubNetMask                 [IN]            å­ç½‘æŽ©ç 
+ *  @param  nDefaultGateWay             [IN]            é»˜è®¤ç½‘å…³
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks å¼ºåˆ¶è®¾ç½®è®¾å¤‡ç½‘ç»œå‚æ•°ï¼ˆåŒ…æ‹¬IPã€å­ç½‘æŽ©ç ã€é»˜è®¤ç½‘å…³ï¼‰ï¼Œå¼ºåˆ¶è®¾ç½®ä¹‹åŽå°†éœ€è¦é‡æ–°åˆ›å»ºè®¾å¤‡å¥æŸ„ï¼Œä»…GigEVisionè®¾å¤‡æ”¯æŒ
+             å¦‚æžœè®¾å¤‡ä¸ºDHCPçš„çŠ¶æ€ï¼Œè°ƒç”¨è¯¥æŽ¥å£å¼ºåˆ¶è®¾ç½®è®¾å¤‡ç½‘ç»œå‚æ•°ä¹‹åŽè®¾å¤‡å°†ä¼šé‡å¯ã€‚
  
  *  @~english
  *  @brief  Force IP
@@ -1514,11 +1514,11 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_ForceIpEx(IN void* handle, IN unsigned int 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÅäÖÃIP·½Ê½
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nType                       [IN]            IPÀàÐÍ£¬¼ûMV_IP_CFG_x
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ·¢ËÍÃüÁîÉèÖÃÉè±¸µÄIP·½Ê½£¬ÈçDHCP¡¢LLAµÈ£¬½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief  é…ç½®IPæ–¹å¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nType                       [IN]            IPç±»åž‹ï¼Œè§MV_IP_CFG_x
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks å‘é€å‘½ä»¤è®¾ç½®è®¾å¤‡çš„IPæ–¹å¼ï¼Œå¦‚DHCPã€LLAç­‰ï¼Œä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
  
  *  @~english
  *  @brief  IP configuration method
@@ -1531,11 +1531,11 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_SetIpConfig(IN void* handle, IN unsigned in
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃ½öÊ¹ÓÃÄ³ÖÖÄ£Ê½,type: MV_NET_TRANS_x£¬²»ÉèÖÃÊ±£¬Ä¬ÈÏÓÅÏÈÊ¹ÓÃdriver
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nType                       [IN]            ÍøÂç´«ÊäÄ£Ê½£¬¼ûMV_NET_TRANS_x
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ý¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃSDKÄÚ²¿ÓÅÏÈÊ¹ÓÃµÄÍøÂçÄ£Ê½£¬Ä¬ÈÏÓÅÏÈÊ¹ÓÃÇý¶¯Ä£Ê½£¬½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief  è®¾ç½®ä»…ä½¿ç”¨æŸç§æ¨¡å¼,type: MV_NET_TRANS_xï¼Œä¸è®¾ç½®æ—¶ï¼Œé»˜è®¤ä¼˜å…ˆä½¿ç”¨driver
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nType                       [IN]            ç½‘ç»œä¼ è¾“æ¨¡å¼ï¼Œè§MV_NET_TRANS_x
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æŽ¥å£å¯ä»¥è®¾ç½®SDKå†…éƒ¨ä¼˜å…ˆä½¿ç”¨çš„ç½‘ç»œæ¨¡å¼ï¼Œé»˜è®¤ä¼˜å…ˆä½¿ç”¨é©±åŠ¨æ¨¡å¼ï¼Œä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
  
  *  @~english
  *  @brief  Set to use only one mode,type: MV_NET_TRANS_x. When do not set, priority is to use driver by default
@@ -1548,11 +1548,11 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_SetNetTransMode(IN void* handle, IN unsigne
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡ÍøÂç´«ÊäÐÅÏ¢
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstInfo                     [IN][OUT]       ÐÅÏ¢½á¹¹Ìå
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ý¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡ÍøÂç´«ÊäÏà¹ØÐÅÏ¢£¬°üÀ¨ÒÑ½ÓÊÕÊý¾Ý´óÐ¡¡¢¶ªÖ¡ÊýÁ¿µÈ£¬ÔÚMV_CC_StartGrabbing¿ªÆô²É¼¯Ö®ºóµ÷ÓÃ¡£½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief  èŽ·å–ç½‘ç»œä¼ è¾“ä¿¡æ¯
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstInfo                     [IN][OUT]       ä¿¡æ¯ç»“æž„ä½“
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æŽ¥å£å¯ä»¥èŽ·å–ç½‘ç»œä¼ è¾“ç›¸å…³ä¿¡æ¯ï¼ŒåŒ…æ‹¬å·²æŽ¥æ”¶æ•°æ®å¤§å°ã€ä¸¢å¸§æ•°é‡ç­‰ï¼Œåœ¨MV_CC_StartGrabbingå¼€å¯é‡‡é›†ä¹‹åŽè°ƒç”¨ã€‚ä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
  
  *  @~english
  *  @brief  Get net transmission information
@@ -1566,14 +1566,14 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_GetNetTransInfo(IN void* handle, IN OUT MV_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÃ¶¾ÙÃüÁîµÄ»Ø¸´°üÀàÐÍ
- *  @param  nMode                       [IN]            »Ø¸´°üÀàÐÍ£¨Ä¬ÈÏ¹ã²¥£©£¬0-µ¥²¥£¬1-¹ã²¥
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÖ»¶ÔGigEÏà»úÓÐÐ§¡£
+ *  @brief  è®¾ç½®æžšä¸¾å‘½ä»¤çš„å›žå¤åŒ…ç±»åž‹
+ *  @param  nMode                       [IN]            å›žå¤åŒ…ç±»åž‹ï¼ˆé»˜è®¤å¹¿æ’­ï¼‰ï¼Œ0-å•æ’­ï¼Œ1-å¹¿æ’­
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£åªå¯¹GigEç›¸æœºæœ‰æ•ˆã€‚
 
  *  @~english
  *  @brief  Setting the ACK mode of devices Discovery.
- *  @param  nMode                       [IN]            ACK mode£¨Default-Broadcast£©,0-Unicast,1-Broadcast.
+ *  @param  nMode                       [IN]            ACK modeï¼ˆDefault-Broadcastï¼‰,0-Unicast,1-Broadcast.
  *  @return Success, return MV_OK. Failure, return error code 
  *  @remarks This interface is ONLY effective on GigE cameras.
  ************************************************************************/
@@ -1581,11 +1581,11 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_SetDiscoveryMode(IN unsigned int nMode);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃGVSPÈ¡Á÷³¬Ê±Ê±¼ä
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nMillisec                   [IN]            ³¬Ê±Ê±¼ä£¬Ä¬ÈÏ300ms£¬·¶Î§£º>10ms
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Á¬½ÓÉè±¸Ö®ºó£¬È¡Á÷¶¯×÷·¢ÉúÇ°£¬µ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃGVSPÈ¡Á÷³¬Ê±Ê±¼ä¡£GVSPÈ¡Á÷³¬Ê±ÉèÖÃ¹ý¶Ì¿ÉÄÜÔì³ÉÍ¼ÏñÒì³££¬ÉèÖÃ¹ý³¤¿ÉÄÜÔì³ÉÈ¡Á÷Ê±¼ä±ä³¤¡£
+ *  @brief  è®¾ç½®GVSPå–æµè¶…æ—¶æ—¶é—´
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nMillisec                   [IN]            è¶…æ—¶æ—¶é—´ï¼Œé»˜è®¤300msï¼ŒèŒƒå›´ï¼š>10ms
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽï¼Œå–æµåŠ¨ä½œå‘ç”Ÿå‰ï¼Œè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥è®¾ç½®GVSPå–æµè¶…æ—¶æ—¶é—´ã€‚GVSPå–æµè¶…æ—¶è®¾ç½®è¿‡çŸ­å¯èƒ½é€ æˆå›¾åƒå¼‚å¸¸ï¼Œè®¾ç½®è¿‡é•¿å¯èƒ½é€ æˆå–æµæ—¶é—´å˜é•¿ã€‚
  
  *  @~english
  *  @brief  Set GVSP streaming timeout
@@ -1599,11 +1599,11 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_SetGvspTimeout(IN void* handle, IN unsigned
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡GVSPÈ¡Á÷³¬Ê±Ê±¼ä
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnMillisec                  [IN][OUT]       ³¬Ê±Ê±¼äÖ¸Õë£¬ÒÔºÁÃëÎ»µ¥Î»
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡µ±Ç°µÄGVSPÈ¡Á÷³¬Ê±Ê±¼ä
+ *  @brief  èŽ·å–GVSPå–æµè¶…æ—¶æ—¶é—´
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnMillisec                  [IN][OUT]       è¶…æ—¶æ—¶é—´æŒ‡é’ˆï¼Œä»¥æ¯«ç§’ä½å•ä½
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£ç”¨äºŽèŽ·å–å½“å‰çš„GVSPå–æµè¶…æ—¶æ—¶é—´
  
  *  @~english
  *  @brief  Get GVSP streaming timeout
@@ -1616,11 +1616,11 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_GetGvspTimeout(IN void* handle, IN OUT unsi
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃGVCPÃüÁî³¬Ê±Ê±¼ä
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nMillisec                   [IN]            ³¬Ê±Ê±¼ä£¬Ä¬ÈÏ500ms£¬·¶Î§£º0-10000ms
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃGVCPÃüÁî³¬Ê±Ê±¼ä¡£
+ *  @brief  è®¾ç½®GVCPå‘½ä»¤è¶…æ—¶æ—¶é—´
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nMillisec                   [IN]            è¶…æ—¶æ—¶é—´ï¼Œé»˜è®¤500msï¼ŒèŒƒå›´ï¼š0-10000ms
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥è®¾ç½®GVCPå‘½ä»¤è¶…æ—¶æ—¶é—´ã€‚
  
  *  @~english
  *  @brief  Set GVCP cammand timeout
@@ -1633,11 +1633,11 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_SetGvcpTimeout(IN void* handle, IN unsigned
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡GVCPÃüÁî³¬Ê±Ê±¼ä
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnMillisec                  [IN][OUT]       ³¬Ê±Ê±¼äÖ¸Õë£¬ÒÔºÁÃëÎ»µ¥Î»
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡µ±Ç°µÄGVCP³¬Ê±Ê±¼ä¡£
+ *  @brief  èŽ·å–GVCPå‘½ä»¤è¶…æ—¶æ—¶é—´
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnMillisec                  [IN][OUT]       è¶…æ—¶æ—¶é—´æŒ‡é’ˆï¼Œä»¥æ¯«ç§’ä½å•ä½
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£ç”¨äºŽèŽ·å–å½“å‰çš„GVCPè¶…æ—¶æ—¶é—´ã€‚
  
  *  @~english
  *  @brief  Get GVCP cammand timeout
@@ -1650,16 +1650,16 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_GetGvcpTimeout(IN void* handle, IN OUT unsi
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÖØ´«GVCPÃüÁî´ÎÊý
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nRetryGvcpTimes             [IN]            ÖØ´«´ÎÊý£¬·¶Î§£º0-100
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚÔÚGVCP°ü´«ÊäÒì³£Ê±£¬Ôö¼ÓÖØ´«µÄ´ÎÊý£¬ÔÚÒ»¶¨³Ì¶ÈÉÏ¿ÉÒÔ±ÜÃâÉè±¸µôÏß£¬·¶Î§Îª0-100¡£
+ *  @brief  è®¾ç½®é‡ä¼ GVCPå‘½ä»¤æ¬¡æ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nRetryGvcpTimes             [IN]            é‡ä¼ æ¬¡æ•°ï¼ŒèŒƒå›´ï¼š0-100
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£ç”¨äºŽåœ¨GVCPåŒ…ä¼ è¾“å¼‚å¸¸æ—¶ï¼Œå¢žåŠ é‡ä¼ çš„æ¬¡æ•°ï¼Œåœ¨ä¸€å®šç¨‹åº¦ä¸Šå¯ä»¥é¿å…è®¾å¤‡æŽ‰çº¿ï¼ŒèŒƒå›´ä¸º0-100ã€‚
  
  *  @~english
  *  @brief  Set the number of retry GVCP cammand
  *  @param  handle                      [IN]            Device handle
- *  @param  nRetryGvcpTimes             [IN]            The number of retries£¬rang£º0-100
+ *  @param  nRetryGvcpTimes             [IN]            The number of retriesï¼Œrangï¼š0-100
  *  @return Success, return MV_OK. Failure, return error code
  *  @remarks This interface is used to increase The Times of retransmission when GVCP packet transmission is abnormal,and to some extent,
              it can avoid dropping the camera, with a range of 0-100.
@@ -1668,11 +1668,11 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_SetRetryGvcpTimes(IN void* handle, IN unsig
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡ÖØ´«GVCPÃüÁî´ÎÊý
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnRetryGvcpTimes            [IN][OUT]       ÖØ´«´ÎÊýÖ¸Õë
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡µ±Ç°µÄGVCPÖØ´«´ÎÊý£¬Ä¬ÈÏ3´Î¡£
+ *  @brief  èŽ·å–é‡ä¼ GVCPå‘½ä»¤æ¬¡æ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnRetryGvcpTimes            [IN][OUT]       é‡ä¼ æ¬¡æ•°æŒ‡é’ˆ
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£ç”¨äºŽèŽ·å–å½“å‰çš„GVCPé‡ä¼ æ¬¡æ•°ï¼Œé»˜è®¤3æ¬¡ã€‚
  
  *  @~english
  *  @brief  Get the number of retry GVCP cammand
@@ -1685,13 +1685,13 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_GetRetryGvcpTimes(IN void* handle, IN OUT u
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡×î¼ÑµÄpacket size£¬¸Ã½Ó¿ÚÄ¿Ç°Ö»Ö§³ÖGigEÉè±¸
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ×î¼Ñpacketsize
- *  @remarks »ñÈ¡×î¼ÑµÄpacket size£¬¶ÔÓ¦GigEVisionÉè±¸ÊÇSCPS¡£
-             ¸Ã½Ó¿ÚÐèÒªÔÚMV_CC_OpenDeviceÖ®ºó¡¢MV_CC_StartGrabbingÖ®Ç°µ÷ÓÃ¡£
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡¢U3VÉè±¸¡£
-			 ¸Ã½Ó¿Ú²»Ö§³ÖGenTLÉè±¸£¨Ð­Òé²»Ö§³Ö£©,Èç¹ûÊÇGenTL·½Ê½Ìí¼ÓµÄÍø¿ÚÏà»ú£¬½¨Òé¸ù¾ÝÍøÂçÊµ¼ÊÇé¿öÅäÖÃGevSCPSPacketSize£¬»òÕßÅäÖÃ1500¡£
+ *  @brief  èŽ·å–æœ€ä½³çš„packet sizeï¼Œè¯¥æŽ¥å£ç›®å‰åªæ”¯æŒGigEè®¾å¤‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æœ€ä½³packetsize
+ *  @remarks èŽ·å–æœ€ä½³çš„packet sizeï¼Œå¯¹åº”GigEVisionè®¾å¤‡æ˜¯SCPSã€‚
+             è¯¥æŽ¥å£éœ€è¦åœ¨MV_CC_OpenDeviceä¹‹åŽã€MV_CC_StartGrabbingä¹‹å‰è°ƒç”¨ã€‚
+             è¯¥æŽ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€U3Vè®¾å¤‡ã€‚
+			 è¯¥æŽ¥å£ä¸æ”¯æŒGenTLè®¾å¤‡ï¼ˆåè®®ä¸æ”¯æŒï¼‰,å¦‚æžœæ˜¯GenTLæ–¹å¼æ·»åŠ çš„ç½‘å£ç›¸æœºï¼Œå»ºè®®æ ¹æ®ç½‘ç»œå®žé™…æƒ…å†µé…ç½®GevSCPSPacketSizeï¼Œæˆ–è€…é…ç½®1500ã€‚
  
  *  @~english
  *  @brief  Get the optimal Packet Size, Only support GigE Camera
@@ -1706,13 +1706,13 @@ MV_CAMCTRL_API int __stdcall MV_CC_GetOptimalPacketSize(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÊÇ·ñ´ò¿ªÖØ·¢°üÖ§³Ö£¬¼°ÖØ·¢°üÉèÖÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  bEnable                     [IN]            ÊÇ·ñÖ§³ÖÖØ·¢°ü
- *  @param  nMaxResendPercent           [IN]            ×î´óÖØ·¢±È
- *  @param  nResendTimeout              [IN]            ÖØ·¢³¬Ê±Ê±¼ä
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃÖØ·¢°üÊôÐÔ£¬½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief  è®¾ç½®æ˜¯å¦æ‰“å¼€é‡å‘åŒ…æ”¯æŒï¼ŒåŠé‡å‘åŒ…è®¾ç½®
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  bEnable                     [IN]            æ˜¯å¦æ”¯æŒé‡å‘åŒ…
+ *  @param  nMaxResendPercent           [IN]            æœ€å¤§é‡å‘æ¯”
+ *  @param  nResendTimeout              [IN]            é‡å‘è¶…æ—¶æ—¶é—´
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¿žæŽ¥è®¾å¤‡ä¹‹åŽè°ƒç”¨è¯¥æŽ¥å£å¯ä»¥è®¾ç½®é‡å‘åŒ…å±žæ€§ï¼Œä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
  
  *  @~english
  *  @brief  Set whethe to enable resend, and set resend
@@ -1731,16 +1731,16 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_SetResend(IN void* handle, IN unsigned int 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÖØ´«ÃüÁî×î´ó³¢ÊÔ´ÎÊý
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nRetryTimes                 [IN]            ÖØ´«ÃüÁî×î´ó³¢ÊÔ´ÎÊý£¬Ä¬ÈÏ20
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿Ú±ØÐëÔÚµ÷ÓÃMV_GIGE_SetResend¿ªÆôÖØ´«°ü¹¦ÄÜÖ®ºóµ÷ÓÃ£¬·ñÔòÊ§°ÜÇÒ·µ»ØMV_E_CALLORDER
+ *  @brief  è®¾ç½®é‡ä¼ å‘½ä»¤æœ€å¤§å°è¯•æ¬¡æ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nRetryTimes                 [IN]            é‡ä¼ å‘½ä»¤æœ€å¤§å°è¯•æ¬¡æ•°ï¼Œé»˜è®¤20
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£å¿…é¡»åœ¨è°ƒç”¨MV_GIGE_SetResendå¼€å¯é‡ä¼ åŒ…åŠŸèƒ½ä¹‹åŽè°ƒç”¨ï¼Œå¦åˆ™å¤±è´¥ä¸”è¿”å›žMV_E_CALLORDER
  
  *  @~english
  *  @brief  set the max resend retry times
  *  @param  handle                      [IN]            Device handle
- *  @param  nRetryTimes                 [IN]            The max times to retry resending lost packets£¬default 20
+ *  @param  nRetryTimes                 [IN]            The max times to retry resending lost packetsï¼Œdefault 20
  *  @return Success, return MV_OK. Failure, return error code
  *  @remarks This interface MUST be called after enabling resending lost packets by calling MV_GIGE_SetResend,
  *           otherwise would fail and return MV_E_CALLORDER.
@@ -1749,11 +1749,11 @@ MV_CAMCTRL_API int __stdcall  MV_GIGE_SetResendMaxRetryTimes(IN void* handle, IN
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡ÖØ´«ÃüÁî×î´ó³¢ÊÔ´ÎÊý
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnRetryTimes                [IN][OUT]       ÖØ´«ÃüÁî×î´ó³¢ÊÔ´ÎÊý
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿Ú±ØÐëÔÚµ÷ÓÃMV_GIGE_SetResend¿ªÆôÖØ´«°ü¹¦ÄÜÖ®ºóµ÷ÓÃ£¬·ñÔòÊ§°ÜÇÒ·µ»ØMV_E_CALLORDER
+ *  @brief  èŽ·å–é‡ä¼ å‘½ä»¤æœ€å¤§å°è¯•æ¬¡æ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnRetryTimes                [IN][OUT]       é‡ä¼ å‘½ä»¤æœ€å¤§å°è¯•æ¬¡æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£å¿…é¡»åœ¨è°ƒç”¨MV_GIGE_SetResendå¼€å¯é‡ä¼ åŒ…åŠŸèƒ½ä¹‹åŽè°ƒç”¨ï¼Œå¦åˆ™å¤±è´¥ä¸”è¿”å›žMV_E_CALLORDER
  
  *  @~english
  *  @brief  get the max resend retry times
@@ -1767,11 +1767,11 @@ MV_CAMCTRL_API int __stdcall  MV_GIGE_GetResendMaxRetryTimes(IN void* handle, IN
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÍ¬Ò»ÖØ´«°ü¶à´ÎÇëÇóÖ®¼äµÄÊ±¼ä¼ä¸ô
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nMillisec                   [IN]            Í¬Ò»ÖØ´«°ü¶à´ÎÇëÇóÖ®¼äµÄÊ±¼ä¼ä¸ô£¬Ä¬ÈÏ10ms
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿Ú±ØÐëÔÚµ÷ÓÃMV_GIGE_SetResend¿ªÆôÖØ´«°ü¹¦ÄÜÖ®ºóµ÷ÓÃ£¬·ñÔòÊ§°ÜÇÒ·µ»ØMV_E_CALLORDER
+ *  @brief  è®¾ç½®åŒä¸€é‡ä¼ åŒ…å¤šæ¬¡è¯·æ±‚ä¹‹é—´çš„æ—¶é—´é—´éš”
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nMillisec                   [IN]            åŒä¸€é‡ä¼ åŒ…å¤šæ¬¡è¯·æ±‚ä¹‹é—´çš„æ—¶é—´é—´éš”ï¼Œé»˜è®¤10ms
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£å¿…é¡»åœ¨è°ƒç”¨MV_GIGE_SetResendå¼€å¯é‡ä¼ åŒ…åŠŸèƒ½ä¹‹åŽè°ƒç”¨ï¼Œå¦åˆ™å¤±è´¥ä¸”è¿”å›žMV_E_CALLORDER
  
  *  @~english
  *  @brief  set time interval between same resend requests
@@ -1785,11 +1785,11 @@ MV_CAMCTRL_API int __stdcall  MV_GIGE_SetResendTimeInterval(IN void* handle, IN 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Í¬Ò»ÖØ´«°ü¶à´ÎÇëÇóÖ®¼äµÄÊ±¼ä¼ä¸ô
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnMillisec                  [IN][OUT]       Í¬Ò»ÖØ´«°ü¶à´ÎÇëÇóÖ®¼äµÄÊ±¼ä¼ä¸ô
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿Ú±ØÐëÔÚµ÷ÓÃMV_GIGE_SetResend¿ªÆôÖØ´«°ü¹¦ÄÜÖ®ºóµ÷ÓÃ£¬·ñÔòÊ§°ÜÇÒ·µ»ØMV_E_CALLORDER
+ *  @brief  èŽ·å–åŒä¸€é‡ä¼ åŒ…å¤šæ¬¡è¯·æ±‚ä¹‹é—´çš„æ—¶é—´é—´éš”
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnMillisec                  [IN][OUT]       åŒä¸€é‡ä¼ åŒ…å¤šæ¬¡è¯·æ±‚ä¹‹é—´çš„æ—¶é—´é—´éš”
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£å¿…é¡»åœ¨è°ƒç”¨MV_GIGE_SetResendå¼€å¯é‡ä¼ åŒ…åŠŸèƒ½ä¹‹åŽè°ƒç”¨ï¼Œå¦åˆ™å¤±è´¥ä¸”è¿”å›žMV_E_CALLORDER
  
  *  @~english
  *  @brief  get time interval between same resend requests
@@ -1803,11 +1803,11 @@ MV_CAMCTRL_API int __stdcall  MV_GIGE_GetResendTimeInterval(IN void* handle, IN 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃ´«ÊäÄ£Ê½£¬¿ÉÒÔÎªµ¥²¥Ä£Ê½¡¢×é²¥Ä£Ê½µÈ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  stTransmissionType          [IN]            ´«ÊäÄ£Ê½½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Í¨¹ý¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃ´«ÊäÄ£Ê½Îªµ¥²¥¡¢×é²¥µÈÄ£Ê½£¬½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief  è®¾ç½®ä¼ è¾“æ¨¡å¼ï¼Œå¯ä»¥ä¸ºå•æ’­æ¨¡å¼ã€ç»„æ’­æ¨¡å¼ç­‰
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  stTransmissionType          [IN]            ä¼ è¾“æ¨¡å¼ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks é€šè¿‡è¯¥æŽ¥å£å¯ä»¥è®¾ç½®ä¼ è¾“æ¨¡å¼ä¸ºå•æ’­ã€ç»„æ’­ç­‰æ¨¡å¼ï¼Œä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
 
  *  @~english
  *  @brief  Set transmission type,Unicast or Multicast
@@ -1820,11 +1820,11 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_SetTransmissionType(IN void* handle, IN MV_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief   ·¢³ö¶¯×÷ÃüÁî
- *  @param   pstActionCmdInfo           [IN]            ¶¯×÷ÃüÁîÐÅÏ¢
- *  @param   pstActionCmdResults        [IN][OUT]       ¶¯×÷ÃüÁî·µ»ØÐÅÏ¢ÁÐ±í
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief   å‘å‡ºåŠ¨ä½œå‘½ä»¤
+ *  @param   pstActionCmdInfo           [IN]            åŠ¨ä½œå‘½ä»¤ä¿¡æ¯
+ *  @param   pstActionCmdResults        [IN][OUT]       åŠ¨ä½œå‘½ä»¤è¿”å›žä¿¡æ¯åˆ—è¡¨
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks ä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
 
  *  @~english
  *  @brief  Issue Action Command
@@ -1837,11 +1837,11 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_IssueActionCommand(IN MV_ACTION_CMD_INFO* p
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡×é²¥×´Ì¬
- *  @param  pstDevInfo                  [IN]            Éè±¸ÐÅÏ¢½á¹¹Ìå
- *  @param  pbStatus                    [IN][OUT]       ×é²¥×´Ì¬,true:×é²¥×´Ì¬£¬false:·Ç×é²¥
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚÅÐ¶ÏÉè±¸µ±Ç°ÊÇ·ñ´¦ÓÚ×é²¥×´Ì¬£¬½â¾ö¿Í»§¶ËÃ¶¾ÙÊ±ÐèÒª´ò¿ªÉè±¸ÅÐ¶Ï×é²¥µÄÎÊÌâ¡£
+ *  @brief  èŽ·å–ç»„æ’­çŠ¶æ€
+ *  @param  pstDevInfo                  [IN]            è®¾å¤‡ä¿¡æ¯ç»“æž„ä½“
+ *  @param  pbStatus                    [IN][OUT]       ç»„æ’­çŠ¶æ€,true:ç»„æ’­çŠ¶æ€ï¼Œfalse:éžç»„æ’­
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£ç”¨äºŽåˆ¤æ–­è®¾å¤‡å½“å‰æ˜¯å¦å¤„äºŽç»„æ’­çŠ¶æ€ï¼Œè§£å†³å®¢æˆ·ç«¯æžšä¸¾æ—¶éœ€è¦æ‰“å¼€è®¾å¤‡åˆ¤æ–­ç»„æ’­çš„é—®é¢˜ã€‚
 
  *  @~english
  *  @brief  Get Multicast Status
@@ -1854,13 +1854,13 @@ MV_CAMCTRL_API int __stdcall MV_GIGE_IssueActionCommand(IN MV_ACTION_CMD_INFO* p
 MV_CAMCTRL_API int __stdcall MV_GIGE_GetMulticastStatus(IN MV_CC_DEVICE_INFO* pstDevInfo, IN OUT bool* pbStatus);
 
 
-/*******************Part6 ch: ½öCameraLink Éè±¸Ö§³ÖµÄ½Ó¿Ú | en: Only support camlink device interface*******************/
+/*******************Part6 ch: ä»…CameraLink è®¾å¤‡æ”¯æŒçš„æŽ¥å£ | en: Only support camlink device interface*******************/
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡´®¿ÚÐÅÏ¢ÁÐ±í
- *  @param  pstSerialPortList           [IN][OUT]       ´®¿ÚÐÅÏ¢ÁÐ±í
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡±¾µØµÄ´®¿ÚÐÅÏ¢¡£
+ *  @brief  èŽ·å–ä¸²å£ä¿¡æ¯åˆ—è¡¨
+ *  @param  pstSerialPortList           [IN][OUT]       ä¸²å£ä¿¡æ¯åˆ—è¡¨
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£ç”¨äºŽèŽ·å–æœ¬åœ°çš„ä¸²å£ä¿¡æ¯ã€‚
 
  *  @~english
  *  @brief  Get serial port information list
@@ -1872,10 +1872,10 @@ MV_CAMCTRL_API int __stdcall MV_CAML_GetSerialPortList(IN OUT MV_CAML_SERIAL_POR
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÈ¡Ö¸¶¨Ã¶¾Ù´®¿Ú
- *  @param  pstSerialPortList           [IN][OUT]       ´®¿ÚÐÅÏ¢ÁÐ±í
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚÉèÖÃÃ¶¾ÙCameraLink Éè±¸µÄÖ¸¶¨´®¿Ú¡£
+ *  @brief  è®¾ç½®å–æŒ‡å®šæžšä¸¾ä¸²å£
+ *  @param  pstSerialPortList           [IN][OUT]       ä¸²å£ä¿¡æ¯åˆ—è¡¨
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£ç”¨äºŽè®¾ç½®æžšä¸¾CameraLink è®¾å¤‡çš„æŒ‡å®šä¸²å£ã€‚
 
  *  @~english
  *  @brief  Set the specified enumeration serial port
@@ -1887,12 +1887,12 @@ MV_CAMCTRL_API int __stdcall MV_CAML_SetEnumSerialPorts(IN MV_CAML_SERIAL_PORT_L
 
 /***********************************************************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÉè±¸²¨ÌØÂÊ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nBaudrate                   [IN]            ÉèÖÃµÄ²¨ÌØÂÊÖµ£¬ÊýÖµ²Î¿¼CameraParams.hÖÐºê¶¨Òå£¬Èç#define MV_CAML_BAUDRATE_9600  0x00000001
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÖ§³ÖÔÚÉè±¸Î´Á¬½ÓÊ±µ÷ÓÃ. Í¨¹ýGenTLÐ­Òé·ÃÎÊÉè±¸Ê±£¬ÐèÒªÏÈÁ¬½ÓÉè±¸£¬²ÅÄÜµ÷ÓÃ¸Ã½Ó¿Ú
-             ÒòÓ²¼þ/ÏµÍ³/Íâ²¿¸ÉÈÅµÈÒòËØ,ÅäÖÃ¸ß²¨ÌØÂÊ¿ÉÄÜµ¼ÖÂÍ¨ÐÅÒì³££¬½¨ÒéÅäÖÃ²¨ÌØÂÊ×î´óÐ¡ÓÚ115200
+ *  @brief  è®¾ç½®è®¾å¤‡æ³¢ç‰¹çŽ‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nBaudrate                   [IN]            è®¾ç½®çš„æ³¢ç‰¹çŽ‡å€¼ï¼Œæ•°å€¼å‚è€ƒCameraParams.hä¸­å®å®šä¹‰ï¼Œå¦‚#define MV_CAML_BAUDRATE_9600  0x00000001
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£æ”¯æŒåœ¨è®¾å¤‡æœªè¿žæŽ¥æ—¶è°ƒç”¨. é€šè¿‡GenTLåè®®è®¿é—®è®¾å¤‡æ—¶ï¼Œéœ€è¦å…ˆè¿žæŽ¥è®¾å¤‡ï¼Œæ‰èƒ½è°ƒç”¨è¯¥æŽ¥å£
+             å› ç¡¬ä»¶/ç³»ç»Ÿ/å¤–éƒ¨å¹²æ‰°ç­‰å› ç´ ,é…ç½®é«˜æ³¢ç‰¹çŽ‡å¯èƒ½å¯¼è‡´é€šä¿¡å¼‚å¸¸ï¼Œå»ºè®®é…ç½®æ³¢ç‰¹çŽ‡æœ€å¤§å°äºŽ115200
  
  *  @~english
  *  @brief  Set device baudrate using one of the CL_BAUDRATE_XXXX value   
@@ -1908,11 +1908,11 @@ MV_CAMCTRL_API int __stdcall MV_CAML_SetDeviceBaudrate(IN void* handle, IN unsig
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éè±¸²¨ÌØÂÊ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnCurrentBaudrate           [IN][OUT]       ²¨ÌØÂÊÐÅÏ¢Ö¸Õë£¬ÊýÖµ²Î¿¼CameraParams.hÖÐºê¶¨Òå£¬Èç#define MV_CAML_BAUDRATE_9600  0x00000001
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÖ§³ÖÔÚÉè±¸Î´Á¬½ÓÊ±µ÷ÓÃ¡£
+ *  @brief  èŽ·å–è®¾å¤‡æ³¢ç‰¹çŽ‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnCurrentBaudrate           [IN][OUT]       æ³¢ç‰¹çŽ‡ä¿¡æ¯æŒ‡é’ˆï¼Œæ•°å€¼å‚è€ƒCameraParams.hä¸­å®å®šä¹‰ï¼Œå¦‚#define MV_CAML_BAUDRATE_9600  0x00000001
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£æ”¯æŒåœ¨è®¾å¤‡æœªè¿žæŽ¥æ—¶è°ƒç”¨ã€‚
  
  *  @~english
  *  @brief  Returns the current device baudrate, using one of the CL_BAUDRATE_XXXX value
@@ -1926,11 +1926,11 @@ MV_CAMCTRL_API int __stdcall MV_CAML_GetDeviceBaudrate(IN void* handle,IN OUT un
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éè±¸ÓëÖ÷»ú¼äÁ¬½ÓÖ§³ÖµÄ²¨ÌØÂÊ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnBaudrateAblity            [IN][OUT]       Ö§³ÖµÄ²¨ÌØÂÊÐÅÏ¢µÄÖ¸Õë¡£ËùÖ§³Ö²¨ÌØÂÊµÄ»òÔËËã½á¹û£¬µ¥¸öÊýÖµ²Î¿¼CameraParams.hÖÐºê¶¨Òå£¬ÈçMV_CAML_BAUDRATE_9600  0x00000001
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÖ§³ÖÔÚÉè±¸Î´Á¬½ÓÊ±µ÷ÓÃ¡£
+ *  @brief  èŽ·å–è®¾å¤‡ä¸Žä¸»æœºé—´è¿žæŽ¥æ”¯æŒçš„æ³¢ç‰¹çŽ‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnBaudrateAblity            [IN][OUT]       æ”¯æŒçš„æ³¢ç‰¹çŽ‡ä¿¡æ¯çš„æŒ‡é’ˆã€‚æ‰€æ”¯æŒæ³¢ç‰¹çŽ‡çš„æˆ–è¿ç®—ç»“æžœï¼Œå•ä¸ªæ•°å€¼å‚è€ƒCameraParams.hä¸­å®å®šä¹‰ï¼Œå¦‚MV_CAML_BAUDRATE_9600  0x00000001
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£æ”¯æŒåœ¨è®¾å¤‡æœªè¿žæŽ¥æ—¶è°ƒç”¨ã€‚
  
  *  @~english
  *  @brief  Returns supported baudrates of the combined device and host interface
@@ -1944,10 +1944,10 @@ MV_CAMCTRL_API int __stdcall MV_CAML_GetSupportBaudrates(IN void* handle,IN OUT 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃ´®¿Ú²Ù×÷µÈ´ýÊ±³¤
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nMillisec                   [IN]            ´®¿Ú²Ù×÷µÄµÈ´ýÊ±³¤, µ¥Î»Îªms
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®ä¸²å£æ“ä½œç­‰å¾…æ—¶é•¿
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nMillisec                   [IN]            ä¸²å£æ“ä½œçš„ç­‰å¾…æ—¶é•¿, å•ä½ä¸ºms
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
 
  *  @~english
  *  @brief  Sets the timeout for operations on the serial port
@@ -1958,20 +1958,20 @@ MV_CAMCTRL_API int __stdcall MV_CAML_GetSupportBaudrates(IN void* handle,IN OUT 
 MV_CAMCTRL_API int __stdcall MV_CAML_SetGenCPTimeOut(IN void* handle, IN unsigned int nMillisec);
 
 
-/*******************Part7 ch: ½öU3VÉè±¸Ö§³ÖµÄ½Ó¿Ú | en: Only support U3V device interface*******************/
+/*******************Part7 ch: ä»…U3Vè®¾å¤‡æ”¯æŒçš„æŽ¥å£ | en: Only support U3V device interface*******************/
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃU3VµÄ´«Êä°ü´óÐ¡
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nTransferSize               [IN]            ´«ÊäµÄ°ü´óÐ¡, Byte£¬Ä¬ÈÏÎª1M£¬rang£º>=0x400£¬½¨Òé×î´óÖµ£º[windows] rang <= 0x400000£»[Linux] rang <= 0x200000
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Ôö¼Ó´«Êä°ü´óÐ¡¿ÉÒÔÊÊµ±½µµÍÈ¡Á÷Ê±µÄCPUÕ¼ÓÃÂÊ¡£µ«²»Í¬µÄPCºÍ²»Í¬USBÀ©Õ¹¿¨´æÔÚ²»Í¬µÄ¼æÈÝÐÔ£¬Èç¹û¸Ã²ÎÊýÉèÖÃ¹ý´ó¿ÉÄÜ»á³öÏÖÈ¡²»µ½Í¼ÏñµÄ·çÏÕ¡£
+ *  @brief  è®¾ç½®U3Vçš„ä¼ è¾“åŒ…å¤§å°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nTransferSize               [IN]            ä¼ è¾“çš„åŒ…å¤§å°, Byteï¼Œé»˜è®¤ä¸º1Mï¼Œrangï¼š>=0x400ï¼Œå»ºè®®æœ€å¤§å€¼ï¼š[windows] rang <= 0x400000ï¼›[Linux] rang <= 0x200000
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks å¢žåŠ ä¼ è¾“åŒ…å¤§å°å¯ä»¥é€‚å½“é™ä½Žå–æµæ—¶çš„CPUå ç”¨çŽ‡ã€‚ä½†ä¸åŒçš„PCå’Œä¸åŒUSBæ‰©å±•å¡å­˜åœ¨ä¸åŒçš„å…¼å®¹æ€§ï¼Œå¦‚æžœè¯¥å‚æ•°è®¾ç½®è¿‡å¤§å¯èƒ½ä¼šå‡ºçŽ°å–ä¸åˆ°å›¾åƒçš„é£Žé™©ã€‚
  
  *  @~english
  *  @brief  Set transfer size of U3V device
  *  @param  handle                      [IN]            Device handle
- *  @param  nTransferSize               [IN]            Transfer size£¬Byte£¬default£º1M£¬rang£º>=0x400£¬Recommended maximum: [windows] rang <= 0x400000; [Linux] rang <= 0x200000
+ *  @param  nTransferSize               [IN]            Transfer sizeï¼ŒByteï¼Œdefaultï¼š1Mï¼Œrangï¼š>=0x400ï¼ŒRecommended maximum: [windows] rang <= 0x400000; [Linux] rang <= 0x200000
  *  @return Success, return MV_OK. Failure, return error code 
  *  @remarks Increasing the transmission packet size can reduce the CPU utilization at the time of fetching. However, different PCS and different USB extension CARDS have different compatibility, and if this parameter is set too large, there may be the risk of not getting the image.
 ************************************************************************/
@@ -1979,16 +1979,16 @@ MV_CAMCTRL_API int __stdcall MV_USB_SetTransferSize(IN void* handle, IN unsigned
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡U3VµÄ´«Êä°ü´óÐ¡
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnTransferSize              [IN][OUT]           ´«ÊäµÄ°ü´óÐ¡Ö¸Õë, Byte
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡µ±Ç°µÄU3V´«Êä°ü´óÐ¡£¬Ä¬ÈÏ1M¡£
+ *  @brief  èŽ·å–U3Vçš„ä¼ è¾“åŒ…å¤§å°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnTransferSize              [IN][OUT]           ä¼ è¾“çš„åŒ…å¤§å°æŒ‡é’ˆ, Byte
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£ç”¨äºŽèŽ·å–å½“å‰çš„U3Vä¼ è¾“åŒ…å¤§å°ï¼Œé»˜è®¤1Mã€‚
  
  *  @~english
  *  @brief  Get transfer size of U3V device
  *  @param  handle                      [IN]            Device handle
- *  @param  pnTransferSize              [IN][OUT]           Transfer size£¬Byte
+ *  @param  pnTransferSize              [IN][OUT]           Transfer sizeï¼ŒByte
  *  @return Success, return MV_OK. Failure, return error code 
  *  @remarks This interface is used to get the current U3V transfer packet size, default 1M.
 ************************************************************************/
@@ -1996,16 +1996,16 @@ MV_CAMCTRL_API int __stdcall MV_USB_GetTransferSize(IN void* handle, IN OUT unsi
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃU3VµÄ´«ÊäÍ¨µÀ¸öÊý
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nTransferWays               [IN]            ´«ÊäÍ¨µÀ¸öÊý£¬·¶Î§£º1-10
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ÓÃ»§¿ÉÒÔ¸ù¾ÝPCµÄÐÔÄÜ¡¢Éè±¸³öÍ¼Ö¡ÂÊ¡¢Í¼Ïñ´óÐ¡ºÍÄÚ´æÊ¹ÓÃÂÊµÈÒòËØ¶Ô¸Ã²ÎÊý½øÐÐµ÷½Ú¡£µ«²»Í¬µÄPCºÍ²»Í¬µÄUSBÀ©Õ¹¿¨´æÔÚ²»Í¬µÄ¼æÈÝÐÔ¡£
+ *  @brief  è®¾ç½®U3Vçš„ä¼ è¾“é€šé“ä¸ªæ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nTransferWays               [IN]            ä¼ è¾“é€šé“ä¸ªæ•°ï¼ŒèŒƒå›´ï¼š1-10
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks ç”¨æˆ·å¯ä»¥æ ¹æ®PCçš„æ€§èƒ½ã€è®¾å¤‡å‡ºå›¾å¸§çŽ‡ã€å›¾åƒå¤§å°å’Œå†…å­˜ä½¿ç”¨çŽ‡ç­‰å› ç´ å¯¹è¯¥å‚æ•°è¿›è¡Œè°ƒèŠ‚ã€‚ä½†ä¸åŒçš„PCå’Œä¸åŒçš„USBæ‰©å±•å¡å­˜åœ¨ä¸åŒçš„å…¼å®¹æ€§ã€‚
  
  *  @~english
  *  @brief  Set transfer ways of U3V device
  *  @param  handle                      [IN]            Device handle
- *  @param  nTransferWays               [IN]            Transfer ways£¬rang£º1-10
+ *  @param  nTransferWays               [IN]            Transfer waysï¼Œrangï¼š1-10
  *  @return Success, return MV_OK. Failure, return error code 
  *  @remarks Users can adjust this parameter according to PC performance, camera image frame rate, image size, memory utilization and other factors. But different PCS and different USB expansion CARDS have different compatibility.
 ************************************************************************/
@@ -2013,11 +2013,11 @@ MV_CAMCTRL_API int __stdcall MV_USB_SetTransferWays(IN void* handle, IN unsigned
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡U3VµÄ´«ÊäÍ¨µÀ¸öÊý
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnTransferWays              [IN][OUT]       ´«ÊäÍ¨µÀ¸öÊýÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡µ±Ç°µÄU3VÒì²½È¡Á÷½Úµã¸öÊý£¬2000WÉè±¸µÄMONO8Ä¬ÈÏÎª3¸ö£¬YUVÎªÄ¬ÈÏ2¸ö£¬RGBÎªÄ¬ÈÏ1¸ö£¬ÆäËüÇé¿öÄ¬ÈÏ8¸ö½Úµã¡£
+ *  @brief  èŽ·å–U3Vçš„ä¼ è¾“é€šé“ä¸ªæ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnTransferWays              [IN][OUT]       ä¼ è¾“é€šé“ä¸ªæ•°æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£ç”¨äºŽèŽ·å–å½“å‰çš„U3Vå¼‚æ­¥å–æµèŠ‚ç‚¹ä¸ªæ•°ï¼Œ2000Wè®¾å¤‡çš„MONO8é»˜è®¤ä¸º3ä¸ªï¼ŒYUVä¸ºé»˜è®¤2ä¸ªï¼ŒRGBä¸ºé»˜è®¤1ä¸ªï¼Œå…¶å®ƒæƒ…å†µé»˜è®¤8ä¸ªèŠ‚ç‚¹ã€‚
  
  *  @~english
  *  @brief  Get transfer ways of U3V device
@@ -2030,11 +2030,11 @@ MV_CAMCTRL_API int __stdcall MV_USB_GetTransferWays(IN void* handle, IN OUT unsi
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áÁ÷Òì³£ÏûÏ¢»Øµ÷£¬ÔÚ´ò¿ªÉè±¸Ö®ºóµ÷ÓÃ£¨Ö»Ö§³ÖU3VÏà»ú£¬²»Ö§³ÖGenTLÉè±¸£©
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  cbException                 [IN]            Òì³£»Øµ÷º¯ÊýÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  æ³¨å†Œæµå¼‚å¸¸æ¶ˆæ¯å›žè°ƒï¼Œåœ¨æ‰“å¼€è®¾å¤‡ä¹‹åŽè°ƒç”¨ï¼ˆåªæ”¯æŒU3Vç›¸æœºï¼Œä¸æ”¯æŒGenTLè®¾å¤‡ï¼‰
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  cbException                 [IN]            å¼‚å¸¸å›žè°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
  
  *  @~english
  *  @brief  Register exception stream callBack, call after open device (only support U3V Camera, don't support GenTL Device)
@@ -2047,11 +2047,11 @@ MV_CAMCTRL_API int __stdcall MV_USB_RegisterStreamExceptionCallBack(IN void* han
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃU3VµÄÊÂ¼þ»º´æ½Úµã¸öÊý
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nEventNodeNum               [IN]            ÊÂ¼þ»º´æ½Úµã¸öÊý£¬·¶Î§£º1-64
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚÉèÖÃµ±Ç°µÄU3VÊÂ¼þ»º´æ½Úµã¸öÊý£¬Ä¬ÈÏÇé¿öÏÂÎª5¸ö¡£
+ *  @brief  è®¾ç½®U3Vçš„äº‹ä»¶ç¼“å­˜èŠ‚ç‚¹ä¸ªæ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nEventNodeNum               [IN]            äº‹ä»¶ç¼“å­˜èŠ‚ç‚¹ä¸ªæ•°ï¼ŒèŒƒå›´ï¼š1-64
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£ç”¨äºŽè®¾ç½®å½“å‰çš„U3Väº‹ä»¶ç¼“å­˜èŠ‚ç‚¹ä¸ªæ•°ï¼Œé»˜è®¤æƒ…å†µä¸‹ä¸º5ä¸ªã€‚
  
  *  @~english
  *  @brief  Set the number of U3V device event cache nodes
@@ -2065,11 +2065,11 @@ MV_CAMCTRL_API int __stdcall MV_USB_SetEventNodeNum(IN void* handle, IN unsigned
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃU3VµÄÍ¬²½¶ÁÐ´³¬Ê±Ê±¼ä£¬·¶Î§Îª1000 ~ UINT_MAX(°üº¬1000£¬²»°üº¬UINT_MAX)
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nMills                      [IN]            ÉèÖÃÍ¬²½¶ÁÐ´³¬Ê±Ê±¼ä,Ä¬ÈÏÊ±¼äÎª1000ms
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Ôö¼ÓÉèÖÃÍ¬²½¶ÁÈ¡Ê±¼ä½Ó¿Ú£¬¼æÈÝ²¿·ÖÏà»úÅäÖÃ²ÎÊýºÜÂý£¬³¬¹ý1000msµÄÇé¿ö
+ *  @brief  è®¾ç½®U3Vçš„åŒæ­¥è¯»å†™è¶…æ—¶æ—¶é—´ï¼ŒèŒƒå›´ä¸º1000 ~ UINT_MAX(åŒ…å«1000ï¼Œä¸åŒ…å«UINT_MAX)
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nMills                      [IN]            è®¾ç½®åŒæ­¥è¯»å†™è¶…æ—¶æ—¶é—´,é»˜è®¤æ—¶é—´ä¸º1000ms
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks å¢žåŠ è®¾ç½®åŒæ­¥è¯»å–æ—¶é—´æŽ¥å£ï¼Œå…¼å®¹éƒ¨åˆ†ç›¸æœºé…ç½®å‚æ•°å¾ˆæ…¢ï¼Œè¶…è¿‡1000msçš„æƒ…å†µ
 
  *  @~english
  *  @brief  Set U3V Synchronisation timeout,range is 1000 ~ UINT_MAX(minimum value greater than 1000,maximum value less than UINT_MAX)
@@ -2082,11 +2082,11 @@ MV_CAMCTRL_API int __stdcall MV_USB_SetSyncTimeOut(IN void* handle, IN unsigned 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡U3VÏà»úÍ¬²½¶ÁÐ´³¬Ê±Ê±¼ä
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnMills                     [IN][OUT]       »ñÈ¡µÄ³¬Ê±Ê±¼ä(ms)
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡µ±Ç°µÄU3VÍ¬²½¶ÁÐ´³¬Ê±Ê±¼ä´óÐ¡£¬Ä¬ÈÏ1000ms¡£
+ *  @brief  èŽ·å–U3Vç›¸æœºåŒæ­¥è¯»å†™è¶…æ—¶æ—¶é—´
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnMills                     [IN][OUT]       èŽ·å–çš„è¶…æ—¶æ—¶é—´(ms)
+ *  @return æˆåŠŸ,è¿”å›žMV_OK,å¤±è´¥,è¿”å›žé”™è¯¯ç 
+ *  @remarks è¯¥æŽ¥å£ç”¨äºŽèŽ·å–å½“å‰çš„U3VåŒæ­¥è¯»å†™è¶…æ—¶æ—¶é—´å¤§å°ï¼Œé»˜è®¤1000msã€‚
  
  *  @~english
  *  @brief  Get U3V Camera Synchronisation timeout
@@ -2099,16 +2099,16 @@ MV_CAMCTRL_API int __stdcall MV_USB_GetSyncTimeOut(IN void* handle, IN OUT unsig
 
 
 
-/*******************Part8 ch: GenTLÏà¹Ø½Ó¿Ú | en: GenTL related interface*******************/
+/*******************Part8 ch: GenTLç›¸å…³æŽ¥å£ | en: GenTL related interface*******************/
 
 /******************************************************************************//**
  *  @~chinese
- *  @brief  Í¨¹ýGenTLÃ¶¾ÙInterfaces
- *  @param  pstIFList                   [IN][OUT]       InterfacesÁÐ±í
- *  @param  strGenTLPath                [IN]            GenTLµÄctiÎÄ¼þÂ·¾¶
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks InterfacesÁÐ±íµÄÄÚ´æÊÇÔÚSDKÄÚ²¿·ÖÅäµÄ£¬¶àÏß³Ìµ÷ÓÃ¸Ã½Ó¿ÚÊ±»á½øÐÐÉè±¸ÁÐ±íÄÚ´æµÄÊÍ·ÅºÍÉêÇë
-             ½¨Òé¾¡Á¿±ÜÃâ¶àÏß³ÌÃ¶¾Ù²Ù×÷¡£
+ *  @brief  é€šè¿‡GenTLæžšä¸¾Interfaces
+ *  @param  pstIFList                   [IN][OUT]       Interfacesåˆ—è¡¨
+ *  @param  strGenTLPath                [IN]            GenTLçš„ctiæ–‡ä»¶è·¯å¾„
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks Interfacesåˆ—è¡¨çš„å†…å­˜æ˜¯åœ¨SDKå†…éƒ¨åˆ†é…çš„ï¼Œå¤šçº¿ç¨‹è°ƒç”¨è¯¥æŽ¥å£æ—¶ä¼šè¿›è¡Œè®¾å¤‡åˆ—è¡¨å†…å­˜çš„é‡Šæ”¾å’Œç”³è¯·
+             å»ºè®®å°½é‡é¿å…å¤šçº¿ç¨‹æžšä¸¾æ“ä½œã€‚
  
  *  @~english
  *  @brief  Enumerate Interfaces with GenTL
@@ -2122,10 +2122,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_EnumInterfacesByGenTL(IN OUT MV_GENTL_IF_INFO
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ð¶ÔØcti¿â
- *  @param  pGenTLPath                [IN]            Ã¶¾Ù¿¨Ê±¼ÓÔØµÄctiÎÄ¼þÂ·¾¶
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Ð¶ÔØÇ°ÐèÒª±£Ö¤Í¨¹ý¸ÃctiÃ¶¾Ù³öµÄÏà»úÒÑÈ«²¿¹Ø±Õ£¬·ñÔò±¨´íÇ°ÖÃÌõ¼þ´íÎó¡£
+ *  @brief  å¸è½½ctiåº“
+ *  @param  pGenTLPath                [IN]            æžšä¸¾å¡æ—¶åŠ è½½çš„ctiæ–‡ä»¶è·¯å¾„
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks å¸è½½å‰éœ€è¦ä¿è¯é€šè¿‡è¯¥ctiæžšä¸¾å‡ºçš„ç›¸æœºå·²å…¨éƒ¨å…³é—­ï¼Œå¦åˆ™æŠ¥é”™å‰ç½®æ¡ä»¶é”™è¯¯ã€‚
  
  *  @~english
  *  @brief  Unload cti library
@@ -2137,12 +2137,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_UnloadGenTLLibrary(IN const char * pGenTLPath
 
 /*****************************************************************************************************//**
  *  @~chinese
- *  @brief  Í¨¹ýGenTL InterfaceÃ¶¾ÙÉè±¸
- *  @param  pstIFInfo                   [IN]            InterfaceÐÅÏ¢
- *  @param  pstDevList                  [IN][OUT]           Éè±¸ÁÐ±í
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Éè±¸ÁÐ±íµÄÄÚ´æÊÇÔÚSDKÄÚ²¿·ÖÅäµÄ£¬¶àÏß³Ìµ÷ÓÃ¸Ã½Ó¿ÚÊ±»á½øÐÐÉè±¸ÁÐ±íÄÚ´æµÄÊÍ·ÅºÍÉêÇë
-             ½¨Òé¾¡Á¿±ÜÃâ¶àÏß³ÌÃ¶¾Ù²Ù×÷¡£
+ *  @brief  é€šè¿‡GenTL Interfaceæžšä¸¾è®¾å¤‡
+ *  @param  pstIFInfo                   [IN]            Interfaceä¿¡æ¯
+ *  @param  pstDevList                  [IN][OUT]           è®¾å¤‡åˆ—è¡¨
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è®¾å¤‡åˆ—è¡¨çš„å†…å­˜æ˜¯åœ¨SDKå†…éƒ¨åˆ†é…çš„ï¼Œå¤šçº¿ç¨‹è°ƒç”¨è¯¥æŽ¥å£æ—¶ä¼šè¿›è¡Œè®¾å¤‡åˆ—è¡¨å†…å­˜çš„é‡Šæ”¾å’Œç”³è¯·
+             å»ºè®®å°½é‡é¿å…å¤šçº¿ç¨‹æžšä¸¾æ“ä½œã€‚
  
  *  @~english
  *  @brief  Enumerate Devices with GenTL interface
@@ -2156,11 +2156,11 @@ MV_CAMCTRL_API int __stdcall MV_CC_EnumDevicesByGenTL(IN MV_GENTL_IF_INFO* pstIF
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í¨¹ýGenTLÉè±¸ÐÅÏ¢´´½¨Éè±¸¾ä±ú
- *  @param  handle                      [IN][OUT]       Éè±¸¾ä±ú
- *  @param  pstDevInfo                  [IN]            Éè±¸ÐÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸ù¾ÝÊäÈëµÄÉè±¸ÐÅÏ¢£¬´´½¨¿âÄÚ²¿±ØÐëµÄ×ÊÔ´ºÍ³õÊ¼»¯ÄÚ²¿Ä£¿é¡£
+ *  @brief  é€šè¿‡GenTLè®¾å¤‡ä¿¡æ¯åˆ›å»ºè®¾å¤‡å¥æŸ„
+ *  @param  handle                      [IN][OUT]       è®¾å¤‡å¥æŸ„
+ *  @param  pstDevInfo                  [IN]            è®¾å¤‡ä¿¡æ¯ç»“æž„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks æ ¹æ®è¾“å…¥çš„è®¾å¤‡ä¿¡æ¯ï¼Œåˆ›å»ºåº“å†…éƒ¨å¿…é¡»çš„èµ„æºå’Œåˆå§‹åŒ–å†…éƒ¨æ¨¡å—ã€‚
  
  *  @~english
  *  @brief  Create Device Handle with GenTL Device Info
@@ -2173,18 +2173,18 @@ MV_CAMCTRL_API int __stdcall MV_CC_CreateHandleByGenTL(IN OUT void ** handle, IN
 
 
 
-/*******************Part9 ch: Í¼Ïñ±£´æ¡¢¸ñÊ½×ª»»µÈÏà¹Ø½Ó¿Ú | en: Related image save and format convert interface*******************/
+/*******************Part9 ch: å›¾åƒä¿å­˜ã€æ ¼å¼è½¬æ¢ç­‰ç›¸å…³æŽ¥å£ | en: Related image save and format convert interface*******************/
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ±£´æÍ¼Æ¬£¬Ö§³ÖBmpºÍJpeg.
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstSaveParam                [IN][OUT]       ±£´æÍ¼Æ¬²ÎÊý½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Í¨¹ý¸Ã½Ó¿Ú¿ÉÒÔ½«´ÓÉè±¸²É¼¯µ½µÄÔ­Ê¼Í¼ÏñÊý¾Ý×ª»»³ÉJPEG»òÕßBMPµÈ¸ñÊ½²¢´æ·ÅÔÚÖ¸¶¨ÄÚ´æÖÐ£¬È»ºóÓÃ»§¿ÉÒÔ½«×ª»»Ö®ºóµÄÊý¾ÝÖ±½Ó±£´æ³ÉÍ¼Æ¬ÎÄ¼þ¡£
-             ¸Ã½Ó¿Úµ÷ÓÃÎÞ½Ó¿ÚË³ÐòÒªÇó£¬ÓÐÍ¼ÏñÔ´Êý¾Ý¾Í¿ÉÒÔ½øÐÐ×ª»»£¬¿ÉÒÔÏÈµ÷ÓÃMV_CC_GetOneFrameTimeout»òÕßMV_CC_RegisterImageCallBackExÉèÖÃ»Øµ÷º¯Êý£¬»ñÈ¡Ò»Ö¡Í¼ÏñÊý¾Ý£¬È»ºóÔÙÍ¨¹ý¸Ã½Ó¿Ú×ª»»¸ñÊ½¡£
-             ¸Ã½Ó¿ÚÖ§³ÖÍ¼Ïñ ¿í¡¢¸ß¡¢×Ü³¤×î´óÖÁ UINT_MAX, ÆäÖÐMV_CC_SaveImageEx2Ö§³Ö ¿í¡¢¸ß¡¢×Ü³¤×î´óÖÁ USHRT_MAX
-			 JPEG¸ñÊ½×î´óÖ§³Ö¿í¸ßÎª65500
+ *  @brief  ä¿å­˜å›¾ç‰‡ï¼Œæ”¯æŒBmpå’ŒJpeg.
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstSaveParam                [IN][OUT]       ä¿å­˜å›¾ç‰‡å‚æ•°ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks é€šè¿‡è¯¥æŽ¥å£å¯ä»¥å°†ä»Žè®¾å¤‡é‡‡é›†åˆ°çš„åŽŸå§‹å›¾åƒæ•°æ®è½¬æ¢æˆJPEGæˆ–è€…BMPç­‰æ ¼å¼å¹¶å­˜æ”¾åœ¨æŒ‡å®šå†…å­˜ä¸­ï¼Œç„¶åŽç”¨æˆ·å¯ä»¥å°†è½¬æ¢ä¹‹åŽçš„æ•°æ®ç›´æŽ¥ä¿å­˜æˆå›¾ç‰‡æ–‡ä»¶ã€‚
+             è¯¥æŽ¥å£è°ƒç”¨æ— æŽ¥å£é¡ºåºè¦æ±‚ï¼Œæœ‰å›¾åƒæºæ•°æ®å°±å¯ä»¥è¿›è¡Œè½¬æ¢ï¼Œå¯ä»¥å…ˆè°ƒç”¨MV_CC_GetOneFrameTimeoutæˆ–è€…MV_CC_RegisterImageCallBackExè®¾ç½®å›žè°ƒå‡½æ•°ï¼ŒèŽ·å–ä¸€å¸§å›¾åƒæ•°æ®ï¼Œç„¶åŽå†é€šè¿‡è¯¥æŽ¥å£è½¬æ¢æ ¼å¼ã€‚
+             è¯¥æŽ¥å£æ”¯æŒå›¾åƒ å®½ã€é«˜ã€æ€»é•¿æœ€å¤§è‡³ UINT_MAX, å…¶ä¸­MV_CC_SaveImageEx2æ”¯æŒ å®½ã€é«˜ã€æ€»é•¿æœ€å¤§è‡³ USHRT_MAX
+			 JPEGæ ¼å¼æœ€å¤§æ”¯æŒå®½é«˜ä¸º65500
  
  *  @~english
  *  @brief  Save image, support Bmp and Jpeg.
@@ -2200,14 +2200,14 @@ MV_CAMCTRL_API int __stdcall MV_CC_SaveImageEx3(IN void* handle, IN OUT MV_SAVE_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ±£´æÍ¼Ïñµ½ÎÄ¼þ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstSaveFileParam            [IN][OUT]       ±£´æÍ¼Æ¬ÎÄ¼þ²ÎÊý½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÖ§³ÖBMP/JPEG/PNG/TIFF¡£
-             ¸Ã½Ó¿ÚÖ§³ÖÍ¼Ïñ ¿í¡¢¸ß¡¢×Ü³¤×î´óÖÁ UINT_MAX, ÆäÖÐMV_CC_SaveImageToFileÖ§³Ö ¿í¡¢¸ß¡¢×Ü³¤×î´óÖÁ USHRT_MAX
-             ¸Ã½Ó¿ÚÊÇMV_CC_SaveImageToFile½Ó¿ÚµÄÀ©Õ¹½Ó¿Ú
-			 JPEG¸ñÊ½×î´óÖ§³Ö¿í¸ßÎª65500
+ *  @brief  ä¿å­˜å›¾åƒåˆ°æ–‡ä»¶
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstSaveFileParam            [IN][OUT]       ä¿å­˜å›¾ç‰‡æ–‡ä»¶å‚æ•°ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£æ”¯æŒBMP/JPEG/PNG/TIFFã€‚
+             è¯¥æŽ¥å£æ”¯æŒå›¾åƒ å®½ã€é«˜ã€æ€»é•¿æœ€å¤§è‡³ UINT_MAX, å…¶ä¸­MV_CC_SaveImageToFileæ”¯æŒ å®½ã€é«˜ã€æ€»é•¿æœ€å¤§è‡³ USHRT_MAX
+             è¯¥æŽ¥å£æ˜¯MV_CC_SaveImageToFileæŽ¥å£çš„æ‰©å±•æŽ¥å£
+			 JPEGæ ¼å¼æœ€å¤§æ”¯æŒå®½é«˜ä¸º65500
  *  @~english
  *  @brief  Save the image file.
  *  @param  handle                      [IN]            Device handle
@@ -2222,32 +2222,32 @@ MV_CAMCTRL_API int __stdcall MV_CC_SaveImageToFileEx(IN void* handle, IN OUT MV_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ±£´æ3DµãÔÆÊý¾Ý£¬Ö§³ÖPLY¡¢CSVºÍOBJÈýÖÖ¸ñÊ½
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstPointDataParam           [IN][OUT]       ±£´æµãÔÆÊý¾Ý²ÎÊý½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks 3DÊý¾Ý¸ñÊ½±£´æ³É3DÎÄ¼þ¸ñÊ½£¬Ö§³ÖPLY/CSV/OBJ£¬
-             Ä¿Ç°Ö§³ÖPixelType_Gvsp_Coord3D_ABC32¡¢PixelType_Gvsp_Coord3D_ABC32f¡¢PixelType_Gvsp_Coord3D_AB32¡¢PixelType_Gvsp_Coord3D_AB32f¡¢PixelType_Gvsp_Coord3D_AC32¡¢PixelType_Gvsp_Coord3D_AC32f,
-             ÔÝ²»Ö§³ÖÆäËû3D¸ñÊ½¡£
+ *  @brief  ä¿å­˜3Dç‚¹äº‘æ•°æ®ï¼Œæ”¯æŒPLYã€CSVå’ŒOBJä¸‰ç§æ ¼å¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstPointDataParam           [IN][OUT]       ä¿å­˜ç‚¹äº‘æ•°æ®å‚æ•°ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks 3Dæ•°æ®æ ¼å¼ä¿å­˜æˆ3Dæ–‡ä»¶æ ¼å¼ï¼Œæ”¯æŒPLY/CSV/OBJï¼Œ
+             ç›®å‰æ”¯æŒPixelType_Gvsp_Coord3D_ABC32ã€PixelType_Gvsp_Coord3D_ABC32fã€PixelType_Gvsp_Coord3D_AB32ã€PixelType_Gvsp_Coord3D_AB32fã€PixelType_Gvsp_Coord3D_AC32ã€PixelType_Gvsp_Coord3D_AC32f,
+             æš‚ä¸æ”¯æŒå…¶ä»–3Dæ ¼å¼ã€‚
  
  *  @~english
- *  @brief  Save 3D point data, support PLY¡¢CSV and OBJ
+ *  @brief  Save 3D point data, support PLYã€CSV and OBJ
  *  @param  handle                      [IN]            Device handle
  *  @param  pstPointDataParam           [IN][OUT]       Save 3D point data parameters structure
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks Save the 3D data format to 3D file format£¬support PLY¡¢CSV and OBJ,
-             only support PixelType_Gvsp_Coord3D_ABC32¡¢PixelType_Gvsp_Coord3D_ABC32f¡¢PixelType_Gvsp_Coord3D_AB32¡¢PixelType_Gvsp_Coord3D_AB32f¡¢PixelType_Gvsp_Coord3D_AC32¡¢PixelType_Gvsp_Coord3D_AC32f
+ *  @remarks Save the 3D data format to 3D file formatï¼Œsupport PLYã€CSV and OBJ,
+             only support PixelType_Gvsp_Coord3D_ABC32ã€PixelType_Gvsp_Coord3D_ABC32fã€PixelType_Gvsp_Coord3D_AB32ã€PixelType_Gvsp_Coord3D_AB32fã€PixelType_Gvsp_Coord3D_AC32ã€PixelType_Gvsp_Coord3D_AC32f
              Other 3D format is not supported now.
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_SavePointCloudData(IN void* handle, IN OUT MV_SAVE_POINT_CLOUD_PARAM* pstPointDataParam);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í¼ÏñÐý×ª
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstRotateParam              [IN][OUT]       Í¼ÏñÐý×ª²ÎÊý½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÖ»Ö§³ÖMONO8/RGB24/BGR24¸ñÊ½Êý¾ÝµÄ90/180/270¶ÈÐý×ª¡£
+ *  @brief  å›¾åƒæ—‹è½¬
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstRotateParam              [IN][OUT]       å›¾åƒæ—‹è½¬å‚æ•°ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£åªæ”¯æŒMONO8/RGB24/BGR24æ ¼å¼æ•°æ®çš„90/180/270åº¦æ—‹è½¬ã€‚
  
  *  @~english
  *  @brief  Rotate Image
@@ -2260,11 +2260,11 @@ MV_CAMCTRL_API int __stdcall MV_CC_RotateImage(IN void* handle, IN OUT MV_CC_ROT
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í¼Ïñ·­×ª
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFlipParam                [IN][OUT]       Í¼Ïñ·­×ª²ÎÊý½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÖ»Ö§³ÖMONO8/RGB24/BGR24¸ñÊ½Êý¾ÝµÄ´¹Ö±ºÍË®Æ½·­×ª¡£
+ *  @brief  å›¾åƒç¿»è½¬
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFlipParam                [IN][OUT]       å›¾åƒç¿»è½¬å‚æ•°ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è¯¥æŽ¥å£åªæ”¯æŒMONO8/RGB24/BGR24æ ¼å¼æ•°æ®çš„åž‚ç›´å’Œæ°´å¹³ç¿»è½¬ã€‚
  
  *  @~english
  *  @brief  Flip Image
@@ -2278,14 +2278,14 @@ MV_CAMCTRL_API int __stdcall MV_CC_FlipImage(IN void* handle, IN OUT MV_CC_FLIP_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÏñËØ¸ñÊ½×ª»»
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstCvtParam                 [IN][OUT]       ÏñËØ¸ñÊ½×ª»»²ÎÊý½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Í¨¹ý½«½Ó¿Ú¿ÉÒÔ½«´ÓÉè±¸²É¼¯µ½µÄÔ­Ê¼Í¼ÏñÊý¾Ý×ª»»³ÉÓÃ»§ËùÐèµÄÏñËØ¸ñÊ½²¢´æ·ÅÔÚÖ¸¶¨ÄÚ´æÖÐ¡£
-             ¸Ã½Ó¿Úµ÷ÓÃÎÞ½Ó¿ÚË³ÐòÒªÇó£¬ÓÐÍ¼ÏñÔ´Êý¾Ý¾Í¿ÉÒÔ½øÐÐ×ª»»£¬¿ÉÒÔÏÈµ÷ÓÃMV_CC_GetOneFrameTimeout»òÕßMV_CC_RegisterImageCallBackExÉèÖÃ»Øµ÷º¯Êý£¬
-             »ñÈ¡Ò»Ö¡Í¼ÏñÊý¾Ý£¬È»ºóÔÙÍ¨¹ý¸Ã½Ó¿Ú×ª»»¸ñÊ½¡£Èç¹ûÉè±¸µ±Ç°²É¼¯Í¼ÏñÊÇJPEGÑ¹ËõµÄ¸ñÊ½£¬Ôò²»Ö§³Öµ÷ÓÃ¸Ã½Ó¿Ú½øÐÐ×ª»»¡£
-             ¸Ã½Ó¿ÚÖ§³ÖÍ¼Ïñ ¿í¡¢¸ß¡¢×Ü³¤×î´óÖÁ UINT_MAX, ÆäÖÐMV_CC_ConvertPixelTypeÖ§³Ö ¿í¡¢¸ß¡¢×Ü³¤×î´óÖÁ USHRT_MAX
+ *  @brief  åƒç´ æ ¼å¼è½¬æ¢
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstCvtParam                 [IN][OUT]       åƒç´ æ ¼å¼è½¬æ¢å‚æ•°ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks é€šè¿‡å°†æŽ¥å£å¯ä»¥å°†ä»Žè®¾å¤‡é‡‡é›†åˆ°çš„åŽŸå§‹å›¾åƒæ•°æ®è½¬æ¢æˆç”¨æˆ·æ‰€éœ€çš„åƒç´ æ ¼å¼å¹¶å­˜æ”¾åœ¨æŒ‡å®šå†…å­˜ä¸­ã€‚
+             è¯¥æŽ¥å£è°ƒç”¨æ— æŽ¥å£é¡ºåºè¦æ±‚ï¼Œæœ‰å›¾åƒæºæ•°æ®å°±å¯ä»¥è¿›è¡Œè½¬æ¢ï¼Œå¯ä»¥å…ˆè°ƒç”¨MV_CC_GetOneFrameTimeoutæˆ–è€…MV_CC_RegisterImageCallBackExè®¾ç½®å›žè°ƒå‡½æ•°ï¼Œ
+             èŽ·å–ä¸€å¸§å›¾åƒæ•°æ®ï¼Œç„¶åŽå†é€šè¿‡è¯¥æŽ¥å£è½¬æ¢æ ¼å¼ã€‚å¦‚æžœè®¾å¤‡å½“å‰é‡‡é›†å›¾åƒæ˜¯JPEGåŽ‹ç¼©çš„æ ¼å¼ï¼Œåˆ™ä¸æ”¯æŒè°ƒç”¨è¯¥æŽ¥å£è¿›è¡Œè½¬æ¢ã€‚
+             è¯¥æŽ¥å£æ”¯æŒå›¾åƒ å®½ã€é«˜ã€æ€»é•¿æœ€å¤§è‡³ UINT_MAX, å…¶ä¸­MV_CC_ConvertPixelTypeæ”¯æŒ å®½ã€é«˜ã€æ€»é•¿æœ€å¤§è‡³ USHRT_MAX
  
  *  @~english
  *  @brief  Pixel format conversion
@@ -2303,11 +2303,11 @@ MV_CAMCTRL_API int __stdcall MV_CC_ConvertPixelTypeEx(IN void* handle, IN OUT MV
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃ²åÖµËã·¨ÀàÐÍ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nBayerCvtQuality            [IN]            BayerµÄ²åÖµ·½·¨  0-¿ìËÙ 1-¾ùºâ 2-×îÓÅ£¨Ä¬ÈÏÎª×îÓÅ£© 3-×îÓÅ+
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ÉèÖÃÄÚ²¿Í¼Ïñ×ª»»½Ó¿ÚµÄBayer²åÖµËã·¨ÀàÐÍ²ÎÊý£¬MV_CC_ConvertPixelTypeEx¡¢MV_CC_GetImageForRGB/BGR½Ó¿ÚÄÚ²¿Ê¹ÓÃµÄ²åÖµËã·¨ÊÇ¸Ã½Ó¿ÚËùÉè¶¨µÄ¡£
+ *  @brief  è®¾ç½®æ’å€¼ç®—æ³•ç±»åž‹
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nBayerCvtQuality            [IN]            Bayerçš„æ’å€¼æ–¹æ³•  0-å¿«é€Ÿ 1-å‡è¡¡ 2-æœ€ä¼˜ï¼ˆé»˜è®¤ä¸ºæœ€ä¼˜ï¼‰ 3-æœ€ä¼˜+
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è®¾ç½®å†…éƒ¨å›¾åƒè½¬æ¢æŽ¥å£çš„Bayeræ’å€¼ç®—æ³•ç±»åž‹å‚æ•°ï¼ŒMV_CC_ConvertPixelTypeExã€MV_CC_GetImageForRGB/BGRæŽ¥å£å†…éƒ¨ä½¿ç”¨çš„æ’å€¼ç®—æ³•æ˜¯è¯¥æŽ¥å£æ‰€è®¾å®šçš„ã€‚
 
  *  @~english
  *  @brief  Interpolation algorithm type setting
@@ -2321,11 +2321,11 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetBayerCvtQuality(IN void* handle, IN unsign
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ²åÖµËã·¨Æ½»¬Ê¹ÄÜÉèÖÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  bFilterEnable               [IN]            Æ½»¬Ê¹ÄÜ(Ä¬ÈÏ¹Ø±Õ)
- *  @return ³É¹¦£¬·µ»Ø#MV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ÉèÖÃÄÚ²¿Í¼Ïñ×ª»»½Ó¿ÚµÄ±´¶û²åÖµÆ½»¬Ê¹ÄÜ²ÎÊý£¬MV_CC_ConvertPixelTypeEx¡¢MV_CC_SaveImageEx3½Ó¿ÚÄÚ²¿Ê¹ÓÃµÄ²åÖµËã·¨ÊÇ¸Ã½Ó¿ÚËùÉè¶¨µÄ¡£
+ *  @brief  æ’å€¼ç®—æ³•å¹³æ»‘ä½¿èƒ½è®¾ç½®
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  bFilterEnable               [IN]            å¹³æ»‘ä½¿èƒ½(é»˜è®¤å…³é—­)
+ *  @return æˆåŠŸï¼Œè¿”å›ž#MV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è®¾ç½®å†…éƒ¨å›¾åƒè½¬æ¢æŽ¥å£çš„è´å°”æ’å€¼å¹³æ»‘ä½¿èƒ½å‚æ•°ï¼ŒMV_CC_ConvertPixelTypeExã€MV_CC_SaveImageEx3æŽ¥å£å†…éƒ¨ä½¿ç”¨çš„æ’å€¼ç®—æ³•æ˜¯è¯¥æŽ¥å£æ‰€è®¾å®šçš„ã€‚
 
  *  @~english
  *  @brief  Filter type of the bell interpolation quality algorithm setting
@@ -2339,38 +2339,38 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetBayerFilterEnable(IN void* handle, IN bool
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃBayer¸ñÊ½µÄGammaÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  fBayerGammaValue            [IN]            GammaÖµ:0.1 ~ 4.0
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ÉèÖÃ¸ÃÖµºó£¬ÔÚµ÷ÓÃMV_CC_ConvertPixelTypeEx¡¢MV_CC_SaveImageEx3¡¢MV_CC_SaveImageToFileEx½Ó¿Ú½«Bayer8/10/12/16¸ñÊ½×ª³ÉRGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64Ê±ÆðÐ§¡£
+ *  @brief  è®¾ç½®Bayeræ ¼å¼çš„Gammaå€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  fBayerGammaValue            [IN]            Gammaå€¼:0.1 ~ 4.0
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è®¾ç½®è¯¥å€¼åŽï¼Œåœ¨è°ƒç”¨MV_CC_ConvertPixelTypeExã€MV_CC_SaveImageEx3ã€MV_CC_SaveImageToFileExæŽ¥å£å°†Bayer8/10/12/16æ ¼å¼è½¬æˆRGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64æ—¶èµ·æ•ˆã€‚
 
  *  @~english
  *  @brief  Set Gamma value
  *  @param  handle                      [IN]            Device handle
  *  @param  fBayerGammaValue            [IN]            Gamma value[0.1,4.0]
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks After setting the value, it works when calling MV_CC_ConvertPixelTypeEx\MV_CC_SaveImageEx3\MV_CC_SaveImageToFileEx API convert Bayer8/10/12/16 to RGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64.
+ *  @remarks After setting the value, it works when calling MV_CC_ConvertPixelTypeEx\MV_CC_SaveImageEx3\MV_CC_SaveImageToFileEx API convert Bayer8/10/12/16 to RGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64.
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_SetBayerGammaValue(IN void* handle, IN float fBayerGammaValue);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief   ÉèÖÃMono8/Bayer8/10/12/16¸ñÊ½µÄGammaÖµ
- *  @param   handle                           [IN] Éè±¸¾ä±ú
- *  @param   MvGvspPixelType enSrcPixelType   [IN] ÏñËØ¸ñÊ½,Ö§³ÖPixelType_Gvsp_Mono8,Bayer8/10/12/16
- *  @param   fGammaValue                      [IN] GammaÖµ:0.1 ~ 4.0
- *  @return  ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ÉèÖÃMono8µÄgammaÖµºó£¬ÔÚµ÷ÓÃMV_CC_ConvertPixelTypeEx½Ó¿Ú½«Mono8×ª³ÉMono8Ê±gammaÖµÆðÐ§¡£
- *  @remarks ÉèÖÃBayer8/10/12/16µÄgammaÖµºó£¬ÔÚµ÷ÓÃMV_CC_ConvertPixelTypeEx¡¢MV_CC_SaveImageToFileEx¡¢MV_CC_SaveImageEx3½Ó¿Ú½«Bayer8/10/12/16×ªRGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64Ê±gammaÖµÆðÐ§¡£
- *  @remarks ¸Ã½Ó¿Ú¼æÈÝMV_CC_SetBayerGammaValue½Ó¿Ú£¬ÐÂÔöÖ§³ÖMono8ÏñËØ¸ñÊ½
+ *  @brief   è®¾ç½®Mono8/Bayer8/10/12/16æ ¼å¼çš„Gammaå€¼
+ *  @param   handle                           [IN] è®¾å¤‡å¥æŸ„
+ *  @param   MvGvspPixelType enSrcPixelType   [IN] åƒç´ æ ¼å¼,æ”¯æŒPixelType_Gvsp_Mono8,Bayer8/10/12/16
+ *  @param   fGammaValue                      [IN] Gammaå€¼:0.1 ~ 4.0
+ *  @return  æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è®¾ç½®Mono8çš„gammaå€¼åŽï¼Œåœ¨è°ƒç”¨MV_CC_ConvertPixelTypeExæŽ¥å£å°†Mono8è½¬æˆMono8æ—¶gammaå€¼èµ·æ•ˆã€‚
+ *  @remarks è®¾ç½®Bayer8/10/12/16çš„gammaå€¼åŽï¼Œåœ¨è°ƒç”¨MV_CC_ConvertPixelTypeExã€MV_CC_SaveImageToFileExã€MV_CC_SaveImageEx3æŽ¥å£å°†Bayer8/10/12/16è½¬RGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64æ—¶gammaå€¼èµ·æ•ˆã€‚
+ *  @remarks è¯¥æŽ¥å£å…¼å®¹MV_CC_SetBayerGammaValueæŽ¥å£ï¼Œæ–°å¢žæ”¯æŒMono8åƒç´ æ ¼å¼
  
  *  @~english
  *  @brief  Set Gamma value
  *  @param  handle                           [IN]            Device handle
  *  @param  MvGvspPixelType enSrcPixelType   [IN]            PixelType,support PixelType_Gvsp_Mono8,Bayer8/10/12/16
  *  @param  fGammaValue                      [IN]            Gamma value:0.1~ 4.0
- *  @remarks After setting the gamma of Mono8 £¬the gamma value takes effect when calling MV_CC_ConvertPixelTypeEx converts Mono8 to Mono8.
+ *  @remarks After setting the gamma of Mono8 ï¼Œthe gamma value takes effect when calling MV_CC_ConvertPixelTypeEx converts Mono8 to Mono8.
  *  @remarks After setting the gamma of Bayer8/10/12/16, the gamma value takes effect when calling MV_CC_ConvertPixelTypeEx\MV_CC_SaveImageToFileEx\MV_CC_SaveImageEx3 converts Bayer8/10/12/16 to RGB24/48,RGBA32/64,BGR24/48,BGRA32/64.
  *  @remarks This API compatible with MV_CC_SetBayerGammaValue, adds Mono8 PixelType.
  *  @return Success, return MV_OK. Failure, return error code
@@ -2379,61 +2379,61 @@ MV_CAMCTRL_API int __stdcall MV_CC_SetGammaValue(IN void* handle, IN enum MvGvsp
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃBayer¸ñÊ½µÄGammaÐÅÏ¢
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstGammaParam               [IN]            GammaÐÅÏ¢   
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ÉèÖÃ¸ÃÐÅÏ¢ºó£¬ÔÚµ÷ÓÃMV_CC_ConvertPixelTypeEx¡¢MV_CC_SaveImageEx3¡¢MV_CC_SaveImageToFileEx½Ó¿Ú½«Bayer8/10/12/16¸ñÊ½×ª³ÉRGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64Ê±GammaÖµÆðÐ§¡£
+ *  @brief  è®¾ç½®Bayeræ ¼å¼çš„Gammaä¿¡æ¯
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstGammaParam               [IN]            Gammaä¿¡æ¯   
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks è®¾ç½®è¯¥ä¿¡æ¯åŽï¼Œåœ¨è°ƒç”¨MV_CC_ConvertPixelTypeExã€MV_CC_SaveImageEx3ã€MV_CC_SaveImageToFileExæŽ¥å£å°†Bayer8/10/12/16æ ¼å¼è½¬æˆRGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64æ—¶Gammaå€¼èµ·æ•ˆã€‚
 
  *  @~english
  *  @brief  Set Gamma param
  *  @param  handle                      [IN]            Device handle
  *  @param  pstGammaParam               [IN]            Gamma param
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks After setting the param, it work in the calling MV_CC_ConvertPixelTypeEx\MV_CC_SaveImageEx3\MV_CC_SaveImageToFileEx API convert Bayer8/10/12/16 to RGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64.
+ *  @remarks After setting the param, it work in the calling MV_CC_ConvertPixelTypeEx\MV_CC_SaveImageEx3\MV_CC_SaveImageToFileEx API convert Bayer8/10/12/16 to RGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64.
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_SetBayerGammaParam(IN void* handle, IN MV_CC_GAMMA_PARAM* pstGammaParam);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃBayer¸ñÊ½µÄCCMÊ¹ÄÜºÍ¾ØÕó£¬Á¿»¯ÏµÊýÄ¬ÈÏ1024
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstCCMParam                 [IN]            CCM²ÎÊý
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¿ªÆôCCM²¢ÉèÖÃCCM¾ØÕóºó£¬ÔÚµ÷ÓÃMV_CC_ConvertPixelTypeEx¡¢MV_CC_SaveImageEx3½Ó¿Ú½«Bayer8/10/12/16¸ñÊ½×ª³ÉRGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64Ê±ÆðÐ§¡£ 
+ *  @brief  è®¾ç½®Bayeræ ¼å¼çš„CCMä½¿èƒ½å’ŒçŸ©é˜µï¼Œé‡åŒ–ç³»æ•°é»˜è®¤1024
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstCCMParam                 [IN]            CCMå‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks å¼€å¯CCMå¹¶è®¾ç½®CCMçŸ©é˜µåŽï¼Œåœ¨è°ƒç”¨MV_CC_ConvertPixelTypeExã€MV_CC_SaveImageEx3æŽ¥å£å°†Bayer8/10/12/16æ ¼å¼è½¬æˆRGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64æ—¶èµ·æ•ˆã€‚ 
 
  *  @~english
  *  @brief  Set CCM param,Scale default 1024
  *  @param  handle                      [IN]            Device handle
  *  @param  pstCCMParam                 [IN]            CCM parameter structure
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks After enable the color correction and set the color correction matrix, It work in the calling MV_CC_ConvertPixelTypeEx\MV_CC_SaveImageEx3 API convert Bayer8/10/12/16 to RGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64.
+ *  @remarks After enable the color correction and set the color correction matrix, It work in the calling MV_CC_ConvertPixelTypeEx\MV_CC_SaveImageEx3 API convert Bayer8/10/12/16 to RGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64.
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_SetBayerCCMParam(IN void* handle, IN MV_CC_CCM_PARAM* pstCCMParam);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃBayer¸ñÊ½µÄCCMÊ¹ÄÜºÍ¾ØÕó
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstCCMParam                 [IN]            CCM²ÎÊý
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¿ªÆôCCM²¢ÉèÖÃCCM¾ØÕóºó£¬ÔÚµ÷ÓÃMV_CC_ConvertPixelTypeEx¡¢MV_CC_SaveImageEx3½Ó¿Ú½«Bayer8/10/12/16¸ñÊ½×ª³ÉRGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64Ê±ÆðÐ§¡£
+ *  @brief  è®¾ç½®Bayeræ ¼å¼çš„CCMä½¿èƒ½å’ŒçŸ©é˜µ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstCCMParam                 [IN]            CCMå‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks å¼€å¯CCMå¹¶è®¾ç½®CCMçŸ©é˜µåŽï¼Œåœ¨è°ƒç”¨MV_CC_ConvertPixelTypeExã€MV_CC_SaveImageEx3æŽ¥å£å°†Bayer8/10/12/16æ ¼å¼è½¬æˆRGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64æ—¶èµ·æ•ˆã€‚
 
  *  @~english
  *  @brief  Set CCM param
  *  @param  handle                      [IN]            Device handle
  *  @param  pstCCMParam                 [IN]            CCM parameter structure
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks After enable the color correction and set the color correction matrix, It work in the calling MV_CC_ConvertPixelTypeEx\MV_CC_SaveImageEx3 API convert Bayer8/10/12/16 to RGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64.
+ *  @remarks After enable the color correction and set the color correction matrix, It work in the calling MV_CC_ConvertPixelTypeEx\MV_CC_SaveImageEx3 API convert Bayer8/10/12/16 to RGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64.
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_SetBayerCCMParamEx(IN void* handle, IN MV_CC_CCM_PARAM_EX* pstCCMParam);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í¼Ïñ¶Ô±È¶Èµ÷½Ú
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstContrastParam            [IN][OUT]       ¶Ô±È¶Èµ÷½Ú²ÎÊý
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  å›¾åƒå¯¹æ¯”åº¦è°ƒèŠ‚
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstContrastParam            [IN][OUT]       å¯¹æ¯”åº¦è°ƒèŠ‚å‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
  *  @remarks 
 
  *  @~english
@@ -2447,30 +2447,30 @@ MV_CAMCTRL_API int __stdcall MV_CC_ImageContrast(IN void* handle, IN OUT MV_CC_C
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÎÞËð½âÂë
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstDecodeParam              [IN][OUT]       ÎÞËð½âÂë²ÎÊý½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ½«´ÓÏà»úÖÐÈ¡µ½µÄÎÞËðÑ¹ËõÂëÁ÷½âÂë³ÉÂãÊý¾Ý£¬Í¬Ê±Ö§³Ö½âÎöµ±Ç°Ïà»úÊµÊ±Í¼ÏñµÄË®Ó¡ÐÅÏ¢£¨Èç¹ûÊäÈëµÄÎÞËðÂëÁ÷²»ÊÇµ±Ç°Ïà»ú»òÕß²»ÊÇÊµÊ±È¡Á÷µÄ£¬ÔòË®Ó¡½âÎö¿ÉÄÜÒì³££©;
-			 Èô½âÂëÊ§°Ü£¬Çë¼ì²éÒÔÏÂÇé¿ö£º£¨1£©ÐèÒªCPUÖ§³Ö SSE AVXÖ¸Áî¼¯£¨2£©Èôµ±Ç°Ö¡Òì³££¨¶ª°üµÈ£©,¿ÉÄÜµ¼ÖÂ½âÂëÒì³££¨3£©Ïà»ú³öÍ¼Òì³££¬ ¼´Ê¹²»¶ª°üÒ²»áÒì³£
+ *  @brief  æ— æŸè§£ç 
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstDecodeParam              [IN][OUT]       æ— æŸè§£ç å‚æ•°ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+ *  @remarks å°†ä»Žç›¸æœºä¸­å–åˆ°çš„æ— æŸåŽ‹ç¼©ç æµè§£ç æˆè£¸æ•°æ®ï¼ŒåŒæ—¶æ”¯æŒè§£æžå½“å‰ç›¸æœºå®žæ—¶å›¾åƒçš„æ°´å°ä¿¡æ¯ï¼ˆå¦‚æžœè¾“å…¥çš„æ— æŸç æµä¸æ˜¯å½“å‰ç›¸æœºæˆ–è€…ä¸æ˜¯å®žæ—¶å–æµçš„ï¼Œåˆ™æ°´å°è§£æžå¯èƒ½å¼‚å¸¸ï¼‰;
+			 è‹¥è§£ç å¤±è´¥ï¼Œè¯·æ£€æŸ¥ä»¥ä¸‹æƒ…å†µï¼šï¼ˆ1ï¼‰éœ€è¦CPUæ”¯æŒ SSE AVXæŒ‡ä»¤é›†ï¼ˆ2ï¼‰è‹¥å½“å‰å¸§å¼‚å¸¸ï¼ˆä¸¢åŒ…ç­‰ï¼‰,å¯èƒ½å¯¼è‡´è§£ç å¼‚å¸¸ï¼ˆ3ï¼‰ç›¸æœºå‡ºå›¾å¼‚å¸¸ï¼Œ å³ä½¿ä¸ä¸¢åŒ…ä¹Ÿä¼šå¼‚å¸¸
 
  *  @~english
  *  @brief  High Bandwidth Decode
  *  @param  handle                      [IN]            Device handle
  *  @param  pstDecodeParam              [IN][OUT]       High Bandwidth Decode parameter structure
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks Decode the lossless compressed data from the camera into raw data£¬At the same time, it supports parsing the watermark information of the real-time image of the current camera (if the input lossless code stream is not the current camera or is not real-time streaming, the watermark parsing may be abnormal);
+ *  @remarks Decode the lossless compressed data from the camera into raw dataï¼ŒAt the same time, it supports parsing the watermark information of the real-time image of the current camera (if the input lossless code stream is not the current camera or is not real-time streaming, the watermark parsing may be abnormal);
 			 If decoding fails, please check the following: (1) The CPU is required to support the SSE AVX instruction set. (2) If the current frame is abnormal (packet loss, etc.), it may cause decoding exceptions. (3) The camera plot is abnormal, even if there is no packet loss, it may cause exceptions
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_HB_Decode(IN void* handle, IN OUT MV_CC_HB_DECODE_PARAM* pstDecodeParam);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÔÚÍ¼ÏñÉÏ»æÖÆ¾ØÐÎ¿ò¸¨ÖúÏß
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pRectInfo                   [IN]            ¾ØÐÎ¸¨ÖúÏßµÄÐÅÏ¢
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks  ¸Ã½Ó¿Ú½öÖ§³ÖwindowsÆ½Ì¨
+ *  @brief  åœ¨å›¾åƒä¸Šç»˜åˆ¶çŸ©å½¢æ¡†è¾…åŠ©çº¿
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pRectInfo                   [IN]            çŸ©å½¢è¾…åŠ©çº¿çš„ä¿¡æ¯
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks  è¯¥æŽ¥å£ä»…æ”¯æŒwindowså¹³å°
  
  *  @~english
  *  @brief  Draw Rect Auxiliary Line
@@ -2483,11 +2483,11 @@ MV_CAMCTRL_API int __stdcall MV_CC_DrawRect(IN void* handle, IN MVCC_RECT_INFO* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÔÚÍ¼ÏñÉÏ»æÖÆÔ²ÐÎ¸¨ÖúÏß
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pCircleInfo                 [IN]            Ô²ÐÎ¸¨ÖúÏßµÄÐÅÏ¢
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks  ¸Ã½Ó¿Ú½öÖ§³ÖwindowsÆ½Ì¨
+ *  @brief  åœ¨å›¾åƒä¸Šç»˜åˆ¶åœ†å½¢è¾…åŠ©çº¿
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pCircleInfo                 [IN]            åœ†å½¢è¾…åŠ©çº¿çš„ä¿¡æ¯
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks  è¯¥æŽ¥å£ä»…æ”¯æŒwindowså¹³å°
  
  *  @~english
  *  @brief  Draw Circle Auxiliary Line
@@ -2500,11 +2500,11 @@ MV_CAMCTRL_API int __stdcall MV_CC_DrawCircle(IN void* handle, IN MVCC_CIRCLE_IN
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÔÚÍ¼ÏñÉÏ»æÖÆÏßÌõ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pLinesInfo                  [IN]            ÏßÌõ¸¨ÖúÏßÐÅÏ¢
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks  ¸Ã½Ó¿Ú½öÖ§³ÖwindowsÆ½Ì¨
+ *  @brief  åœ¨å›¾åƒä¸Šç»˜åˆ¶çº¿æ¡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pLinesInfo                  [IN]            çº¿æ¡è¾…åŠ©çº¿ä¿¡æ¯
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç 
+ *  @remarks  è¯¥æŽ¥å£ä»…æ”¯æŒwindowså¹³å°
  
  *  @~english
  *  @brief  Draw Line Auxiliary Line
@@ -2517,11 +2517,11 @@ MV_CAMCTRL_API int __stdcall MV_CC_DrawLines(IN void* handle, IN MVCC_LINES_INFO
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ¿ªÊ¼Â¼Ïñ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstRecordParam              [IN]            Â¼Ïñ²ÎÊý½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
-			¸Ã½Ó¿Ú×î´óÖ§³ÖWidth*HeightÎª8000*8000´óÐ¡£¬·ñÔò»áµ¼ÖÂµ÷ÓÃMV_CC_InputOneFrame½Ó¿Ú´íÎó¡£
+ *  @brief  å¼€å§‹å½•åƒ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstRecordParam              [IN]            å½•åƒå‚æ•°ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
+			è¯¥æŽ¥å£æœ€å¤§æ”¯æŒWidth*Heightä¸º8000*8000å¤§å°ï¼Œå¦åˆ™ä¼šå¯¼è‡´è°ƒç”¨MV_CC_InputOneFrameæŽ¥å£é”™è¯¯ã€‚
  
  *  @~english
  *  @brief  Start Record
@@ -2534,10 +2534,10 @@ MV_CAMCTRL_API int __stdcall MV_CC_StartRecord(IN void* handle, IN MV_CC_RECORD_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÊäÈëÂ¼ÏñÊý¾Ý
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstInputFrameInfo           [IN]            Â¼ÏñÊý¾Ý½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  è¾“å…¥å½•åƒæ•°æ®
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstInputFrameInfo           [IN]            å½•åƒæ•°æ®ç»“æž„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
  
  *  @~english
  *  @brief  Input RAW data to Record
@@ -2549,9 +2549,9 @@ MV_CAMCTRL_API int __stdcall MV_CC_InputOneFrame(IN void* handle, IN MV_CC_INPUT
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í£Ö¹Â¼Ïñ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  åœæ­¢å½•åƒ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼›é”™è¯¯ï¼Œè¿”å›žé”™è¯¯ç  
  
  *  @~english
  *  @brief  Stop Record
@@ -2562,12 +2562,12 @@ MV_CAMCTRL_API int __stdcall MV_CC_StopRecord(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ´ò¿ª»ñÈ¡»òÉèÖÃÏà»ú²ÎÊýµÄGUI½çÃæ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£¬Ê§°Ü£¬·µ»Ø´íÎóÂë¡£
- *  @remarks Í¨¹ýMV_CC_OpenDeviceÁ¬½ÓÉè±¸ºó£¬¿ÉÒÔÍ¨¹ý¸Ã½Ó¿Ú»ñÈ¡»òÉèÖÃÉè±¸²ÎÊý¡£
- *  @remarks ÏÞÖÆ£ºÔÚÍ¬Ò»Ïß³ÌÖÐ¶àÏà»úÍ¬Ê±µ÷ÓÃ¸Ã½Ó¿Ú£¬Ö»ÄÜ´ò¿ªµ±Ç°Ò»¸öGUI½çÃæ£¬ÐèÒª¹Ø±Õµ±Ç°Ïà»úGUI½çÃæºó£¬²Å¿É´ò¿ªÁíÒ»¸öÏà»úµÄGUI½çÃæ£¨ºóÐø°æ±¾ÓÅ»¯£©
-			 ¸Ã½Ó¿Ú½öÖ§³ÖwindowsÆ½Ì¨
+ *  @brief  æ‰“å¼€èŽ·å–æˆ–è®¾ç½®ç›¸æœºå‚æ•°çš„GUIç•Œé¢
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼Œå¤±è´¥ï¼Œè¿”å›žé”™è¯¯ç ã€‚
+ *  @remarks é€šè¿‡MV_CC_OpenDeviceè¿žæŽ¥è®¾å¤‡åŽï¼Œå¯ä»¥é€šè¿‡è¯¥æŽ¥å£èŽ·å–æˆ–è®¾ç½®è®¾å¤‡å‚æ•°ã€‚
+ *  @remarks é™åˆ¶ï¼šåœ¨åŒä¸€çº¿ç¨‹ä¸­å¤šç›¸æœºåŒæ—¶è°ƒç”¨è¯¥æŽ¥å£ï¼Œåªèƒ½æ‰“å¼€å½“å‰ä¸€ä¸ªGUIç•Œé¢ï¼Œéœ€è¦å…³é—­å½“å‰ç›¸æœºGUIç•Œé¢åŽï¼Œæ‰å¯æ‰“å¼€å¦ä¸€ä¸ªç›¸æœºçš„GUIç•Œé¢ï¼ˆåŽç»­ç‰ˆæœ¬ä¼˜åŒ–ï¼‰
+			 è¯¥æŽ¥å£ä»…æ”¯æŒwindowså¹³å°
 
  *  @~english
  *  @brief  Open the GUI interface for getting or setting camera parameters
@@ -2582,15 +2582,15 @@ MV_CAMCTRL_API int __stdcall MV_CC_OpenParamsGUI(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÖØ¹¹Í¼Ïñ(ÓÃÓÚ·ÖÊ±ÆØ¹â¹¦ÄÜ)
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstReconstructParam         [IN][OUT]       ÖØ¹¹Í¼Ïñ²ÎÊý
- *  @return ³É¹¦£¬·µ»ØMV_OK£¬Ê§°Ü£¬·µ»Ø´íÎóÂë¡£
- *  @remarks Í¼Ïñ·Ö¸îÖ§³ÖÈÎÒâÏñËØ¸ñÊ½£¬Í¼Ïñ·Ö¸îÓ¦ÓëÏßÕóÏà»úµÄ¡°MultiLightControl¡±½Úµã´îÅäÊ¹ÓÃ£¬¸Ã½Úµã¿ÉÉèÖÃ¶à¸ö²»Í¬µÄÆØ¹âÖµ£¬ÈçMultiLightControl=2,
-             Ïà»ú»á½«Á½¸ö²»Í¬ÆØ¹âÖµËù¶ÔÓ¦µÄÁ½ÕÅÍ¼Ïñ½»µþºÏ²¢ÎªÒ»ÕÅÍ¼Ïñ(Êµ¼Ê¸ß¶ÈÎªÁ½ÕÅÍ¼ÏñµÄ¸ß¶È)·¢ËÍ¸øÉÏ²ãÓ¦ÓÃ³ÌÐò£¬
-             µ÷ÓÃ¸Ã½Ó¿Ú²¢´«Èë·ÖÊ±ÆØ¹âÖµnExposureNumÎª2£¬¿É½«Ïà»ú·¢ËÍµÄÒ»ÕÅÍ¼Ïñ·Ö¸îÎª2ÕÅÍ¼Ïñ£¬ÕâÁ½ÕÅÍ¼Ïñ·Ö±ð¶ÔÓ¦Ò»¸öÆØ¹âÖµ¡£
-             ÈôÊ¹ÓÃÆÕÍ¨Ïà»ú»òÎ´´ò¿ªÏßÕóÏà»úµÄ¡°MultiLightControl¡±½Úµã£¬ÔòÍ¼Ïñ·Ö¸îÎÞÒâÒå£¬Ö»ÊÇ½«Í¼Ïñ°´ÐÐ·Ö¸îÎª2£¬3£¬4ÕÅÍ¼Ïñ£¬
-             Ã¿ÕÅÍ¼ÏñµÄ¸ß¶È±äÎªÔ­Í¼ÏñµÄ1/2£¬1/3£¬1/4(ÓÉnExposureNum¾ö¶¨)¡£
+ *  @brief  é‡æž„å›¾åƒ(ç”¨äºŽåˆ†æ—¶æ›å…‰åŠŸèƒ½)
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstReconstructParam         [IN][OUT]       é‡æž„å›¾åƒå‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›žMV_OKï¼Œå¤±è´¥ï¼Œè¿”å›žé”™è¯¯ç ã€‚
+ *  @remarks å›¾åƒåˆ†å‰²æ”¯æŒä»»æ„åƒç´ æ ¼å¼ï¼Œå›¾åƒåˆ†å‰²åº”ä¸Žçº¿é˜µç›¸æœºçš„â€œMultiLightControlâ€èŠ‚ç‚¹æ­é…ä½¿ç”¨ï¼Œè¯¥èŠ‚ç‚¹å¯è®¾ç½®å¤šä¸ªä¸åŒçš„æ›å…‰å€¼ï¼Œå¦‚MultiLightControl=2,
+             ç›¸æœºä¼šå°†ä¸¤ä¸ªä¸åŒæ›å…‰å€¼æ‰€å¯¹åº”çš„ä¸¤å¼ å›¾åƒäº¤å åˆå¹¶ä¸ºä¸€å¼ å›¾åƒ(å®žé™…é«˜åº¦ä¸ºä¸¤å¼ å›¾åƒçš„é«˜åº¦)å‘é€ç»™ä¸Šå±‚åº”ç”¨ç¨‹åºï¼Œ
+             è°ƒç”¨è¯¥æŽ¥å£å¹¶ä¼ å…¥åˆ†æ—¶æ›å…‰å€¼nExposureNumä¸º2ï¼Œå¯å°†ç›¸æœºå‘é€çš„ä¸€å¼ å›¾åƒåˆ†å‰²ä¸º2å¼ å›¾åƒï¼Œè¿™ä¸¤å¼ å›¾åƒåˆ†åˆ«å¯¹åº”ä¸€ä¸ªæ›å…‰å€¼ã€‚
+             è‹¥ä½¿ç”¨æ™®é€šç›¸æœºæˆ–æœªæ‰“å¼€çº¿é˜µç›¸æœºçš„â€œMultiLightControlâ€èŠ‚ç‚¹ï¼Œåˆ™å›¾åƒåˆ†å‰²æ— æ„ä¹‰ï¼Œåªæ˜¯å°†å›¾åƒæŒ‰è¡Œåˆ†å‰²ä¸º2ï¼Œ3ï¼Œ4å¼ å›¾åƒï¼Œ
+             æ¯å¼ å›¾åƒçš„é«˜åº¦å˜ä¸ºåŽŸå›¾åƒçš„1/2ï¼Œ1/3ï¼Œ1/4(ç”±nExposureNumå†³å®š)ã€‚
 
  *  @~english
  *  @brief  Reconstruct Image(For time-division exposure function)

@@ -8,24 +8,22 @@
 #include <vector>
 
 /**
- * @brief Video-file input mode.
+ * @brief 视频文件输入模式。
  *
- * Reads frames sequentially from a video file.
- * When the video ends, it automatically loops back to the first frame.
+ * 从视频文件顺序读取帧；视频播放到结尾后自动回到第一帧循环。
  *
- * Optionally reads an extra-info text file that supplies per-frame
- * camera position (x, y, z) and Euler angles (yaw, pitch, roll)
- * plus inter-frame dt values.
+ * 可选读取一个 extra-info 文本文件，提供每帧的相机位置（x, y, z）、
+ * 欧拉角（yaw, pitch, roll）以及帧间 dt。
  *
  * 支持三种 extra-info 文件格式（自动探测，表头/注释行以 '#' 开头被忽略）：
- *  - v1（原格式，8 列）：frame_index dt x y z yaw pitch roll
+ *  - v1（8 列）：frame_index dt x y z yaw pitch roll
  *    （相机位姿 → chassis 欧拉角 + 底盘 xyz；当前构型的关节角包显式填 0）
- *  - v2（录制器 FrameRecorder 旧输出，15 列）：
+ *  - v2（15 列，FrameRecorder 格式）：
  *    frame_index dt timestamp_s accepted
  *    imu_euler_yaw imu_euler_pitch imu_euler_roll yaw_pos pitch_angle
  *    chassis_yaw chassis_pitch chassis_roll chassis_x chassis_y chassis_z
  *    （还原到 **单 yaw 包**；大小 yaw 包为 NaN——v2 录制不含大小 yaw 关节角）
- *  - v3（录制器 FrameRecorder 现输出，21 列）：在 v2 的 15 列之后追加
+ *  - v3（21 列，在 v2 的 15 列之后追加）：
  *    yaw_big_pos yaw_small_pos bs_imu_euler_yaw bs_imu_euler_pitch bs_imu_euler_roll
  *    bs_pitch_angle（**大小 yaw 包**；单 yaw 构型下这 6 列为 NaN）
  *    （两包按原样还原；accepted 表示该帧当时是否成功加入流水线）
@@ -36,12 +34,12 @@
 class VideoInputMode : public IInputMode {
 public:
     /**
-     * @param video_path        Path to the video file.
-     * @param extra_info_path  Optional path to extra info txt file.
+     * @param video_path        视频文件路径。
+     * @param extra_info_path  可选的 extra-info 文本文件路径。
      * @param skip_unaccepted_frames 为 true 时跳过 accepted==0 的帧（仅 v2 格式有效）
      * @param test_max_fps    为 true 时 getFrameDelay() 返回 0（不做按视频帧率的
      *                        节流），用于测量视频输入 + 流水线的最大帧数/FPS。
-     * @throws std::runtime_error if the video cannot be opened.
+     * @throws std::runtime_error 视频无法打开时抛出。
      */
     explicit VideoInputMode(const std::string& video_path,
                             const std::string& extra_info_path = "",
@@ -81,15 +79,15 @@ private:
     int64_t loop_frame_index_ = 0;
     int64_t total_frame_index_ = 0;
 
-    // Extra info file support
+    // extra-info 文件支持
     std::string extra_info_path_;
     std::unordered_map<int, ExtraFrameEntry> extra_info_map_;
-    int extra_info_max_frame_ = -1;  // max frame_index_ in file
-    ExtraFrameEntry last_valid_entry_;      // recent valid info frame
+    int extra_info_max_frame_ = -1;  // 文件内最大 frame_index_
+    ExtraFrameEntry last_valid_entry_;      // 最近一次有效信息帧
     bool last_valid_entry_initialized_ = false;
-    float next_dt_ = 0.0f;                   // pre-extracted dt for the next frame
-    double accumulated_time_ = 0.0;          // accumulated dt sum for timestamp
-    bool warned_overflow_ = false;           // only warn once per loop about overflow
+    float next_dt_ = 0.0f;                   // 预先取出的下一帧 dt
+    double accumulated_time_ = 0.0;          // 时间戳累计的 dt 总和
+    bool warned_overflow_ = false;           // 每轮循环只警告一次溢出
 
     bool skip_unaccepted_frames_ = false;    // 跳过 accepted==0 的帧（v2）
     bool format_v2_ = false;                 // extra-info 文件是否为 v2 格式（首个数据行探测）

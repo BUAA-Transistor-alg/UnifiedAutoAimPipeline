@@ -5,7 +5,7 @@
 #include <opencv2/opencv.hpp>
 #include <array>
 
-// All methods and the HighGUI callback run on the existing visualization thread.
+// 所有方法与 HighGUI 回调都在既有的可视化线程上执行。
 class VisualizationControls {
 public:
     ArmorVisualizationOptions options;
@@ -65,7 +65,7 @@ public:
     }
 private:
     bool windowExists() const {
-        // GTK does not support WND_PROP_VISIBLE (-1 even for an open window).
+        // GTK 不支持 WND_PROP_VISIBLE（窗口打开时也返回 -1）。
         try { return cv::getWindowProperty(name_, cv::WND_PROP_AUTOSIZE) >= 0; }
         catch (const cv::Exception&) { return false; }
     }

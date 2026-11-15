@@ -8,7 +8,7 @@
 //
 // ⚠ 重要约定（给后续修改者）：机器配置文件中的所有参数均为必填，本文件及
 //   RobotConfig.cpp 中不设任何默认值/回退值——缺段或缺字段时 RobotConfig::load
-//   直接抛异常退出，绝不静默采用默认值。
+//   直接抛出异常退出，绝不静默采用默认值。
 //   **唯一例外**：common.big_small_yaw 下按 yaw 构型分为 single / big_small 两支，
 //   只需填写当前 mode 对应的那一支（另一支可整段省略——两种构型的参数互不通用，
 //   写没用到的那一份纯属冗余）；当前构型那一支内部的字段依旧全部必填。
@@ -19,7 +19,7 @@
 //   2) 在 RobotConfig.h 对应结构体中添加成员（无默认初始化）；
 //   3) 在 src/common/RobotConfig.cpp 中通过 requireScalar 等读取。
 //
-// 机器配置文件顶层分为三个大类：
+// 机器配置文件顶层分为四个大类：
 //   - common      ：两个流水线共用的参数（tf 偏移 / 相机内参 / 弹道 / MPC / 输入控制器 /
 //                    min_delay_seconds 等；其中 common.big_small_yaw 决定 yaw 构型
 //                    （single = 旧单 yaw / big_small = 大/小双 yaw）并提供新构型的
@@ -27,6 +27,8 @@
 //   - armor     ：Armor 流水线独占参数（推理模型 / 批量 / 观测丢失超时 /
 //                   OutpostESEKF 与 SuperPower EKF 滤波参数）
 //   - power_rune  ：PowerRune 流水线独占参数（推理模型 / NMS / 阈值 / 批量）
+//   - mcu_telemetry：电控遥测（弹速 / 颜色）的合法初始值 + 是否用控制器实时值覆盖
+//                    （main 的遥测线程写入 common/McuTelemetry.h 的 McuTelemetry）
 //
 // 相机内参与畸变系数两流水线共用，但分为两套按输入模式自动选择
 // （common.input_mode 下）：
@@ -48,7 +50,7 @@
 //               chassis -> yaw_big -> yaw_small -> pitch -> ...
 // 构型决定变换树节点结构、ExtraInputInfo 使用哪一包关节角、瞄准解算几何与输出模式，
 // 因此两边（树 / 输入信息 / 状态包）都按本构型只填自己那一包，另一包整体置 NaN，
-// 越界调用（如单 yaw 下调 setYawBig）直接抛异常，绝不静默混用。
+// 越界调用（如单 yaw 下调 setYawBig）直接抛出异常，绝不静默混用。
 enum class YawMode {
     SINGLE    = 0,
     BIG_SMALL = 1,
@@ -82,7 +84,7 @@ public:
     //     exposure / gain / extra_info_delay；
     //   - 视频/交互模式（common.input_mode.video_mode）必填 test_max_fps；
     //   - 两模式均必填 resolution / camera_matrix / dist_coeffs。
-    //   缺任一字段 RobotConfig::load 直接抛异常退出，解析见 src/common/RobotConfig.cpp。
+    //   缺任一字段 RobotConfig::load 直接抛出异常退出，解析见 src/common/RobotConfig.cpp。
     struct CameraParams {
         std::string deviceIp;   // 相机设备 IP（相机模式必填）
         std::string netIp;      // 本机网口 IP（相机模式必填）
@@ -103,10 +105,11 @@ public:
     };
 
     // 云台角度解算参数
+    // 注：弹速不在此段——其初始值与更新开关见顶层 mcu_telemetry 段
+    //     （McuTelemetryParams；运行时由 main 电控遥测最新值覆盖）。
     struct GimbalParams {
         double bulletDiameter;      // 弹丸直径（米）
         double bulletMass;          // 弹丸质量（kg）
-        double bulletVelocity;      // 默认弹丸初速（m/s）
         double integrationStep;     // 弹道积分步长（秒）
         double distanceThreshold;   // 弹道最近点距离阈值（米）
         double distanceIterateThreshold;  // 迭代触发阈值（米）
@@ -188,7 +191,7 @@ public:
     // ⚠ 配置约定（本工程唯一的例外，见 config/robots/*.yaml 文件头）：
     //   common.big_small_yaw 下按构型分为 single / big_small **两支**，
     //   **只需填写当前 mode 那一支**（另一支可以整段省略、不必写）；
-    //   当前构型那一支内的字段依旧**全部必填**（缺字段直接抛异常，不设代码默认值）；
+    //   当前构型那一支内的字段依旧**全部必填**（缺字段直接抛出异常，不设代码默认值）；
     //   另一支若写了则同样严格校验（防止半截残留的自相矛盾配置）。
     //
     //   mode = single    → 只填 single 支：tf（单 yaw 链）+ robot_controller（tcs 子模组）
@@ -398,7 +401,7 @@ public:
         double observationLostTimeoutSec;   // 连续观测丢失多久后重置滤波器（秒）
         // 禁火阈值（秒，config armor.fire_observation_timeout，>= 0；0 = 关闭该保护）：
         // 每一类目标（label 0~5 各类 EKF / 6 前哨站 / 7~8 基地）各自记录**最近一次真正
-        // 观测到该类实体**（滤波器收到并接受本类观测，而非仅惯性外推）的帧时刻；本帧
+        // 观测到该类实体**（滤波器收到并接受本类观测；仅惯性外推的帧不计入）的帧时刻；本帧
         // 所选目标距该时刻超过本阈值时，ArmorPerception::fire_forbidden = true，两个
         // 云台输出模式据此把该帧 fire 全置 false（只保持瞄准，不开火）。
         // 与 observation_lost_timeout 的区别：后者决定"何时不再有预测器"（保持模式），
@@ -533,7 +536,7 @@ public:
         RollPredictorParams rollPredictor;
 
         // ── 级联阈值（config: power_rune.cascade）──
-        // 连接两级滤波/预测与上一级位姿的阈值，原先硬编码在流水线内。
+        // 连接两级滤波/预测与上一级位姿的阈值。
         struct CascadeParams {
             double continuityThresholdSec;  // 帧间 dt 小于该值视为连续帧
             double rollRmseGate;            // RollPredictor 预测矩阵可用于特殊预测的 RMSE 门限
@@ -560,7 +563,7 @@ public:
     // ⚠ 字段必要性约定（本工程第二处“按开关决定字段是否必填”的例外，第一处是
     //   common.big_small_yaw 的 single / big_small 分支）：
     //   - enabled：**必填**（总开关）；
-    //   - 其余字段：**仅当 enabled = true 时必填**（缺字段 / 非法值直接抛异常）；
+    //   - 其余字段：**仅当 enabled = true 时必填**（缺字段 / 非法值直接抛出异常）；
     //     enabled = false 时可整段省略这些字段，代码既不读取也不校验，两个云台
     //     输出模式保持原有行为（与未引入本功能时**完全一致**）。
     //   - 保持段 / 扫描段下发给电控的 auto_aim_enable 也由本段配置给出
@@ -580,12 +583,44 @@ public:
         double pitchScanRiseTimeSec = 0.0;    // pitch 由下界线性升到上界的时间（秒，> 0）
         double pitchScanFallTimeSec = 0.0;    // pitch 由上界线性回落到下界的时间（秒，> 0）
                                               // （锯齿波周期 = 上升时间 + 回落时间）
-        // 下发给电控的 auto_aim_enable（**两段分别配置**，取代原先的硬编码 true/false）：
+        // 下发给电控的 auto_aim_enable（**两段分别配置**）：
         // 进入扫描前的保持段用 holdAutoAimEnable，扫描段用 scanAutoAimEnable。
         // 扫描段枪口按扫描轨迹运动，电控是否进入自瞄分支由本配置决定；保持段通常
         // 期望关闭。均为 bool，无额外取值校验（仅当 enabled = true 时读取与必填）。
         bool   holdAutoAimEnable = false;     // 保持段 auto_aim_enable（config: hold_auto_aim_enable）
         bool   scanAutoAimEnable = false;     // 扫描段 auto_aim_enable（config: scan_auto_aim_enable）
+    };
+
+    // ══════════════════════════════════════════════════════════════════
+    // 电控遥测（config: mcu_telemetry；**顶层独立大项**）
+    //
+    // main 维护一个 common/McuTelemetry.h 的 McuTelemetry，由专门的遥测线程周期从
+    // 控制器读取弹速与颜色并写入；本段配置这两个值的**合法初始值**，以及是否用
+    // 控制器实时值覆盖：
+    //   update = true  ：控制器报告有效数据时用实时值覆盖（默认行为）；
+    //   update = false ：遥测线程不写该值，始终保持在 initial 配置的初值不变。
+    // 所有字段必填（本工程无默认值约定）。
+    struct McuTelemetryParams {
+        // 弹速（config: mcu_telemetry.bullet_velocity）
+        struct BulletVelocityParams {
+            double initial;   // 合法初始弹速（m/s，须在 [min, max] 内；无控制器数据 /
+                              // 不更新时使用）
+            bool   update;    // true = 用控制器实时弹速覆盖；false = 始终保持 initial
+            double min;       // 限位下限（m/s）：实测弹速先 clamp 到 [min, max]
+            double max;       // 限位上限（m/s，须 > min）
+            // 一阶低通滤波系数 α ∈ (0, 1]：v_new = α·v_limited + (1-α)·v_prev。
+            // α = 1 等价于不滤波（直接取限位后的实测值）；α 越小越平滑、跟随越慢。
+            // 滤波状态就是 McuTelemetry 当前的弹速值（初值 = initial）。
+            double lowPassCoefficient;
+        };
+        BulletVelocityParams bulletVelocity;
+
+        // 电控颜色标志位（config: mcu_telemetry.color）
+        struct ColorParams {
+            int  initial;     // 合法初始颜色（0~255，写入 McuTelemetry 时转 uint8_t）
+            bool update;      // true = 用控制器实时颜色覆盖；false = 始终保持 initial
+        };
+        ColorParams color;
     };
 
     // 共用参数（两个流水线共享）
@@ -623,9 +658,9 @@ public:
         // false: 启动时启动全部推理进程并后台闲置（launch_all.py 预启动）
         bool inferProcessLazy;
 
-        // 推理挂死强制重启时限（秒，必填，config: common.infer_force_restart_timeout_sec）：
+        // 推理卡死强制重启时限（秒，必填，config: common.infer_force_restart_timeout_sec）：
         // 推理客户端（InferShmClient）每次推理响应超时（2s）返回时，检测当前时间
-        // 与上一次推理正常返回时间的间隔，超过该时限则判定推理进程挂死，调用
+        // 与上一次推理正常返回时间的间隔，超过该时限则判定推理进程卡死，调用
         // InferProcessManager::forceRestart 强制重启对应的推理进程（见 InferShmClient
         // 文件头注释）。0 = 关闭该功能。
         double inferForceRestartTimeoutSec;
@@ -642,7 +677,7 @@ public:
         // 得到取帧线程的额外延迟。小量级增益下稳态无极限环震荡。
         // ⚠ 给后续修改者：本结构体所有字段均无默认值，必须由机器配置文件的
         //   common.backlog_adaptive_delay 段提供（缺段/缺字段时 RobotConfig::load
-        //   直接抛异常退出），解析见 src/common/RobotConfig.cpp，取值校验也在那里。
+        //   直接抛出异常退出），解析见 src/common/RobotConfig.cpp，取值校验也在那里。
         struct BacklogAdaptiveDelayParams {
             bool   enabled;             // 功能总开关（config: enabled）
             double targetBacklog;       // 目标积压（设定点，>= 1，config: target_backlog）
@@ -671,6 +706,7 @@ public:
     CommonParams    common;      // 共用参数
     ArmorParams   armor;     // Armor 独占参数
     PowerRuneParams powerRune;   // PowerRune 独占参数
+    McuTelemetryParams mcuTelemetry;  // 电控遥测初始值 / 更新开关（顶层独立大项）
 
     // 从指定 yaml 文件加载配置；文件缺失或格式错误抛出 std::runtime_error。
     static RobotConfig load(const std::string& yamlPath);

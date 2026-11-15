@@ -59,7 +59,7 @@ void InferProcessManager::forceRestart(Kind kind) {
         std::lock_guard<std::mutex> lock(mtx_);
         const size_t idx = static_cast<size_t>(kind);
         // 同一 kind 的强制重启只接受一次（进行中/排队中时忽略重复请求，
-        // 由推理客户端节流 + 此处去重共同保证不会对一次挂死反复重启）
+        // 由推理客户端节流 + 此处去重共同保证不会对一次卡死反复重启）
         if (restart_active_[idx].load(std::memory_order_relaxed)) {
             return;
         }
@@ -237,7 +237,7 @@ void InferProcessManager::stopProcess(Kind kind, bool force) {
 
     if (proc.pid > 0 && !proc.exited.load()) {
         if (force) {
-            // 强制：跳过优雅退出等待，立即 SIGKILL（挂死进程对 SIGINT 无响应）
+            // 强制：跳过优雅退出等待，立即 SIGKILL（卡死进程对 SIGINT 无响应）
             std::cerr << "[InferProcessManager] 强制终止 " << processName(kind)
                       << " (pid=" << proc.pid << ")" << std::endl;
             kill(proc.pid, SIGKILL);

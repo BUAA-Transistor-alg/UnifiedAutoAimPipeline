@@ -8,12 +8,17 @@ JOBS=$(nproc)
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -j*)
-            if [[ "$1" == "-j" ]]; then
-                shift
-                JOBS="$1"
-            else
-                JOBS="${1#-j}"
+            value="${1#-j}"
+            if [[ -z "$value" ]]; then
+                shift || true
+                value="${1:-}"
             fi
+            if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+                echo "错误: -j 需要正整数参数" >&2
+                echo "Usage: $0 [-j<N>]" >&2
+                exit 1
+            fi
+            JOBS="$value"
             ;;
         *)
             echo "Usage: $0 [-j<N>]"

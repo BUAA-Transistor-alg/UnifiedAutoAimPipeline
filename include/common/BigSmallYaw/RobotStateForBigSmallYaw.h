@@ -19,7 +19,7 @@
 //     顶层标量是它的“适配子集”（解卷绕后的多圈方位角 + 流水线要用的关节角），
 //     mcu / imu / strict / mpc 四个**子模组原始分组**原样保留在 RobotState 里，
 //     仅供左侧信息块显示与可视化，不参与解算与下发。
-//   - v2 子模组**取消了 YawStateEstimator**（旧版的 est 分组），MPC 的关节限位 /
+//   - v2 子模组**不包含 YawStateEstimator**（est 分组），MPC 的关节限位 /
 //     电机侧背隙等字段一并移除；本适配器不保留任何无来源的字段（不静默填 0）。
 #ifndef BSY_ROBOT_STATE_FOR_BIG_SMALL_YAW_H
 #define BSY_ROBOT_STATE_FOR_BIG_SMALL_YAW_H
@@ -63,11 +63,14 @@ struct RobotState {
 
     // IMU 安装构型与原始欧拉角（记录/诊断用）：
     //   imu_location 由**配置**（robot_controller.imu_location）决定，是构造实参；
-    //   imu_euler_* 取 IMU 原始包（v2 的 StrictPose 不再返回 IMU 欧拉角）。
+    //   imu_euler_* 取 IMU 原始包（StrictPose 不含 IMU 欧拉角）。
     int    imu_location = 1;          // 0 = ON_BIG_YAW；1 = ON_HEAD
     double imu_euler_yaw = 0.0, imu_euler_pitch = 0.0, imu_euler_roll = 0.0;
 
     // MCU 概览（细节见 mcu 分组）
+    // 注：弹速的弹道消费方取 main 维护的 common/McuTelemetry.h 最新值
+    //（main 遥测线程周期写入）；本字段仅作状态包透传/调试用，
+    // SequencePredictor 不读取。
     double  bullet_velocity = 0.0;
     uint8_t auto_aim_switch = 0;
 
@@ -100,7 +103,7 @@ ExtraInputInfo toExtraInputInfo(const RobotState& st);
 //     tcbs::RobotController 的构造实参（tf 的小 yaw 偏移 → dm::Params 的 Dx/Dy；
 //      robot_controller.model / mpc / dual_yaw_mpc / mcu_linear / imu_location /
 //      dt_control / mpc_loop_period / sequence_mode），并启动后台线程；
-//   - 构型必须为 big_small（否则构造即抛异常——单 yaw 构型应该用 tcs::RobotController）；
+//   - 构型必须为 big_small（否则构造即抛出异常——单 yaw 构型应该用 tcs::RobotController）；
 //   - state() 线程安全（内部 getState 自带锁），供弹道线程 / 输出模式 / 可视化使用；
 //   - sampleExtraInfo() 供 CameraInputMode 的后台采样线程使用。
 // ============================================================================

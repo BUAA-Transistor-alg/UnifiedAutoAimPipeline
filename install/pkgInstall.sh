@@ -10,11 +10,16 @@ TEMP_DIR="$SCRIPT_DIR/pkg_temp"
 # 确保目录存在
 mkdir -p "$TEMP_DIR"
 
+# 0. 更新系统 CA 证书库
+sudo apt update
+sudo apt install --reinstall ca-certificates
+sudo update-ca-certificates --fresh
+
 # --- 1. 下载并安装 GPG 密钥 (使用新方法) ---
 KEY_URL="https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB"
 KEY_FILE="$TEMP_DIR/intel-gpg-key.pub"
 # 将密钥去armor后保存到 trusted.gpg.d 目录
-wget -O "$KEY_FILE" "$KEY_URL"
+wget -O "$KEY_FILE" "$KEY_URL" # --no-check-certificate
 sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/intel.gpg "$KEY_FILE"
 # 可选：删除临时密钥文件
 rm -f "$KEY_FILE"
@@ -29,16 +34,17 @@ sudo apt update
 sudo apt install -y openvino-2024.0.0
 
 # 安装开发依赖
-sudo apt install -y libopencv-dev libeigen3-dev libceres-dev libyaml-cpp-dev \
+sudo apt install -y cmake g++ libopencv-dev libeigen3-dev libceres-dev libyaml-cpp-dev \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-    libudev-dev pkg-config libdw-dev build-essential
+    libudev-dev pkg-config libdw-dev build-essential \
+    python3-pip
 
 # --- 4. 检测是否为 Intel 机器，若是则安装 Intel GPU 驱动 ---
 if grep -q "GenuineIntel" /proc/cpuinfo; then
     echo "检测到 Intel 平台，开始安装 Intel GPU 驱动..."
 
     wget -qO - https://repositories.intel.com/gpu/intel-graphics.key | \
-        sudo gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
+        sudo gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg # --no-check-certificate
 
     echo "deb [arch=amd64,i386 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy unified" | \
         sudo tee /etc/apt/sources.list.d/intel-gpu-jammy.list
@@ -54,7 +60,20 @@ else
 fi
 
 # --- 5. Python 依赖安装 ---
-pip install ultralytics==8.4.60 numpy opencv-python matplotlib pyyaml \
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip3 install ultralytics==8.4.60 numpy opencv-python matplotlib pyyaml \
     onnx onnxslim onnxruntime openvino
 
-echo "全部安装完成。"
+echo "修改串口通信权限..."
+
+sudo usermod -a -G dialout $USER
+sudo chmod a+rw /dev/ttyACM0
+cd /etc/udev/rules.d
+sudo touch 99-usb-serial.rules
+KERNEL=="ttyACM0", MODE="0666"
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+echo "修改完成"
+
+echo "请手动安装MVS（已安装则请忽略）"

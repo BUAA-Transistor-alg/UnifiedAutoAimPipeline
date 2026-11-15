@@ -490,8 +490,8 @@ void ArmorVisualizer::drawDetectionResults(cv::Mat& image,
             obj.rect.x + obj.rect.width <= 0 || obj.rect.y + obj.rect.height <= 0)
             continue;
 
-        // Object colors, not raw tensor indices: 0726 already converts blue=0/red=1
-        // in postprocess0726. Both supported models expose red=0/blue=1 here.
+        // 这里使用 Object 的颜色值（两个模型都在后处理里换算了原始张量通道：
+        // 0526 交换 0/1，0726 取 1 - color），因此 Object::color 统一为红=0、蓝=1。
         const bool known_model = model_name == "0526" || model_name == "0726";
         const bool red = known_model && obj.color == 0;
         const bool blue = known_model && obj.color == 1;

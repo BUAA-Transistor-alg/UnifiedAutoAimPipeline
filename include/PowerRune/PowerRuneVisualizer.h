@@ -107,8 +107,8 @@ public:
                 const CameraProjection& camera_proj,
                 const PowerRuneVisualizationOptions& options = {}) const;
 
-    // All HighGUI operations are called on the visualization thread.
-    // Returns false if the user manually closed an active window.
+    // 所有 HighGUI 操作都在可视化线程上调用。
+    // 用户手动关闭活动窗口时返回 false。
     bool syncFitWindow(bool active);
     void closeFitWindow();
     void renderFitWindow(const PowerRuneVisualizationData& data) const;

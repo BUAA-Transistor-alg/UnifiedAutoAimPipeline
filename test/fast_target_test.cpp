@@ -43,6 +43,7 @@
 #include <vector>
 
 #include "common/Ballistic/SequencePredictor.h"
+#include "common/SelfMotionState.h"
 #include "common/RobotConfig.h"
 #include "tcs/RobotController.h"
 
@@ -333,7 +334,7 @@ int main() {
                 cfg.common.predictSequence.interpolationRefine,
                 cfg.common.predictSequence.exactLeadPoints);
 
-    SequencePredictor sp;
+    SequencePredictor sp(std::make_shared<SelfMotionState>());
     const auto kNow = std::chrono::steady_clock::now();   // predict 与快照时间戳共用同一时刻
 
     Env env;
@@ -341,7 +342,9 @@ int main() {
     bsy::RobotState bst;
     if (mode == YawMode::SINGLE) {
         env.name = "单 yaw 构型";
-        env.predict = [&](const SequencePredictor::Predictor& p) { return sp.predict(st, p, kNow); };
+        env.predict = [&](const SequencePredictor::Predictor& p) {
+            return sp.predict(st, p, kNow, st.mcu.bullet_velocity);
+        };
     } else {
         env.name = "大小 yaw 构型";
         bst.valid = true;
@@ -359,7 +362,9 @@ int main() {
         for (size_t i = 0; i < bst.pred_big_azimuth_seq.size(); ++i) {
             bst.pred_big_azimuth_seq[i] = 0.001 * (double)i;
         }
-        env.predict = [&](const SequencePredictor::Predictor& p) { return sp.predict(bst, p, kNow); };
+        env.predict = [&](const SequencePredictor::Predictor& p) {
+            return sp.predict(bst, p, kNow, bst.bullet_velocity);
+        };
     }
     env.ext = ext;
     env.ts = kNow;
@@ -393,7 +398,7 @@ int main() {
     tgt3.omega  = 4.5;
     checkFastCase(sp, env, tgt3, true, true, "前哨站 3 面");
 
-    // ── 目标平动（本次修订的关键：对齐位置必须落在**当前预测中心**的连线上）──
+    // ── 目标平动（对齐位置必须落在**当前预测中心**的连线上）──
     Target tgtmv = tgt4b;
     tgtmv.vel   = cv::Vec3f(2.0f, -1.0f, 0.0f);   // 斜向平移 2.24 m/s
     tgtmv.omega = 5.5;

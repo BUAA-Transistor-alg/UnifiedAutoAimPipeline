@@ -8,9 +8,9 @@
 //   MPC 代价里出现 w_psi_b·(2π)² ≈ 39.5 的整圈残差（正常跟踪 ~4e-4）⇒ 底盘每转一圈
 //   打出一个恒定幅值的力矩脉冲（大 yaw 抖一下），且固定在同一底盘角度。
 //
-// 本测试覆盖两层修复：
+// 本测试覆盖两层行为：
 //   A) tcbs::mpc::angle_wrap（每拍整圈对齐）：只做整数圈平移、不改形状、小偏差恒等；
-//   B) tcbs::com::FullStrictPoseBuilder：chassis_azimuth 多圈连续（不再每圈跳 2π），
+//   B) tcbs::com::FullStrictPoseBuilder：chassis_azimuth 多圈连续，
 //      big_azimuth = chassis_azimuth + θ_b 同步连续；chassis_euler_yaw 仍保持包裹值。
 //
 // 编译运行（不需要相机/模型/串口；FullStrictPoseBuilder 只依赖 libstdc++）。
@@ -95,7 +95,7 @@ void testAngleWrap() {
     check(seq2 == before2, "alignSeqToNearest 在 |差| < π 时逐元素恒等（不动跟踪偏差）");
     std::vector<double> empty;
     tcbs::mpc::alignSeqToNearest(empty, 1.0);
-    check(empty.empty(), "alignSeqToNearest 空序列不崩");
+    check(empty.empty(), "alignSeqToNearest 空序列不崩溃");
 }
 
 // ── B) 严格反解：底盘转多圈（正/反/高速）时 chassis_azimuth 必须连续 ──
@@ -188,7 +188,7 @@ void testStrictPoseUnwrap() {
 
         const double expect_az = std::fabs(c.rate) * 0.01;
         std::snprintf(buf, sizeof(buf),
-                      "%s：|Δchassis_azimuth|max=%.6f（期望≈%.6f；修复前每圈会出现 6.28）",
+                      "%s：|Δchassis_azimuth|max=%.6f（期望≈%.6f；不连续时每圈会出现 6.28）",
                       c.name, r.max_step_az, expect_az);
         check(r.max_step_az < expect_az + 1e-6 && r.max_step_az < 1.0, buf);
 
@@ -208,7 +208,7 @@ void testStrictPoseUnwrap() {
         check(r.euler_wrapped && r.big_identity, buf);
     }
 
-    // 零样本：首个样本的锚定语义（输出 = 该包裹值 ⇒ 与修复前的启动数值一致）
+    // 零样本：首个样本的锚定语义（输出 = 该包裹值）
     {
         tcbs::com::FullStrictPoseBuilder b(
             tcbs::com::FullStrictPoseBuilder::ImuLocation::ON_HEAD);

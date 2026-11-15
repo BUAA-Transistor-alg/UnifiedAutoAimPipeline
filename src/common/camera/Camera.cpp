@@ -196,7 +196,7 @@ void Camera::grabLoop() {
                         // 杜绝"读到旧帧时间戳 / 半写状态"的竞态。
                         //
                         // 移动发布：processImage 保证返回自持缓冲（Bayer/RGB 转换
-                        // 产物自持；BGR/Mono 直接包装 SDK 缓冲的分支已改为 clone），
+                        // 产物自持；BGR/Mono 分支先 clone 再返回），
                         // 直接移动所有权给 latestFrame_，再由 getLatestFrame 移动给
                         // 消费者，整条路径无像素拷贝。
                         {

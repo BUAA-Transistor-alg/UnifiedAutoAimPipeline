@@ -6,7 +6,8 @@
 // 512×512 → 16128，320×320 → 6300；anchor 数随分辨率变化，后处理按输出形状动态读取）：
 //   col 0-7    4 个关键点 xy（左上/左下/右下/右上）
 //   col 8      obj 置信度（需 sigmoid）
-//   col 9-12   颜色独热（0=red, 1=blue, 2/3=丢弃）
+//   col 9-12   颜色独热（0=blue, 1=red, 2/3=None/Purple 丢弃）；后处理把 0/1
+//              交换后写入 Object::color（red=0/blue=1，与 0726 的输出约定一致）
 //   col 13-21  类别独热（9 类）
 #ifndef ARMOR_INFER_H
 #define ARMOR_INFER_H
@@ -72,7 +73,7 @@ public:
     ArmorPreprocessor(int input_width, int input_height, int num_threads = 0,
                       const std::string& model_name = "0526");
 
-    /// 0526: resize; 0726: centered letterbox (padding=124).
+    /// 0526：直接 resize；0726：居中 letterbox（padding=124）。
     void preprocess(const std::vector<const cv::Mat*>& imgs,
                     std::vector<cv::Mat*>& out);
 
@@ -140,7 +141,9 @@ public:
                        const ClassHandling& class_handling = ClassHandling());
 
     /// 处理单个推理输出（每图一个独立输出缓冲）
-    /// @param detect_color 0=仅红, 1=仅蓝, 2=双色
+    /// @param detect_color 0=仅红, 1=仅蓝, 2=双色；**其它值 = 任何颜色都不通过**
+    ///                     （Armor 流水线由 main 按电控遥测颜色 mcu_telemetry.color
+    ///                      填入，见 ArmorPipeline::setDetectColor）
     /// @return 该图的所有检测结果（坐标已缩放到原图尺寸）
     std::vector<Object> postprocess(const float* data, int rows, int cols,
                                     int orig_w,

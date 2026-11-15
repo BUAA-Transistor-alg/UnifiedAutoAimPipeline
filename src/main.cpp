@@ -27,7 +27,12 @@
 //      big_small → bsy::RobotControllerAdapter（tcbs::RobotController + 大小 yaw 拆分器，
 //                  适配器见 include/common/BigSmallYaw/）
 //    两种构型的输入信息、变换树、瞄准解算与云台输出模式各不相同，互不混用
-//    （信息包按构型分两包，未使用的一包整体为 NaN，取错即报错）。
+//    （信息包按构型分两包，未使用的一包整体为 NaN，取错即报错）；
+//  - 电控遥测：main 维护一个 McuTelemetry（弹速 / 颜色），由专门的遥测线程周期从
+//    控制器读取并写入；**弹道解算**从这里取最新值（不要求与帧严格时序对齐），不再从
+//    状态包读弹速；**可视化覆盖层仍直接读控制器状态**显示原始值（诊断用）。
+//    其初始值、限位/低通与是否用控制器实时值覆盖由机器配置文件顶层段
+//    mcu_telemetry 配置（见 common/McuTelemetry.h）。
 #include "common/Output/VisualizationControls.h"
 #include "common/Input/IInputMode.h"
 #include "common/Input/CameraInputMode.h"
@@ -45,7 +50,9 @@
 #include "common/BigSmallYaw/RobotStateForBigSmallYaw.h"
 #include "common/TransformTree/RobotTfTree.h"
 #include "common/Ballistic/SequencePredictor.h"
+#include "common/SelfMotionState.h"
 #include "common/LatestSlot.h"
+#include "common/McuTelemetry.h"
 #include "common/RobotConfig.h"
 #include "common/FrameRateCounter.h"
 #include "common/Record/FrameRecorder.h"
@@ -339,7 +346,7 @@ static void drawOverlay(cv::Mat& img,
         //    （--- MCU --- / --- IMU --- / --- STRICT --- / --- MPC ---），
         //    字段按双级 yaw 语义展开（θ_big/θ_small、ψ_big/ψ_small、电机侧/云台侧、
         //    旋转平面重力分量等），保证两种构型下左侧输入信息块一一对应。
-        //    注：v2 子模组已取消 YawStateEstimator，故没有旧版的 --- EST --- 块。 ──
+        //    注：v2 子模组不包含 YawStateEstimator，因此没有 --- EST --- 块。 ──
         const bsy::RobotState& bs = *bsy_state;
         // 控制器未构造 / 尚未收到数据时给出与单 yaw 构型 "Serial: N/A" 对应的提示
         // （ready = MCU 与 IMU 都收到过有效样本，与子模组 control_demo 的就绪判据一致）
@@ -469,7 +476,7 @@ static void drawOverlay(cv::Mat& img,
 
         // ── 本帧**实际下发给子模组**的信息（tcbs 序列 set() 的实参；序列取首元素）──
         //    由 GimbalOutputForBigSmallYaw::update 在每次 set() 前回写 ctx.bsy_sent，
-        //    因此这里显示的就是真实下发量（而非控制器内部消费后的剩余序列）。
+        //    因此这里显示的就是真实下发量，不受控制器内部消费的影响。
         //    kind：predict（正常预测）/ scan（哨兵扫描）/ hold(sentry)（扫描前保持）/
         //          hold（无目标且未开哨兵）；yaw/pitch 单位 **rad**（与下发量一致）。
         put("--- SENT to tcbs [rad] ---");
@@ -746,6 +753,16 @@ int main(int argc, char** argv) {
         if (!bsy_adapter) return bsy::RobotState{};
         return bsy_adapter->state();
     };
+    // ── 电控遥测（弹速 / 颜色）最新值 ──
+    // 由下方“电控遥测线程”周期从控制器读取并写入；**弹道解算**从这里 load() 取弹速，
+    // 不再从状态包读（可视化覆盖层不经过本结构体，仍直接读控制器状态，见 drawOverlay）。
+    // 不使用 valid 标志：**构造时给合法初始值**（来自顶层 config 段 mcu_telemetry），
+    // 写入方只写有效数据 ⇒ 任何时刻 load() 都是合法值；两个值变化缓慢，不要求与帧
+    // 严格时序对齐。mcu_telemetry 段中某值 update = false 时遥测线程不写该值，
+    // 该值始终保持初始值不变。
+    const RobotConfig::McuTelemetryParams& mt_cfg = cfg.mcuTelemetry;
+    McuTelemetry mcu_telemetry(static_cast<float>(mt_cfg.bulletVelocity.initial),
+                               static_cast<uint8_t>(mt_cfg.color.initial));
     if (opt.input == InputKind::CAMERA || opt.output.gimbal) {
         ensureRobotController();
     }
@@ -822,7 +839,7 @@ int main(int argc, char** argv) {
     //     再启动新流水线所需进程；推理进程就绪后需重连该流水线的 InferShmClient
     //     （客户端先于服务端附加，服务端 sem_unlink 重建信号量后旧句柄失效）。
     //   - 非 lazy 模式（默认）：推理进程由 launch_all.py 启动并常驻，本管理器不
-    //     主动启停；仅当推理客户端检测到推理进程挂死时（响应超时距上次正常返回
+    //     主动启停；仅当推理客户端检测到推理进程卡死时（响应超时距上次正常返回
     //     超过 common.infer_force_restart_timeout_sec）经 forceRestart 强制重启。
     // 用 shared_ptr 持有，并让两条流水线的强制重启回调捕获其副本：管理器因此存活
     // 于任何可能调用它的推理阶段线程之后（回调随客户端析构才释放引用）。
@@ -834,7 +851,7 @@ int main(int argc, char** argv) {
     };
     auto infer_manager = std::make_shared<Infer::InferProcessManager>(reconnectFor);
 
-    // 推理客户端 → 管理器：推理进程疑似挂死时强制重启对应进程（两条流水线各一个
+    // 推理客户端 → 管理器：推理进程疑似卡死时强制重启对应进程（两条流水线各一个
     // 客户端；强制重启对非 lazy 模式同样生效——按进程名终止外部进程后自启）
     armor_pipeline.setInferRestartHandler([mgr = infer_manager]() {
         mgr->forceRestart(Infer::InferProcessManager::Kind::ARMOR);
@@ -869,7 +886,12 @@ int main(int argc, char** argv) {
     // 预测瞄准点通用类：任何情况下（无论输出模式）每帧调用，生成预测云台控制
     // 序列 + 瞄准点序列；结果写入当帧 OutputContext（predict_result），由
     // GimbalOutput 消费控制序列、VisualizeOutput 消费首个瞄准点（两者均不持有本类）
-    SequencePredictor sequence_predictor;
+    // 自身运动状态提供器：取帧线程写、弹道线程按预测时刻读（线程安全）。
+    // 析构顺序：先于 sequence_predictor 声明 ⇒ 后于它析构；SequencePredictor 与各
+    // GimbalSolver 内部还各持一份 shared_ptr，且 input/ballistic 线程在 main 返回前
+    // 均已 join，因此不会出现对象先于使用者析构。
+    auto self_motion_state = std::make_shared<SelfMotionState>();
+    SequencePredictor sequence_predictor(self_motion_state);
     // 相机投影（与输入模式绑定，两个流水线/可视化共用）
     auto camera_proj = std::make_shared<CameraProjection>(
         camera_params.cameraMatrix, camera_params.distCoeffs,
@@ -1081,6 +1103,64 @@ int main(int argc, char** argv) {
     std::atomic<bool> t1_done{false};
     std::atomic<bool> t2_done{false};
 
+    // ── 电控遥测线程：周期读取控制器最新弹速 / 颜色，写入 mcu_telemetry ──
+    // 仅当控制器存在时读取（纯视频 / 交互输入且未开云台输出时为空操作）；
+    // 弹速变化缓慢，100 Hz 足够“实时”，且刻意不做帧对齐（见 McuTelemetry.h）。
+    // 弹速实测值先限位到 mcu_telemetry.bullet_velocity.[min, max]，再按
+    // low_pass_coefficient 做一阶低通（见 McuTelemetry::updateBulletVelocityLimitedFiltered）。
+    // 颜色同时同步给 Armor 流水线的后处理颜色过滤（detect_color = 遥测颜色值：
+    // 0=仅红 / 1=仅蓝 / 2=双色 / 其它=都不通过，见 ArmorPipeline::setDetectColor）。
+    // 读取时持 rc_mtx，与 process_thread / bsyStateSnapshot 的“先 rc_mtx 后控制器内部锁”
+    // 顺序一致，不会与控制器自身的内部锁形成逆序。
+    std::atomic<bool> telemetry_stop{false};
+    std::thread telemetry_thread([&]() {
+        constexpr int kReadPeriodMs = 10;   // 100 Hz
+        while (!telemetry_stop.load(std::memory_order_acquire) && g_running) {
+            {
+                std::lock_guard<std::mutex> lock(rc_mtx);
+                // 只写有效数据，无效/未初始化时保留结构体的上一次合法值；
+                // 配置 mcu_telemetry 段中 update = false 的值不写（始终保持初始值）
+                if (yaw_mode == YawMode::BIG_SMALL) {
+                    if (bsy_adapter) {
+                        const bsy::RobotState s = bsy_adapter->state();
+                        if (s.valid) {
+                            if (mt_cfg.color.update) mcu_telemetry.setColor(s.mcu.color);
+                            // 弹速实测更新：先限位到 [min, max]，再按低通系数与当前值融合
+                            //（有效性判据沿用改造前：MCU 数据有效；NaN/±Inf 由
+                            //  McuTelemetry::updateBulletVelocityLimitedFiltered 内部跳过）
+                            if (mt_cfg.bulletVelocity.update) {
+                                mcu_telemetry.updateBulletVelocityLimitedFiltered(
+                                    s.bullet_velocity,
+                                    mt_cfg.bulletVelocity.min,
+                                    mt_cfg.bulletVelocity.max,
+                                    mt_cfg.bulletVelocity.lowPassCoefficient);
+                            }
+                        }
+                    }
+                } else if (robot_controller) {
+                    const tcs::RobotController::State s = robot_controller->getState();
+                    // 单 yaw 构型：MCU 数据有效即写入（判据与改造前 has_bullet_velocity 一致）
+                    if (s.mcu.valid) {
+                        if (mt_cfg.color.update) mcu_telemetry.setColor(s.mcu.color);
+                        // 与大小 yaw 分支同一套「限位 + 一阶低通」；NaN/±Inf 在
+                        // McuTelemetry::updateBulletVelocityLimitedFiltered 内部跳过
+                        if (mt_cfg.bulletVelocity.update) {
+                            mcu_telemetry.updateBulletVelocityLimitedFiltered(
+                                s.mcu.bullet_velocity,
+                                mt_cfg.bulletVelocity.min,
+                                mt_cfg.bulletVelocity.max,
+                                mt_cfg.bulletVelocity.lowPassCoefficient);
+                        }
+                    }
+                }
+            }
+            // 电控颜色同步给 Armor 流水线的后处理颜色过滤（detect_color）：
+            // 取遥测最新值（color.update = false 时即配置初始值），不做帧对齐
+            armor_pipeline.setDetectColor(static_cast<int>(mcu_telemetry.load().color));
+            std::this_thread::sleep_for(std::chrono::milliseconds(kReadPeriodMs));
+        }
+    });
+
     std::thread input_thread([&]() {
         while (!t2_done.load(std::memory_order_acquire) && g_running) {
             TimePoint time_for_delay = std::chrono::steady_clock::now();
@@ -1089,6 +1169,17 @@ int main(int argc, char** argv) {
             TimePoint frame_timestamp;
             ExtraInputInfo extra_info;
             if (!input_mode->getNextFrame(frame, frame_timestamp, extra_info)) break;
+
+            // 自身运动状态：位置取与帧同步的 extra_info 底盘坐标（当前相机/大小 yaw
+            // 输入恒为 0，视频回放可取记录值），时间戳取该帧时间戳。
+            // 速度/加速度当前为占位（返回 0），由 SelfMotionState 内部实现决定。
+            {
+                SelfPositionSample self_sample;
+                self_sample.position = cv::Vec3f(static_cast<float>(extra_info.chassis_x),
+                                                 static_cast<float>(extra_info.chassis_y),
+                                                 static_cast<float>(extra_info.chassis_z));
+                self_motion_state->update(self_sample, frame_timestamp);
+            }
 
             // 无论输入源是否产生新帧，都把 frame_timestamp 发布到共享变量：
             // 无新帧时各输入模式也会更新 frame_timestamp 与 extra_info（约定见
@@ -1224,10 +1315,15 @@ int main(int argc, char** argv) {
                     // 状态包版本解算（逐预测点的大 yaw 关节角取自该包里的 MPC 预测序列）
                     req.ctx->bsy_state = req.st_bsy;
                 }
+                // 弹速取 main 维护的电控遥测最新值（不再由 SequencePredictor 从状态包读取；
+                // 该值恒为合法值，见 common/McuTelemetry.h）
+                const McuTelemetry::Snapshot mcu = mcu_telemetry.load();
                 if (req.result->predictor_valid) {
                     req.ctx->predict_result = (yaw_mode == YawMode::BIG_SMALL)
-                        ? sequence_predictor.predict(req.st_bsy, req.result->predictor, timestamp)
-                        : sequence_predictor.predict(req.st, req.result->predictor, timestamp);
+                        ? sequence_predictor.predict(req.st_bsy, req.result->predictor, timestamp,
+                                                     mcu.bullet_velocity)
+                        : sequence_predictor.predict(req.st, req.result->predictor, timestamp,
+                                                     mcu.bullet_velocity);
                 } else {
                     sequence_predictor.invalidate();
                 }
@@ -1368,7 +1464,7 @@ int main(int argc, char** argv) {
                 controls.changed = false;
                 controls.show(vis != nullptr, current_mode == PipelineMode::ARMOR);
 
-                // Paint HUD on a clean copy, never accumulate overlays on cached pixels.
+                // 在干净副本上绘制 HUD，避免覆盖层累积到缓存的像素上。
                 const bool vis_active = vis && matching_frame && !last_display.empty();
                 (vis_active ? last_display : last_raw_frame).copyTo(to_show);
                 if (!to_show.empty()) {
@@ -1454,6 +1550,9 @@ int main(int argc, char** argv) {
         visualize_stage.slot.stop();
         visualize_stage.thread->join();
     }
+    // 停止电控遥测线程（它只读控制器状态，必须先于控制器析构；空转时也能立即退出）
+    telemetry_stop.store(true, std::memory_order_release);
+    telemetry_thread.join();
 
     std::cout << "\nExiting." << std::endl;
     if (recorder) {

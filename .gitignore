@@ -11,3 +11,5 @@ powerrune_blue.mp4
 .vscode/
 install/pkg_temp/
 analysis/
+python/camera_calibration/chessboard/*
+!python/camera_calibration/chessboard/.gitkeep

@@ -31,7 +31,7 @@ public:
     /// 切换当前渲染的流水线模式（相机投影与输入模式绑定，不随流水线切换）
     void setMode(PipelineMode mode) { mode_.store(mode, std::memory_order_relaxed); }
 
-    // Armor display options and windows: visualization thread only.
+    // Armor 显示选项与窗口：仅可视化线程访问。
     void setCommonOptions(const CommonVisualizationOptions& options) { common_options_ = options; }
     void setArmorOptions(const ArmorVisualizationOptions& options) { armor_options_ = options; }
     void setPowerRuneOptions(const PowerRuneVisualizationOptions& options) { power_rune_options_ = options; }

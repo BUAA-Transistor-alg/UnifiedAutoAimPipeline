@@ -21,13 +21,13 @@
  *                   的安装构型而定，Sentry1 为 ON_HEAD）。
  *     因此**两套信息分别打包**（single / big_small），**当前构型用哪一包就只填哪一包**，
  *     另一包**整体置 NaN**（默认构造即为 NaN）：下游任何按错包取值的代码都会立刻
- *     因为 NaN 暴露出来，而不是静默用错语义的角度算出一个看似合理的姿态。
+ *     因为 NaN 暴露出来，避免用错语义的角度算出看似合理的姿态。
  *   - 底盘位姿（chassis_*）两构型语义相同（底盘在世界系下的位姿），共用，不打包。
  *   - 判断“本帧当前构型包是否可用”用 currentPackValid(mode)；取包用 currentPack(mode)。
  *
  * 各输入模式的填充规则：
- *   - 相机模式（CameraInputMode）：取帧同时刻控制器状态（旧构型 tcs::RobotController::
- *     State::strict / 新构型 tcbs 状态适配器）填充当前构型包，底盘 xyz 填 0；
+ *   - 相机模式（CameraInputMode）：取帧同时刻控制器状态（单 yaw 构型 tcs::RobotController::
+ *     State::strict / 大小 yaw 构型 tcbs 状态适配器）填充当前构型包，底盘 xyz 填 0；
  *   - 视频模式（VideoInputMode）：录制文件 txt 解析；v2 记录只有单 yaw 包，
  *     v3 记录两包都有（未使用的一包记录为 NaN）；
  *   - 交互模式（InteractiveInputMode）：当前构型包全 0（无云台数据）。
@@ -35,7 +35,7 @@
 struct ExtraInputInfo {
     static constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
-    // ── 单 yaw 构型包（旧：chassis -> yaw -> pitch -> head）──
+    // ── 单 yaw 构型包（chassis -> yaw -> pitch -> head）──
     // 语义与 tcs::RobotController::StrictPose 一致（角度 wrap 到 (-π, π]，
     // 缺失数据以 0 参与），保证 R_imu = R_chassis·Rz(yaw_pos)·Rx(pitch_angle) 恒成立。
     struct SingleYawPose {
@@ -52,9 +52,9 @@ struct ExtraInputInfo {
         }
     };
 
-    // ── 大小 yaw 构型包（新：chassis -> yaw_big -> yaw_small -> pitch -> head）──
+    // ── 大小 yaw 构型包（chassis -> yaw_big -> yaw_small -> pitch -> head）──
     // 关节角语义与子模组 tcbs::com::FullStrictPoseBuilder::StrictPose 一致（严格反解所用值，
-    // wrap 到 (−π, π]）；imu_euler 则是 IMU **原始包**的欧拉角（v2 的 StrictPose 不再携带，
+    // wrap 到 (−π, π]）；imu_euler 为 IMU **原始包**的欧拉角（StrictPose 不携带，
     // 安装构型由 robot_controller.imu_location 决定），不参与变换树/弹道/云台解算，
     // 只用于有效性判据、录制与显示。
     struct BigSmallYawPose {
@@ -101,27 +101,25 @@ struct ExtraInputInfo {
 };
 
 /**
- * @brief Abstract interface for input sources.
+ * @brief 输入源抽象接口。
  *
- * Each concrete implementation provides frames one-by-one
- * via getNextFrame(). Returns false when the source is exhausted
- * or the user requests to quit.
+ * 各实现通过 getNextFrame() 逐帧提供数据；输入源耗尽或用户要求退出时返回 false。
  */
 class IInputMode {
 public:
     virtual ~IInputMode() = default;
 
     /**
-     * @brief Retrieve the next frame from the input source.
-     * @param frame       [out] The captured frame (clone-safe).
+     * @brief 从输入源取出下一帧。
+     * @param frame       [out] 采集到的帧（clone 安全）。
      *                    返回空 Mat（frame.empty()）表示输入源当前无新帧：
      *                    调用方应短暂 sleep 后继续轮询（区别于返回 false 表示源已耗尽）。
-     * @param timestamp   [out] The timestamp associated with this frame.
+     * @param timestamp   [out] 与该帧对应的时间戳。
      *                    即使无新帧也会被更新（见下方约定）。
-     * @param extra_info [out] Extra input info (按构型分包的关节角 + 共用底盘位姿).
+     * @param extra_info [out] 额外输入信息（按构型分包的关节角 + 共用底盘位姿）。
      *                    即使无新帧也会被更新（见下方约定）。
-     * @return true       Frame was retrieved successfully (frame 可能为空 = 无新帧)。
-     * @return false      No more frames available (source ended or user quit).
+     * @return true       取帧成功（frame 可能为空 = 无新帧）。
+     * @return false      输入源已耗尽（源结束或用户退出）。
      *
      * 无新帧（返回空 frame）时的时间戳约定：
      *  - CameraInputMode：时间戳取调用 getNextFrame 的时刻（now），extra_info 取
@@ -134,13 +132,12 @@ public:
                               ExtraInputInfo& extra_info) = 0;
 
     /**
-     * @brief Human-readable name of the input mode (e.g. "Interactive", "Video").
+     * @brief 输入模式的可读名称（如 "Interactive"、"Video"）。
      */
     virtual std::string getName() const = 0;
 
     /**
-     * @brief Returns the recommended inter-frame delay in seconds
-     *        (0 = no artificial delay).
+     * @brief 返回推荐的帧间延迟（秒；0 表示不额外延迟）。
      */
     virtual float getFrameDelay() const = 0;
 };

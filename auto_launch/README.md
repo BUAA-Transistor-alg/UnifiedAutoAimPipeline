@@ -1,6 +1,6 @@
 # auto_launch — 主程序看门狗 + 开机自启
 
-让 `unified_auto_aim` 在机器人上「上电即跑、崩了自动重启、卡死也能自动重启」。
+让 `unified_auto_aim` 在机器人上「上电即跑、崩溃后自动重启、卡死也能自动重启」。
 
 ```
 auto_launch/
@@ -10,14 +10,14 @@ auto_launch/
 └── README.md            # 本文件
 ```
 
-配套的 C++ 侧改动（喂狗通道，默认关闭、不影响平时手动运行）：
+配套的 C++ 侧代码（喂狗通道，默认关闭，不影响平时手动运行）：
 
 | 文件 | 作用 |
 | --- | --- |
 | `include/common/Debug/WatchdogFeed.h` | 喂狗通道接口与说明 |
 | `src/common/Debug/WatchdogFeed.cpp` | 上报线程 + Unix 域数据报发送实现 |
-| `src/main.cpp` | `start()` / 处理线程 `tick()` / 退出时 `stop()`；并补上 `SIGTERM` 处理 |
-| `CMakeLists.txt` | 把 `WatchdogFeed.cpp` 加进 `COMMON_SOURCES` |
+| `src/main.cpp` | `start()` / 处理线程 `tick()` / 退出时 `stop()`；同时处理 `SIGTERM` |
+| `CMakeLists.txt` | `WatchdogFeed.cpp` 编入 `COMMON_SOURCES` |
 
 ---
 
@@ -32,7 +32,7 @@ auto_launch/watchdog.py --check
 # ①' 动态自检：用内置假程序跑通「心跳 → 卡死判定 → 杀进程组 → 重启」（约 10s，不需要相机）
 auto_launch/watchdog.py --self-test
 
-# ② 不用看门狗，直接按配置前台跑一次（等价于旧的 launch 脚本，Ctrl+C 关闭）
+# ② 不用看门狗，直接按配置前台跑一次（Ctrl+C 关闭）
 auto_launch/watchdog.py --run
 
 # ③ 看门狗模式（前台观察；systemd 服务跑的就是这条）
@@ -89,7 +89,7 @@ auto_launch/watchdog.py --print-command    # 只看将要执行的 shell 脚本
 
 ---
 
-## 3. 看门狗怎么判活
+## 3. 看门狗怎么判定存活
 
 两层，缺一不可：
 
@@ -106,7 +106,7 @@ auto_launch/watchdog.py --print-command    # 只看将要执行的 shell 脚本
 关闭帧门控（`stall_timeout_ms <= 0`）则退化为「只要进程活着就一直喂」。
 
 喂狗是**可选**的：未设置 `WATCHDOG_SOCKET_PATH` 时 `WatchdogFeed` 完全不启动线程，
-平时 `launch_all.py` / 直接跑 `bin/unified_auto_aim` 的行为和加此功能之前一样。
+平时 `launch_all.py` / 直接跑 `bin/unified_auto_aim` 时该通道不生效。
 
 主程序侧可用的环境变量（看门狗会按配置自动注入）：
 
@@ -131,7 +131,7 @@ auto_launch/watchdog.py --print-command    # 只看将要执行的 shell 脚本
 | launch | `command` | **运行主程序的命令行**（唯一来源） |
 | launch | `preamble` / `shell` / `project_root` | 启动前 shell 片段 / 解释器 / 工作目录 |
 | launch | `restart_policy` | `always` \| `unexpected` |
-| watchdog | `heartbeat_enabled` | 是否启用心跳判定（旧二进制没有喂狗通道时设 false） |
+| watchdog | `heartbeat_enabled` | 是否启用心跳判定（编译产物没有喂狗通道时设 false） |
 | watchdog | `socket_path` | 心跳套接字（绝对路径，≤107 字节） |
 | watchdog | `feed_timeout_sec` | 喂狗超时（默认 20s） |
 | watchdog | `connect_timeout_sec` | 等待首次喂狗上限（默认 150s，要覆盖推理进程编译模型的时间） |
@@ -192,7 +192,7 @@ systemd 下也可以 `install_service.py logs`，或 `journalctl -u unified_auto
 
 **Q: 启动后反复「未喂狗（启动超时）」？**
 说明主程序没在 `connect_timeout_sec` 内喂狗。依次检查：
-① 主程序是不是**本次改动之前编译的旧二进制**（没有 `WatchdogFeed`）——重新 `./build.sh`，
+① 主程序是否带 `WatchdogFeed`（编译产物过旧、没有该模块时重新 `./build.sh`），
 或先把 `heartbeat_enabled` 设为 `false`；
 ② 推理进程编译模型太慢（把 `connect_timeout_sec` 调大，或确认模型路径正确）；
 ③ 用 `--log-level debug` 看子进程输出。
@@ -206,7 +206,7 @@ systemd 下也可以 `install_service.py logs`，或 `journalctl -u unified_auto
    （权限、属主、mtime 都在），日志恢复后文件内容为空。真机踩过一次：14:19:17 装完、
    14:19:21 掉电，重启后 unit 就是 0 字节。
 
-修复（新版安装器会自动做这三步，并在装完后 `sync` + 回读校验内容）：
+处理（安装器会自动做这三步，并在装完后 `sync` + 回读校验内容）：
 ```bash
 sudo systemctl unmask unified_auto_aim.service
 sudo rm -f /etc/systemd/system/unified_auto_aim.service /run/systemd/system/unified_auto_aim.service
@@ -236,16 +236,16 @@ auto_launch/install_service.py uninstall   # 停用并删除 unit（保留项目
 
 ---
 
-## 7. 相对上一版（rm2026 `auto_launch/`）的改动
+## 7. 设计要点
 
-| 项 | rm2026 版 | 本版 |
-| --- | --- | --- |
-| 运行命令行 | 硬编码在 `auto_aim_launch.py` 里 | 抽到 `auto_launch.conf` 的 `launch.command`，看门狗/安装脚本都不含具体参数 |
-| 判活 | 只靠心跳超时（主程序须自己实现喂狗） | 进程级 + 心跳级两层；心跳由 `WatchdogFeed` 提供，按「帧是否推进」喂狗，能发现相机断流/死锁 |
-| 心跳套接字 | `SOCK_STREAM` + accept，重启后需重连握手 | `SOCK_DGRAM`，无连接状态，双方各自重启互不影响 |
-| 单实例 | 无保护（两个看门狗会拉起两套程序） | `flock` 独占锁 |
-| 重启策略 | 固定等待 5s 无限重启 | `always/unexpected` + 指数退避 + 稳定计数清零 + `max_restarts` |
-| 退出 | 只处理 SIGINT/SIGTERM，靠 `killpg` | 同样的进程组语义，另加 `SIGHUP` 重载配置、整组 `SIGINT→SIGKILL` 宽限 |
-| 日志 | 只有 stdout | stdout(journal) + 按大小轮转的日志文件 + 周期状态行（含心跳帧数） |
-| 安装 | 生成 unit 后 `sudo mv`，路径/用户名靠字符串替换 | 脚本自动解析项目路径/用户，安装前自检，支持 `install/uninstall/status/logs/print/--dry-run/--no-enable` |
-| SIGTERM | 主程序只处理 SIGINT（systemd 停止会直接杀） | `src/main.cpp` 补上 `SIGTERM`，走正常收尾 |
+| 项 | 做法 |
+| --- | --- |
+| 运行命令行 | 来自 `auto_launch.conf` 的 `launch.command`，看门狗 / 安装脚本都不含具体参数 |
+| 存活判定 | 进程级 + 心跳级两层；心跳由 `WatchdogFeed` 提供，按「帧是否推进」喂狗，能发现相机断流 / 死锁 |
+| 心跳套接字 | `SOCK_DGRAM`，无连接状态，双方各自重启互不影响 |
+| 单实例 | `flock` 独占锁 |
+| 重启策略 | `always/unexpected` + 指数退避 + 稳定计数清零 + `max_restarts` |
+| 退出 | 按进程组处理；`SIGHUP` 重载配置；整组 `SIGINT→SIGKILL` 宽限 |
+| 日志 | stdout(journal) + 按大小轮转的日志文件 + 周期状态行（含心跳帧数） |
+| 安装 | 脚本自动解析项目路径 / 用户，安装前自检，支持 `install/uninstall/status/logs/print/--dry-run/--no-enable` |
+| SIGTERM | 主程序处理 `SIGTERM`，走正常收尾 |

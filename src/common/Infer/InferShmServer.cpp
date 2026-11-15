@@ -54,8 +54,8 @@ void InferShmServer::createSemaphores() {
 
 void InferShmServer::run(const std::function<bool()>& is_running) {
     while (is_running()) {
-        // 用 sem_timedwait（100ms 超时）而非 sem_wait：glibc 的 sem_wait 对信号
-        // 内部重试不返回 EINTR，会导致 SIGINT 无法唤醒阻塞中的循环；
+        // 用 sem_timedwait（100ms 超时）：glibc 的 sem_wait 对信号内部重试不
+        // 返回 EINTR，会导致 SIGINT 无法唤醒阻塞中的循环；
         // 超时后回到循环顶部检查 is_running()，保证进程可被信号正常退出。
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);

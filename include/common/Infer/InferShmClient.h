@@ -8,8 +8,8 @@
 // 等待结果 → 把响应张量 memcpy 进调用方（PipelineData）提供的输出缓冲。
 // 推理器本体在独立的推理进程中（InferShmServer）。
 //
-// 推理挂死自愈（config common.infer_force_restart_timeout_sec）：
-//   - 每次推理正常返回时记录时间戳 last_ok_（推理正常返回不检测挂死）；
+// 推理卡死自愈（config common.infer_force_restart_timeout_sec）：
+//   - 每次推理正常返回时记录时间戳 last_ok_（推理正常返回不检测卡死）；
 //   - 每次推理响应超时（2s sem_timedwait）返回时，检测 now - last_ok_ 是否超过
 //     配置时限：超过则调用强制重启回调（主程序挂钩到 InferProcessManager::
 //     forceRestart，重启本客户端对应的推理进程），并把 last_ok_ 视为已失效，
@@ -40,7 +40,7 @@ struct OutputBuffer {
 class InferShmClient {
 public:
     /// @param shm_key 共享内存 Key（config 中配置；两进程用同一 Key）
-    /// @param force_restart_timeout_sec 推理挂死强制重启时限（秒，config
+    /// @param force_restart_timeout_sec 推理卡死强制重启时限（秒，config
     ///        common.infer_force_restart_timeout_sec）：推理响应超时返回时，若距
     ///        上一次推理正常返回的间隔超过该时限，则触发强制重启回调。
     ///        <= 0 表示关闭该功能。
@@ -57,8 +57,8 @@ public:
     bool runInference(const std::vector<const cv::Mat*>& preprocessed_imgs,
                       std::vector<OutputBuffer*>& outs);
 
-    /// 设置推理挂死强制重启回调（主程序把本客户端对应流水线的推理进程强制重启
-    /// 挂钩到 InferProcessManager::forceRestart）。可在任意线程调用；满足挂死条件
+    /// 设置推理卡死强制重启回调（主程序把本客户端对应流水线的推理进程强制重启
+    /// 挂钩到 InferProcessManager::forceRestart）。可在任意线程调用；满足卡死条件
     /// 时从推理阶段线程调用该回调。
     void setForceRestartHandler(std::function<void()> handler);
 
@@ -67,7 +67,7 @@ public:
     /// 本客户端若先于服务端附加（构造时创建了同名信号量），旧句柄即与新的
     /// 服务端信号量断开，需调用本方法重连（在服务端就绪后调用）。
     /// 重连同时把"上次推理正常返回"重置为当前时刻（推理进程已（重新）就绪，
-    /// 挂死检测从此刻起重新计时）。
+    /// 卡死检测从此刻起重新计时）。
     void reconnect();
 
 private:
@@ -80,7 +80,7 @@ private:
     // 等待在途 runInference 结束（最多 2s 响应超时），避免关闭被阻塞中的信号量。
     std::mutex io_mtx_;
 
-    // ── 推理挂死检测（见文件头注释）──
+    // ── 推理卡死检测（见文件头注释）──
     double force_restart_timeout_sec_ = 0.0;   // 时限（秒；<= 0 关闭）
     std::mutex handler_mtx_;                    // 保护 restart_handler_
     std::function<void()> restart_handler_;

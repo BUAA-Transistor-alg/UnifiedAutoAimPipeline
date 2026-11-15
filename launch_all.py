@@ -58,7 +58,7 @@ def _on_signal(signum, frame):
 
 def get_config_path():
     """返回当前机器配置文件路径（config/selector.yaml → config/robots/<active_config>.yaml）；
-    解析失败时打印错误并返回 None（与旧版读取失败行为一致）。"""
+    解析失败时打印错误并返回 None。"""
     try:
         return resolve_machine_config_path()
     except Exception as e:

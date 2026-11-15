@@ -14,7 +14,7 @@ void validateModelName(const std::string& name) {
     if (name != "0526" && name != "0726")
         throw std::invalid_argument("Unsupported Armor model: " + name);
 }
-// Identical rounding and padding for image preprocessing and inverse coordinates.
+// 图像预处理与逆坐标换算共用同一套取整与补边规则。
 struct LetterboxTransform {
     float scale;
     int width, height, left, top;
@@ -188,16 +188,19 @@ std::vector<Object> ArmorPostprocessor::postprocess(
         cv::minMaxLoc(classes_scores, NULL, &score_num, NULL, &class_id);
         cv::minMaxLoc(color_scores, NULL, &score_color, NULL, &color_id);
 
-        // None / Purple 丢掉
+        // None / Purple 丢掉（索引 2/3 与红蓝无关，不参与下面的颜色交换）
         if (color_id.x == 2 || color_id.x == 3)
             continue;
-        else if (detect_color == 0 && color_id.x == 1)   // detect blue
-            continue;
-        else if (detect_color == 1 && color_id.x == 0)   // detect red
-            continue;
+
+        // ── 0526 模型颜色交换 ──
+        // 本模型颜色通道与 Object::color 约定相反（模型 0=蓝 / 1=红，而 Object::color
+        // 约定为 blue:1 / red:0；与 0726 的 internal_color = 1 - color 同一处理），
+        // 此处交换颜色识别结果，使下游拿到的 obj.color 统一为 Object 约定。
+        _color_id = 1 - color_id.x;
+        // 按交换后的颜色过滤（detect_color：0 = 仅红 / 1 = 仅蓝 / 2 = 双色）
+        if (detect_color != 2 && _color_id != detect_color) continue;
 
         _class_id = class_id.x;
-        _color_id = color_id.x;
 
         // ── 类别处理（config armor.inference.class_handling）──
         // 先忽略（直接检测出的类别命中忽略列表即整条丢弃，不进入 NMS / 下游），
@@ -268,7 +271,7 @@ std::vector<Object> ArmorPostprocessor::postprocess(
     return detections;
 }
 
-// Infantry 0726: per-image [21,N] view of [B,21,N], already-sigmoid color/class scores followed by xy points.
+// Infantry 0726：把 [B,21,N] 按单张图取成 [21,N]；前若干行为已过 sigmoid 的颜色/类别分数，其后为 xy 坐标点。
 std::vector<Object> ArmorPostprocessor::postprocess0726(
     const float* data, int rows, int cols, int orig_w, int orig_h,
     int detect_color, float conf_threshold, float nms_threshold) {

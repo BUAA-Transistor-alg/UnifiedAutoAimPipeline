@@ -82,6 +82,8 @@ set(COMMON_SOURCES
     src/common/FrameRateCounter.cpp
     src/common/RobotConfig.cpp
     src/common/BacklogAdaptiveDelay.cpp
+    # 自身运动状态（位置/速度/加速度按时间查询；弹道解算未来位置/速度轨迹的来源）
+    src/common/SelfMotionState.cpp
     src/common/SentryController.cpp
     # 看门狗喂狗通道（可选功能：仅当设置 WATCHDOG_SOCKET_PATH 时生效，见 auto_launch/）
     src/common/Debug/WatchdogFeed.cpp
