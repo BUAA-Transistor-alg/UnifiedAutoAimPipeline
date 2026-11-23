@@ -33,7 +33,7 @@ public:
         dirty_ = false;
         last_active_ = active;
         last_armor_active_ = armor_active;
-        cv::Mat panel(600, 500, CV_8UC3, cv::Scalar(30, 30, 30));
+        cv::Mat panel(640, 500, CV_8UC3, cv::Scalar(30, 30, 30));
         cv::putText(panel, "Visualization controls", {18, 30}, 0, .7, {235,235,235}, 1, cv::LINE_AA);
         cv::putText(panel, active ? "Click a row to toggle" : "Inactive (settings retained)",
                     {18, 55}, 0, .45, {170,170,170}, 1, cv::LINE_AA);
@@ -47,7 +47,7 @@ public:
         cv::putText(panel, armor_active ? "Armor" : "PowerRune", {18,260},
                     0, .6, {235,235,235}, 1, cv::LINE_AA);
         if (armor_active) {
-            for (int i = 0; i < 7; ++i)
+            for (int i = 0; i < 8; ++i)
                 row(280 + i * 40, labels_[i], options.*fields_[i],
                     active && (i != 1 || options.detections));
         } else {
@@ -55,7 +55,7 @@ public:
                 row(280 + i * 40, rune_labels_[i], power_rune.*rune_fields_[i],
                     active && (i != 1 || power_rune.detections));
         }
-        cv::putText(panel, "v: visualization on/off   c: reopen controls", {18,583},
+        cv::putText(panel, "v: visualization on/off   c: reopen controls", {18,625},
                     0, .43, {170,170,170}, 1, cv::LINE_AA);
         cv::imshow(name_, panel);
     }
@@ -76,7 +76,7 @@ private:
         if (y >= 72 && y < 232) {
             bool& value = self.common.*common_fields_[(y - 72) / 40];
             value = !value;
-        } else if (y >= 280 && y < 560) {
+        } else if (y >= 280 && y < 600) {
             const int row = (y - 280) / 40;
             if (self.last_armor_active_) {
                 if (row == 1 && !self.options.detections) return;
@@ -92,14 +92,14 @@ private:
         self.dirty_ = true;
     }
     inline static constexpr const char* name_ = "Visualization Controls";
-    inline static constexpr std::array<bool ArmorVisualizationOptions::*,7> fields_ = {
+    inline static constexpr std::array<bool ArmorVisualizationOptions::*,8> fields_ = {
         &ArmorVisualizationOptions::detections, &ArmorVisualizationOptions::details,
         &ArmorVisualizationOptions::pnp, &ArmorVisualizationOptions::filtered_projection,
         &ArmorVisualizationOptions::centers, &ArmorVisualizationOptions::raw_pose,
-        &ArmorVisualizationOptions::filtered_pose};
-    inline static constexpr std::array<const char*,7> labels_ = {
+        &ArmorVisualizationOptions::filtered_pose, &ArmorVisualizationOptions::roi};
+    inline static constexpr std::array<const char*,8> labels_ = {
         "Detection results", "Detection details", "PnP reprojection", "Filtered geometry",
-        "Armor centers (t=0)", "Raw pose text", "Filtered pose text"};
+        "Armor centers (t=0)", "Raw pose text", "Filtered pose text", "ROI recognition views"};
     inline static constexpr std::array<bool CommonVisualizationOptions::*,4> common_fields_ = {
         &CommonVisualizationOptions::status, &CommonVisualizationOptions::performance,
         &CommonVisualizationOptions::aim, &CommonVisualizationOptions::gimbal};

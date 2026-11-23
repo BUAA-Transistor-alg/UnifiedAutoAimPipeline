@@ -9,4 +9,5 @@ struct ArmorVisualizationOptions {
     bool centers = true;
     bool raw_pose = false;
     bool filtered_pose = false;
+    bool roi = true;   // 本帧识别视图框（config armor.roi：ROI 截取矩形与全画面边缘框）
 };

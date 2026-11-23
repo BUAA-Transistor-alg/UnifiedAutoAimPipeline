@@ -1,6 +1,7 @@
 // RobotConfig.cpp — 从 yaml 配置文件加载全局参数（common / armor / power_rune 三结构）
 #include "common/RobotConfig.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <vector>
 
@@ -882,6 +883,35 @@ RobotConfig RobotConfig::load(const std::string& yamlPath) {
                                  "slow_angular_velocity_upper 必须 > slow_angular_velocity_lower，"
                                  "fast_angular_velocity_lower 必须 > slow_angular_velocity_upper，"
                                  "fast_angular_velocity_upper 必须 > fast_angular_velocity_lower");
+    }
+
+    // ── armor.roi（自适应 ROI 参数；规划器见 ArmorRoiPlanner）──
+    // 全部字段必填：ROI 规划依赖目标距离、全画面监视间隔、全画面保持时长、分块
+    // 扫描间隔与重叠、包围矩形放大倍数、边界判定内缩，缺一项即报错退出。
+    const YAML::Node& roi = op["roi"];
+    if (!roi || !roi.IsMap())
+        throw std::runtime_error("RobotConfig: 缺少 'armor.roi' 配置段");
+    cfg.armor.roi.enabled = requireScalar<bool>(roi, "enabled", "armor.roi");
+    cfg.armor.roi.targetSpanM = requireScalar<double>(roi, "target_span_m", "armor.roi");
+    cfg.armor.roi.monitorInterval = requireScalar<int>(roi, "monitor_interval", "armor.roi");
+    cfg.armor.roi.fullFrameHoldSec = requireScalar<double>(roi, "full_frame_hold_s", "armor.roi");
+    cfg.armor.roi.scanInterval = requireScalar<int>(roi, "scan_interval", "armor.roi");
+    cfg.armor.roi.tileOverlapPx = requireScalar<int>(roi, "tile_overlap_px", "armor.roi");
+    cfg.armor.roi.bboxExpandFactor = requireScalar<double>(roi, "bbox_expand_factor", "armor.roi");
+    cfg.armor.roi.boundaryMarginPx = requireScalar<int>(roi, "boundary_margin_px", "armor.roi");
+    if (cfg.armor.roi.targetSpanM <= 0.0 ||
+        cfg.armor.roi.monitorInterval < 1 ||
+        cfg.armor.roi.fullFrameHoldSec < 0.0 ||
+        cfg.armor.roi.scanInterval < 1 ||
+        cfg.armor.roi.tileOverlapPx < 0 ||
+        cfg.armor.roi.tileOverlapPx >= std::min(cfg.armor.inputWidth, cfg.armor.inputHeight) ||
+        cfg.armor.roi.bboxExpandFactor < 1.0 ||
+        cfg.armor.roi.boundaryMarginPx < 0) {
+        throw std::runtime_error("RobotConfig: armor.roi 取值非法："
+                                 "target_span_m 必须 > 0，monitor_interval / scan_interval 必须 >= 1，"
+                                 "full_frame_hold_s / boundary_margin_px 必须 >= 0，"
+                                 "tile_overlap_px 必须在 [0, min(输入宽, 输入高)) 内，"
+                                 "bbox_expand_factor 必须 >= 1");
     }
 
     // ══════════════ power_rune（独占参数） ══════════════

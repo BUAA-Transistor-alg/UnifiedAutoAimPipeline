@@ -284,6 +284,30 @@ armor:
     fast_angular_velocity_lower: 2.0
     fast_angular_velocity_upper: 3.0
 
+  # ── 自适应 ROI（armor.roi）──
+  # 远距离装甲板在整幅画面里只有十几个像素，整幅缩放到网络输入后关键点精度不足；
+  # 按 stage5 锁定目标的距离截取 ROI（最小 = 网络输入尺寸：再缩小只是把像素放大，
+  # 不增加信息且损失视野），只把 ROI 缩放后送网络，检测结果再映射回原图坐标。
+  # 所有 ROI 按网络输入尺寸比例截取并限制在原画面内，任一边长超过原画面时退回全画面。
+  # 为兼顾全局视野与额外开销：使用 ROI 时每 monitor_interval 帧同时识别一次全画面；
+  # 全画面里识别到 ROI 外或边界上的物体时，退回全画面至少 full_frame_hold_s 秒，
+  # 交由下游判断是否切换目标；之后重新按触发条件决定模式。
+  # 无目标时每帧全画面，每 scan_interval 帧额外识别一个分块 ROI（全画面按最小 ROI
+  # 无缝覆盖、重叠尽量均匀分布，相邻分块至少重叠 tile_overlap_px 像素，循环截取）；
+  # 识别到物体但尚未锁定目标时，截取包围全部物体的矩形放大 bbox_expand_factor 倍
+  # 作为 ROI，直到 stage5 锁定目标。
+  roi:
+    enabled: false                # 功能总开关：false = 始终全画面识别（原行为）
+    target_span_m: 1.5           # 目标 ROI 覆盖的物理边长（米）：ROI 像素尺寸 =
+                                 # 焦距 × 本值 / 目标距离，且不小于网络输入尺寸
+    monitor_interval: 10         # n：使用 ROI 时每隔 n 帧选一帧同时识别 ROI 与全画面
+    full_frame_hold_s: 0.5       # s：ROI 外/边界识别到物体后全画面保持的最短时长（秒）
+    scan_interval: 10            # l：无目标时每隔 l 帧额外识别一个分块 ROI
+    tile_overlap_px: 64          # m：相邻分块 ROI 至少重叠的像素数（须小于网络输入短边）
+    bbox_expand_factor: 2.0      # k：包围全部物体的矩形放大倍数（>= 1）
+    boundary_margin_px: 2        # 边界判定内缩像素：检测框完全落在 ROI 内缩该像素后的
+                                 # 区域内才算“ROI 内部”，否则视为边界/外部并触发保持
+
   # ── 流水线缓冲队列与批量参数（armor.pipeline）──
   # 缓冲队列长度 + 可批处理阶段（1 预处理 / 2 推理 / 3 后处理）的最大批量。
   # 阶段4（PnP）/ 阶段5（OutpostESEKF）为单帧处理，批量固定为 1。

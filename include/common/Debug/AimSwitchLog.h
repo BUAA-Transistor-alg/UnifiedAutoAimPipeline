@@ -1,7 +1,7 @@
 #ifndef AIM_SWITCH_LOG_H
 #define AIM_SWITCH_LOG_H
 
-// AimSwitchLog.h — 瞄准点（挡板 / 靶点）切换日志（调试用，默认开启，无需配置项）
+// AimSwitchLog.h — 瞄准点（挡板 / 靶点）切换日志（调试用，默认关闭，无需配置项）
 //
 // 用途：每帧记录最终选中的瞄准点索引，在索引发生变化（切换）时打印一行带绝对
 //       时间与切换间隔的 SWITCH 记录；全部帧同时写入 CSV，供离线统计切换频率、
@@ -18,8 +18,9 @@
 //                控制器真正执行到了哪一拍），默认只在切换帧打印，见 plan()
 //
 // 环境变量（均可省略）：
-//   AIM_SWITCH_LOG=0        关闭（默认开启）
-//   AIM_SWITCH_LOG_ALL=1    控制台逐帧输出（含逐帧 [PLAN]；默认只在切换与事件时输出）
+//   AIM_SWITCH_LOG=1        开启（不设置或 =0 时关闭；默认关闭，不产生任何日志文件与控制台输出）
+//   AIM_SWITCH_LOG_ALL=1    控制台逐帧输出（含逐帧 [PLAN]；默认只在切换与事件时输出，
+//                           仅在 AIM_SWITCH_LOG 已开启时生效）
 //   AIM_SWITCH_LOG_DIR=...  输出目录（默认 <项目根>/logs）
 //
 // 输出文件（同名目录下，同一时间戳）：
@@ -303,8 +304,10 @@ private:
 
     // ==================== 初始化 ====================
     void init() {
-        const char* off = std::getenv("AIM_SWITCH_LOG");
-        enabled_ = !(off != nullptr && std::string(off) == "0");
+        // 默认关闭：仅当 AIM_SWITCH_LOG 显式设置为非空且非 "0" 时开启
+        //（推荐 AIM_SWITCH_LOG=1）。未开启时不创建目录、不打开 CSV、不输出控制台。
+        const char* on = std::getenv("AIM_SWITCH_LOG");
+        enabled_ = (on != nullptr && on[0] != '\0' && std::string(on) != "0");
         const char* all = std::getenv("AIM_SWITCH_LOG_ALL");
         console_all_ = (all != nullptr && std::string(all) != "0");
         if (!enabled_) return;
@@ -348,7 +351,7 @@ private:
             plan_csv_.precision(6);
             std::printf("\n            预瞄点计划：%s", plan_path_.c_str());
         }
-        std::printf("\n            关闭：AIM_SWITCH_LOG=0    逐帧输出：AIM_SWITCH_LOG_ALL=1\n");
+        std::printf("\n            关闭：不设置或 AIM_SWITCH_LOG=0    逐帧输出：AIM_SWITCH_LOG_ALL=1\n");
         std::fflush(stdout);
     }
 
@@ -423,7 +426,7 @@ private:
     }
 
     // ==================== 状态 ====================
-    bool enabled_     = true;
+    bool enabled_     = false;
     bool console_all_ = false;
     std::mutex mtx_;
     std::ofstream csv_;

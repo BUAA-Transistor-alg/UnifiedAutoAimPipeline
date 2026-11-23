@@ -25,7 +25,7 @@
 //                    （single = 旧单 yaw / big_small = 大/小双 yaw）并提供新构型的
 //                    tcbs::RobotController 参数与大小 yaw 拆分器参数，见 YawMode）
 //   - armor     ：Armor 流水线独占参数（推理模型 / 批量 / 观测丢失超时 /
-//                   OutpostESEKF 与 SuperPower EKF 滤波参数）
+//                   OutpostESEKF 与 SuperPower EKF 滤波参数 / 自适应 ROI）
 //   - power_rune  ：PowerRune 流水线独占参数（推理模型 / NMS / 阈值 / 批量）
 //   - mcu_telemetry：电控遥测（弹速 / 颜色）的合法初始值 + 是否用控制器实时值覆盖
 //                    （main 的遥测线程写入 common/McuTelemetry.h 的 McuTelemetry）
@@ -473,6 +473,26 @@ public:
             double fastAngularVelocityUpper;  // 快目标施密特触发上阈值（rad/s，> lower）
         };
         TargetSelectionParams targetSelection;
+
+        // ── 自适应 ROI（config: armor.roi）──
+        // 按 stage5 锁定目标的距离截取 ROI（最小 = 网络输入尺寸，再缩小只是把像素
+        // 放大、不增加信息且损失视野），以提升远距离目标的 pose 关键点精度；无目标
+        // 时全画面识别并每隔 l 帧额外扫描一个分块 ROI；有物体未锁定时截取包围全部
+        // 物体的矩形放大 k 倍识别；使用 ROI 时每 n 帧同时识别全画面，全画面发现 ROI
+        // 外/边界上的物体则退回全画面至少 s 秒。所有 ROI 按网络输入尺寸比例截取并
+        // 限制在原画面内，任一边长超过原画面时退回全画面。
+        // 规划与视图决策见 ArmorRoiPlanner（include/Armor/ArmorRoiPlanner.h）。
+        struct RoiParams {
+            bool   enabled;             // 功能总开关（config: enabled）；false = 始终全画面
+            double targetSpanM;         // 目标 ROI 覆盖的物理边长（米，目标距离处）
+            int    monitorInterval;     // 使用 ROI 时每隔多少帧同时识别全画面（n，>= 1）
+            double fullFrameHoldSec;    // ROI 外/边界识别到物体后全画面保持时长（秒，s，>= 0）
+            int    scanInterval;        // 无目标时每隔多少帧额外识别一个分块 ROI（l，>= 1）
+            int    tileOverlapPx;       // 分块 ROI 之间至少重叠的像素（m，>= 0 且小于输入短边）
+            double bboxExpandFactor;    // 包围全部物体的矩形放大倍数（k，>= 1）
+            int    boundaryMarginPx;    // ROI 边界判定的内缩像素（>= 0）
+        };
+        RoiParams roi;
     };
 
     // PowerRune 流水线独占参数

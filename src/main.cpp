@@ -1331,7 +1331,7 @@ int main(int argc, char** argv) {
                 // ── 选靶切换日志（common/Debug/AimSwitchLog）──
                 // 每帧记录最终选中的瞄准点索引；索引变化时打印带绝对时间与切换间隔的
                 // [SWITCH] 行，全部帧写入 <项目根>/logs/aim_switch_*.csv。
-                // 用环境变量控制（无需配置项）：AIM_SWITCH_LOG=0 关闭、
+                // 用环境变量控制（无需配置项）：默认关闭，AIM_SWITCH_LOG=1 开启、
                 // AIM_SWITCH_LOG_ALL=1 逐帧输出、AIM_SWITCH_LOG_DIR=<目录> 指定输出目录。
                 {
                     AimSwitchLog::Frame lf;

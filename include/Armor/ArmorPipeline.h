@@ -1,7 +1,8 @@
 // ArmorPipeline.h — 装甲板感知流水线（5 阶段，统一 IPipeline 接口）
 //
 // 五阶段（各有独立工作线程，由 PipelineStage 模板管理）：
-//   1. 预处理          — ArmorPreprocessor 并行 resize（分辨率取 config armor.inference.resolution）
+//   1. 预处理          — ArmorPreprocessor 并行 resize（分辨率取 config armor.inference.resolution）；
+//                        每帧可含多个识别视图（自适应 ROI，见 ArmorRoiPlanner）
 //   2. 推理            — InferShmClient 经共享内存调用独立推理进程（动态 batch）
 //   3. 后处理          — ArmorPostprocessor 并行解码 + NMS（读取 PipelineData 自持输出缓冲）；
 //                        detect_color（0=仅红/1=仅蓝/2=双色/其它=都不通过）由 main 按
@@ -20,6 +21,13 @@
 //                               随预测器下发下游；“慢目标”判定（施密特触发器）由
 //                               SequencePredictor::predict 完成。
 //
+// 自适应 ROI（config armor.roi，规划器见 ArmorRoiPlanner）：
+//   取帧时由规划器决定本帧的识别视图（全画面 / ROI，可多个），阶段1 把每个视图
+//   缩放到网络输入尺寸，阶段2 把同一帧的全部视图放进一次推理请求，阶段3 用各视图
+//   自己的截取尺寸做坐标缩放并平移回原图坐标，再丢弃 ROI 边界截断框、对全画面与
+//   ROI 的重复框去重。stage5 每帧把所选目标的相机距离与投影图像点交给规划器，
+//   供其决定下一帧的目标 ROI。下游（阶段4/5）看到的物体坐标与全画面识别时一致。
+//
 // 弹道解算、控制序列生成与可视化均已移出流水线，由输出模式（common/Output/）
 // 负责；本流水线只输出感知结果（PipelineResult::armor）。
 //
@@ -30,6 +38,7 @@
 
 #include "common/PipelineStage.h"
 #include "Armor/ArmorInfer.h"
+#include "Armor/ArmorRoiPlanner.h"          // 自适应 ROI 视图规划（config armor.roi）
 #include "Armor/OutpostESEKF.h"
 #include "Armor/EKF/SuperPowerClassEKF.h"   // 移植 EKF 封装：label 0~5 每类一个 ClassEKF（sp_ekf）
 #include "Armor/NewestObjectTracker.h"      // 最新物体位姿保持：label 7~8 各一个 NewestObjectTracker（sp_ekf）
@@ -64,23 +73,28 @@ struct ArmorPipelineData {
         cv::Mat frame;
         std::chrono::steady_clock::time_point frame_timestamp;  // 取帧时打上
         ExtraInputInfo extra_info;                              // 取帧同时刻（StrictPose + 底盘 xyz）
+        // 本帧识别视图规划（全画面 / ROI，见 ArmorRoiPlanner）：取帧时决定；
+        // 功能关闭时只有一个全画面视图。全部阶段按此顺序处理各视图。
+        ArmorRoi::Plan roi_plan;
     } initial;
 
     // ==================== 阶段1：预处理 ====================
     struct Stage1Data {
-        cv::Mat frame;  // 预处理后图像（armor.inference.resolution 指定尺寸）
+        // 各识别视图预处理后的图像（网络输入尺寸，顺序与 initial.roi_plan.views 一致）
+        std::vector<cv::Mat> frames;
     } stage1;
 
     // ==================== 阶段2：推理 ====================
     struct Stage2Data {
-        // 推理输出张量（客户端直接 memcpy 填充，data 行优先 f32，
-        // rows/cols 为张量 shape[1]/shape[2]，如 armor 的 [num_anchors, 22]）
-        Infer::OutputBuffer output;
+        // 各识别视图的推理输出张量（顺序与 initial.roi_plan.views 一致；客户端直接
+        // memcpy 填充，data 行优先 f32，rows/cols 为张量 shape[1]/shape[2]）
+        std::vector<Infer::OutputBuffer> outputs;
     } stage2;
 
     // ==================== 阶段3：后处理 ====================
     struct Stage3Data {
-        std::vector<ArmorDetect::Object> objects;  // 检测结果（已缩放至原图坐标）
+        // 检测结果（已缩放并平移回原图坐标；ROI 边界截断框与跨视图重复框已丢弃）
+        std::vector<ArmorDetect::Object> objects;
     } stage3;
 
     // ==================== 阶段4：PnP + 坐标转换 ====================
@@ -234,6 +248,11 @@ private:
     // 所选目标距"最近一次真正观测到该类实体"超过该时长即禁止开火（见 Stage5Data
     // 的 since_observation_s / fire_forbidden）。
     double fire_observation_timeout_s_ = 0.0;
+
+    // ── 自适应 ROI 规划器（config armor.roi）──
+    // 取帧线程调 plan()（决定本帧识别视图），阶段3/阶段5 worker 分别调
+    // filterDetections()/observeTarget() 更新状态；内部加锁，线程安全。
+    std::unique_ptr<ArmorRoi::Planner> roi_planner_;
 
     // ── stage5 目标选取跨帧状态（仅 stage5 worker 线程访问，单帧串行）──
     // L1：上一帧 stage5 选中的目标（label）；本帧仍为候选时获得固定优先度。

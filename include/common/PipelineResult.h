@@ -20,6 +20,7 @@
 #include "common/Input/IInputMode.h"
 #include "common/Ballistic/SequencePredictor.h"
 #include "Armor/ArmorInfer.h"
+#include "Armor/ArmorRoiPlanner.h"
 #include "PowerRune/PowerRuneInfer.h"
 #include "PowerRune/RollPredictor.h"
 
@@ -59,6 +60,13 @@ struct ArmorPerception {
     // 直接作为 sequence_predictor.predict 的输入。
 
     size_t detection_count = 0;
+
+    // ── 本帧自适应 ROI 识别视图（config armor.roi；见 ArmorRoiPlanner）──
+    // 本帧送入网络的全部识别视图（顺序与流水线内部规划一致）：
+    //   full_frame = true  → 整幅原画面识别，可视化阶段沿画面边缘绘制绿色矩形框；
+    //   full_frame = false → rect 为原图坐标下的 ROI 截取矩形，可视化阶段绘制该矩形。
+    // 两个视图可同时存在（ROI 监视帧），可视化阶段逐视图分别绘制。
+    std::vector<ArmorRoi::View> roi_views;
 
     // ── 禁火判据（config armor.fire_observation_timeout）──
     // 所选目标（target_label 那一类）距**最近一次真正观测到该类实体**的时长：

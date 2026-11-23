@@ -198,6 +198,7 @@ void VisualizeOutput::renderArmor(const PipelineResult& result, tcs::RobotContro
 
     ArmorVisualizationData vis;
     vis.detection.objects = p.objects;
+    vis.roi.views = p.roi_views;
 
     vis.raw_pose.world_positions   = p.world_positions;
     vis.raw_pose.world_eulers      = p.world_eulers;

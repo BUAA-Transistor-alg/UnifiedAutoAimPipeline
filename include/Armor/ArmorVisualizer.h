@@ -11,6 +11,7 @@
 #include <opencv2/opencv.hpp>
 
 #include "Armor/ArmorInfer.h"
+#include "Armor/ArmorRoiPlanner.h"
 #include "tcs/RobotController.h"
 #include "common/TransformTree/RobotTfTree.h"
 #include "common/pose/CameraProjection.h"
@@ -83,6 +84,13 @@ struct ArmorVisualizationData {
         cv::Vec3f small_axis_offset = cv::Vec3f(0.0f, 0.0f, 0.0f);
     } big_small;
 
+    // ---- 自适应 ROI（来自流水线的识别视图规划；config armor.roi）----
+    struct RoiData {
+        // 本帧送入网络的全部识别视图：full_frame = true 表示整幅原画面识别，
+        // 否则 rect 为原图坐标下的 ROI 截取矩形（可视化阶段逐视图绘制）。
+        std::vector<ArmorRoi::View> views;
+    } roi;
+
     // ---- 通信数据（取帧时刻 tcs::RobotController 状态快照） ----
     tcs::RobotController::State robot_state;
 
@@ -95,8 +103,9 @@ struct ArmorVisualizationData {
  * @brief 装甲板自瞄可视化绘制类
  *
  * 将所有仅用于可视化的绘制逻辑集中到 render 单一接口中，包括：
- * 检测框/关键点、PnP 重投影、世界坐标位姿文字、OutpostESEKF 滤波位姿与投影、
- * 预测中心点、瞄准点、MCU/IMU/MPC 通信信息、云台温度、FPS/时间戳。
+ * 本帧识别视图框（ROI 截取矩形与全画面边缘框）、检测框/关键点、PnP 重投影、
+ * 世界坐标位姿文字、OutpostESEKF 滤波位姿与投影、预测中心点、瞄准点、
+ * MCU/IMU/MPC 通信信息、云台温度、FPS/时间戳。
  */
 class ArmorVisualizer {
 public:

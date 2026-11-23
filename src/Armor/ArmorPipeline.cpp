@@ -7,6 +7,8 @@
 #include <string>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <limits>
 
 namespace {
@@ -34,6 +36,26 @@ OutpostESEKF::Params makeEsekfParams(const RobotConfig::ArmorParams& p) {
     r.initDz3Noise         = p.esekf.initDz3Noise;
     r.observationLostTimeoutSec = p.observationLostTimeoutSec;
     return r;
+}
+
+// 配置 armor.roi + 相机内参 → ArmorRoi::Planner::Params（字段一一对应）
+ArmorRoi::Planner::Params makeRoiParams(const RobotConfig& cfg,
+                                        const RobotConfig::CameraParams& camera) {
+    ArmorRoi::Planner::Params p;
+    const RobotConfig::ArmorParams::RoiParams& r = cfg.armor.roi;
+    p.enabled          = r.enabled;
+    p.targetSpanM      = r.targetSpanM;
+    p.monitorInterval  = r.monitorInterval;
+    p.fullFrameHoldSec = r.fullFrameHoldSec;
+    p.scanInterval     = r.scanInterval;
+    p.tileOverlapPx    = r.tileOverlapPx;
+    p.bboxExpandFactor = r.bboxExpandFactor;
+    p.boundaryMarginPx = r.boundaryMarginPx;
+    p.inputWidth       = cfg.armor.inputWidth;
+    p.inputHeight      = cfg.armor.inputHeight;
+    p.fx               = camera.cameraMatrix.at<double>(0, 0);
+    p.fy               = camera.cameraMatrix.at<double>(1, 1);
+    return p;
 }
 
 } // namespace
@@ -119,6 +141,9 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
     const RobotConfig& cfg = RobotConfig::instance();
     const RobotConfig::PipelineParams& pipe = cfg.armor.pipeline;
 
+    // 自适应 ROI 规划器（参数见 config armor.roi；相机内参提供距离 → 像素换算）
+    roi_planner_ = std::make_unique<ArmorRoi::Planner>(makeRoiParams(cfg, camera));
+
     // 后处理颜色过滤初值：电控遥测颜色的合法初始值（config mcu_telemetry.color.initial）。
     // 运行期由 main 遥测线程按控制器最新颜色调用 setDetectColor() 更新。
     detect_color_.store(static_cast<int>(cfg.mcuTelemetry.color.initial),
@@ -150,6 +175,18 @@ ArmorPipeline::ArmorPipeline(const std::array<int, NUM_QUEUES>& queue_max_sizes,
     std::cout << "    Model: " << model_path << std::endl;
     std::cout << "    Device: " << cfg.armor.device << std::endl;
     std::cout << "    Input resolution: " << cfg.armor.inputWidth << "x" << cfg.armor.inputHeight << std::endl;
+    // 自适应 ROI 参数（便于运行时核对配置是否生效）
+    {
+        const RobotConfig::ArmorParams::RoiParams& roi = cfg.armor.roi;
+        std::cout << "    Adaptive ROI: " << (roi.enabled ? "on" : "off")
+                  << " (target_span=" << roi.targetSpanM << "m"
+                  << ", monitor=" << roi.monitorInterval << "f"
+                  << ", hold=" << roi.fullFrameHoldSec << "s"
+                  << ", scan=" << roi.scanInterval << "f"
+                  << ", overlap=" << roi.tileOverlapPx << "px"
+                  << ", bbox_k=" << roi.bboxExpandFactor
+                  << ", boundary=" << roi.boundaryMarginPx << "px)" << std::endl;
+    }
     std::cout << "    Inference model max batch: " << cfg.armor.maxBatch << std::endl;
     std::cout << "    Stage batch (preprocess/infer/postprocess): "
               << pipe.preprocessBatch << "/" << pipe.inferenceBatch << "/"
@@ -270,61 +307,99 @@ ArmorPipeline::~ArmorPipeline()
 
 void ArmorPipeline::processStage1(DataDeque& data)
 {
-    std::vector<ArmorPipelineData*> ptrs;
-    ptrs.reserve(data.size());
-    for (auto& d : data) ptrs.push_back(d.get());
+    // 展平本批全部识别视图（全画面或 ROI）。ROI 直接引用原画面的子矩阵，
+    // 由 resize 读取，不单独复制像素；功能关闭时每帧只有一个全画面视图。
+    size_t total_views = 0;
+    for (auto& d : data) total_views += d->initial.roi_plan.views.size();
 
+    std::vector<cv::Mat> roi_views;   // ROI 子矩阵（浅引用，生命周期覆盖本次预处理）
+    roi_views.reserve(total_views);
     std::vector<const cv::Mat*> frame_ptrs;
-    frame_ptrs.reserve(ptrs.size());
-    for (auto* d : ptrs) frame_ptrs.push_back(&d->initial.frame);
-
     std::vector<cv::Mat*> preprocessed_ptrs;
-    preprocessed_ptrs.reserve(ptrs.size());
-    for (auto* d : ptrs) preprocessed_ptrs.push_back(&d->stage1.frame);
+    frame_ptrs.reserve(total_views);
+    preprocessed_ptrs.reserve(total_views);
+
+    for (auto& d : data) {
+        const ArmorRoi::Plan& plan = d->initial.roi_plan;
+        d->stage1.frames.resize(plan.views.size());
+        for (size_t v = 0; v < plan.views.size(); ++v) {
+            const ArmorRoi::View& view = plan.views[v];
+            if (view.full_frame) {
+                frame_ptrs.push_back(&d->initial.frame);
+            } else {
+                roi_views.emplace_back(d->initial.frame(view.rect));
+                frame_ptrs.push_back(&roi_views.back());
+            }
+            preprocessed_ptrs.push_back(&d->stage1.frames[v]);
+        }
+    }
 
     s1_.preprocessor.preprocess(frame_ptrs, preprocessed_ptrs);
 }
 
 void ArmorPipeline::processStage2(DataDeque& data)
 {
-    std::vector<ArmorPipelineData*> ptrs;
-    ptrs.reserve(data.size());
-    for (auto& d : data) ptrs.push_back(d.get());
-
-    // 已预处理的图像（阶段1 resize 到模型输入尺寸）交给推理客户端
+    // 展平本批全部识别视图（全画面与 ROI 交替出现，顺序与各帧 roi_plan.views 一致）
     std::vector<const cv::Mat*> preprocessed_ptrs;
-    preprocessed_ptrs.reserve(ptrs.size());
-    for (auto* d : ptrs)
-        preprocessed_ptrs.push_back(&d->stage1.frame);
-
-    // 推理输出由客户端直接 memcpy 进各数据的输出缓冲（PipelineData 自持）
     std::vector<Infer::OutputBuffer*> outs;
-    outs.reserve(ptrs.size());
-    for (auto* d : ptrs)
-        outs.push_back(&d->stage2.output);
+    for (auto& d : data) {
+        const size_t n = d->initial.roi_plan.views.size();
+        d->stage2.outputs.resize(n);
+        for (size_t v = 0; v < n; ++v) {
+            preprocessed_ptrs.push_back(&d->stage1.frames[v]);
+            outs.push_back(&d->stage2.outputs[v]);
+        }
+    }
 
-    // 推理器在独立进程（armor_infer_process）中：经共享内存通信调用，
-    // 推理进程未启动时此处阻塞等待
-    if (!s2_.client->runInference(preprocessed_ptrs, outs))
-        return;   // 通信失败：丢弃本批
+    // 推理器在独立进程（armor_infer_process）中：经共享内存通信调用，推理进程未
+    // 启动时此处阻塞等待。共享内存协议每次请求最多 InferShm::MAX_IMAGES 张图，
+    // 视图总数超过该值时按顺序分块请求（同一帧的多个视图落在同一次或相邻请求内，
+    // 由推理进程按已编译 batch 自行拆批，与一次整批请求等价）。
+    for (size_t start = 0; start < preprocessed_ptrs.size(); start += InferShm::MAX_IMAGES) {
+        const size_t n = std::min<size_t>(InferShm::MAX_IMAGES,
+                                          preprocessed_ptrs.size() - start);
+        std::vector<const cv::Mat*> sub_imgs(
+            preprocessed_ptrs.begin() + start, preprocessed_ptrs.begin() + start + n);
+        std::vector<Infer::OutputBuffer*> sub_outs(
+            outs.begin() + start, outs.begin() + start + n);
+        if (!s2_.client->runInference(sub_imgs, sub_outs)) {
+            // 通信失败：丢弃本批全部结果（下游按无检测处理）
+            for (auto& d : data) d->stage2.outputs.clear();
+            return;
+        }
+    }
 }
 
 void ArmorPipeline::processStage3(DataDeque& data)
 {
-    std::vector<ArmorPipelineData*> ptrs;
-    ptrs.reserve(data.size());
-    for (auto& d : data) ptrs.push_back(d.get());
+    // 调试开关：UAP_DEBUG_ROI=1 时打印每个识别视图的原始检测数与合并后检测数
+    static const bool roi_debug = []() {
+        const char* env = std::getenv("UAP_DEBUG_ROI");
+        return env != nullptr && std::string(env) == "1";
+    }();
 
+    // 展平本批全部识别视图：每个视图用自己的截取尺寸做模型坐标 → 原图坐标缩放
+    struct ViewRef { size_t data_index; size_t view_index; };
     std::vector<ArmorDetect::BatchOutput> outputs;
     std::vector<int> orig_ws, orig_hs;
-    outputs.reserve(ptrs.size());
-    orig_ws.reserve(ptrs.size());
-    orig_hs.reserve(ptrs.size());
-    for (auto* d : ptrs) {
-        const Infer::OutputBuffer& out = d->stage2.output;
-        outputs.push_back({out.data.data(), out.rows, out.cols});
-        orig_ws.push_back(d->initial.frame.cols);
-        orig_hs.push_back(d->initial.frame.rows);
+    std::vector<ViewRef> refs;
+    for (size_t i = 0; i < data.size(); ++i) {
+        ArmorPipelineData* d = data[i].get();
+        const ArmorRoi::Plan& plan = d->initial.roi_plan;
+        if (d->stage2.outputs.size() != plan.views.size())
+            continue;   // 推理通信失败（阶段2 已清空输出）：本帧按无检测处理
+        for (size_t v = 0; v < plan.views.size(); ++v) {
+            const Infer::OutputBuffer& out = d->stage2.outputs[v];
+            outputs.push_back({out.data.data(), out.rows, out.cols});
+            if (plan.views[v].full_frame) {
+                orig_ws.push_back(d->initial.frame.cols);
+                orig_hs.push_back(d->initial.frame.rows);
+            } else {
+                orig_ws.push_back(plan.views[v].rect.width);
+                orig_hs.push_back(plan.views[v].rect.height);
+            }
+            refs.push_back({i, v});
+        }
     }
 
     std::vector<std::vector<ArmorDetect::Object>> results;
@@ -334,8 +409,63 @@ void ArmorPipeline::processStage3(DataDeque& data)
                                         detect_color_.load(std::memory_order_relaxed),
                                         conf_threshold_, nms_threshold_, results);
 
-    for (size_t i = 0; i < ptrs.size(); ++i)
-        ptrs[i]->stage3.objects = std::move(results[i]);
+    // 检测结果按视图分桶；ROI 视图的检测坐标（ROI 局部）平移回原图坐标系
+    std::vector<std::vector<std::vector<ArmorDetect::Object>>> view_objects(data.size());
+    for (size_t i = 0; i < data.size(); ++i)
+        view_objects[i].resize(data[i]->initial.roi_plan.views.size());
+    for (size_t k = 0; k < refs.size(); ++k) {
+        const ViewRef& ref = refs[k];
+        ArmorPipelineData* d = data[ref.data_index].get();
+        const ArmorRoi::View& view = d->initial.roi_plan.views[ref.view_index];
+        std::vector<ArmorDetect::Object>& objects = view_objects[ref.data_index][ref.view_index];
+        objects = std::move(results[k]);
+        if (view.full_frame) continue;
+        for (auto& obj : objects) {
+            obj.rect.x += (float)view.rect.x;
+            obj.rect.y += (float)view.rect.y;
+            for (int j = 0; j < 8; j += 2) {
+                obj.landmarks[j]     += (float)view.rect.x;
+                obj.landmarks[j + 1] += (float)view.rect.y;
+            }
+        }
+    }
+
+    // 规划器合并各视图：丢弃 ROI 边界截断框、丢弃全画面中与 ROI 重复的框、
+    // 检测到 ROI 外/边界物体时触发全画面保持；保留下来的检测进入阶段4/5。
+    for (size_t i = 0; i < data.size(); ++i) {
+        ArmorPipelineData* d = data[i].get();
+        const std::vector<std::vector<ArmorDetect::Object>>& view_objs = view_objects[i];
+        std::vector<std::vector<ArmorRoi::Detection>> view_dets(view_objs.size());
+        for (size_t v = 0; v < view_objs.size(); ++v) {
+            view_dets[v].reserve(view_objs[v].size());
+            for (const auto& obj : view_objs[v])
+                view_dets[v].push_back({obj.rect, obj.label});
+        }
+        const std::vector<std::vector<char>> keep =
+            roi_planner_->filterDetections(d->initial.roi_plan, view_dets);
+        std::vector<ArmorDetect::Object> merged;
+        for (size_t v = 0; v < view_objs.size(); ++v)
+            for (size_t k = 0; k < view_objs[v].size(); ++k)
+                if (keep[v][k]) merged.push_back(view_objs[v][k]);
+        d->stage3.objects = std::move(merged);
+
+        // 调试（UAP_DEBUG_ROI=1）：每个识别视图的原始检测数与合并后检测数
+        if (roi_debug) {
+            std::cout << "[ROI检测] " << ArmorRoi::modeName(d->initial.roi_plan.mode) << " 视图:";
+            for (size_t v = 0; v < view_objs.size(); ++v) {
+                std::cout << " " << view_objs[v].size();
+                if (!d->initial.roi_plan.views[v].full_frame)
+                    std::cout << "(ROI)";
+            }
+            std::cout << " 合并: " << d->stage3.objects.size();
+            for (const auto& obj : d->stage3.objects) {
+                std::cout << " [label=" << obj.label << " (" << obj.rect.x << ","
+                          << obj.rect.y << "," << obj.rect.width << "x"
+                          << obj.rect.height << ") prob=" << obj.prob << "]";
+            }
+            std::cout << std::endl;
+        }
+    }
 }
 
 void ArmorPipeline::processStage4(DataDeque& data)
@@ -359,6 +489,13 @@ void ArmorPipeline::processStage4(DataDeque& data)
     auto& world_positions  = d->stage4.world_positions;
     auto& world_eulers     = d->stage4.world_eulers;
     auto& reprojected      = d->stage4.reprojected_points;
+
+    // 调试（UAP_DEBUG_ROI=1）：本帧进入 PnP 的物体数与成功数
+    static const bool roi_debug = []() {
+        const char* env = std::getenv("UAP_DEBUG_ROI");
+        return env != nullptr && std::string(env) == "1";
+    }();
+    size_t pnp_ok_count = 0;
 
     // 按装甲板种类（类别 label 0~8）组织 stage4 数据：外层 vector 索引 = 类别，
     // 每帧重置为 NUM_CLASSES 个槽位（槽内为默认值：空观测、初始化 PnP 未成功）
@@ -405,6 +542,7 @@ void ArmorPipeline::processStage4(DataDeque& data)
         bool pnp_ok = s4_.camera_proj->solvePnP_Cam(
             loacl_points_3d, image_points,
             flags, position_cam, euler_cam, constraints);
+        if (pnp_ok) ++pnp_ok_count;
 
         cv::Vec3f world_pos(0, 0, 0);
         cv::Vec3f world_euler(0, 0, 0);
@@ -424,6 +562,13 @@ void ArmorPipeline::processStage4(DataDeque& data)
         world_eulers.push_back(world_euler);
         cat.world_pos.push_back(world_pos);      // 按类别存储：与 cat.all_image_points 一一对应
         cat.world_euler.push_back(world_euler);
+    }
+
+    // 调试（UAP_DEBUG_ROI=1）：PnP 成功数与各物体类别
+    if (roi_debug) {
+        std::cout << "[ROI位姿] 物体:" << objects.size() << " PnP成功:" << pnp_ok_count << " 类别:";
+        for (const auto& obj : objects) std::cout << " " << obj.label;
+        std::cout << std::endl;
     }
 }
 
@@ -599,6 +744,52 @@ void ArmorPipeline::processStage5(DataDeque& data)
             d->stage5.target_world_points = pts;   // 1 个点（world，米）
         }
     }
+
+    // ── 自适应 ROI：把本帧所选目标的相机距离与投影图像点交给规划器 ──
+    // 规划器据此决定下一帧目标 ROI 的中心（投影点）与尺寸（距离 → 固定物理边长
+    // 对应的像素边长，最小 = 网络输入尺寸）。目标无效 / 在相机后方 / 投影无效时
+    // 交给规划器的目标状态无效，由规划器退回包围 ROI 或无目标模式。
+    bool roi_target_valid = false;
+    double roi_target_distance = 0.0;
+    cv::Point2f roi_target_point(0.0f, 0.0f);
+    if (best_label >= 0) {
+        const cv::Vec3f target_cam = tree.transformPoint(
+            RobotTfTree::WORLD, RobotTfTree::CAMERA,
+            cv::Vec3f((float)d->stage5.target_pos[0],
+                      (float)d->stage5.target_pos[1],
+                      (float)d->stage5.target_pos[2]));
+        roi_target_distance = (double)cv::norm(target_cam);
+        // cam 系 y 轴为光轴正方向（见 CameraProjection 约定）：目标必须在相机前方
+        if (target_cam[1] > 0.0f) {
+            std::vector<cv::Point2f> projected;
+            s5_.camera_proj->projectPoints_Cam(
+                {cv::Point3f(target_cam[0], target_cam[1], target_cam[2])}, projected);
+            if (projected.size() == 1 &&
+                std::isfinite(projected[0].x) && std::isfinite(projected[0].y)) {
+                roi_target_point = projected[0];
+                roi_target_valid = true;
+            }
+        }
+    }
+    roi_planner_->observeTarget(best_label >= 0, roi_target_distance,
+                                roi_target_point, roi_target_valid);
+
+    // 调试（UAP_DEBUG_ROI=1）：本帧目标选取结果与交给规划器的 ROI 输入
+    static const bool roi_debug = []() {
+        const char* env = std::getenv("UAP_DEBUG_ROI");
+        return env != nullptr && std::string(env) == "1";
+    }();
+    if (roi_debug) {
+        int class_ekf_available = 0;
+        for (int label = 0; label < NUM_CLASS_EKF; ++label)
+            if (s5_.class_ekfs[label].stateAvailable()) ++class_ekf_available;
+        std::cout << "[ROI目标] 选中label=" << best_label
+                  << " 目标有效=" << (best_label >= 0 ? 1 : 0)
+                  << " 距离=" << roi_target_distance
+                  << " 投影有效=" << (roi_target_valid ? 1 : 0)
+                  << " esekf=" << (esekf_initialized ? 1 : 0)
+                  << " 可用EKF类别数=" << class_ekf_available << std::endl;
+    }
 }
 
 // ==================== 事件驱动调度器 ====================
@@ -659,6 +850,8 @@ bool ArmorPipeline::addFrame(cv::Mat frame,
                                const ExtraInputInfo& extra_info)
 {
     auto data = std::make_unique<ArmorPipelineData>();
+    // 自适应 ROI：取帧时决定本帧识别视图（全画面 / ROI，可含全画面监视视图）
+    data->initial.roi_plan = roi_planner_->plan(frame.size());
     data->initial.frame = std::move(frame);
     data->initial.frame_timestamp = frame_timestamp;
     data->initial.extra_info = extra_info;
@@ -697,6 +890,10 @@ void ArmorPipeline::fillPerception(ArmorPipelineData* d, ArmorPerception& out)
     // tryPopFrame 组装进 PipelineResult::predictor（Predictor::function）后随
     // 结果输出（见 tryPopFrame）。
     out.detection_count = d->stage3.objects.size();
+
+    // 自适应 ROI：本帧全部识别视图（含全画面标志与 ROI 矩形），供可视化阶段绘制
+    out.roi_views = d->initial.roi_plan.views;
+
     out.valid = true;
 }
 
@@ -795,6 +992,8 @@ void ArmorPipeline::clear()
         }
         // 重置 stage5 目标选取滞回跨帧状态（L1 目标粘滞）
         last_chosen_label_ = -1;
+        // 重置自适应 ROI 规划器（模式 / 目标观测 / 分块缓存 / 保持计时全部清空）
+        roi_planner_->reset();
 
         // 队列计数归零
         for (auto& qs : queue_sizes_) qs.store(0);

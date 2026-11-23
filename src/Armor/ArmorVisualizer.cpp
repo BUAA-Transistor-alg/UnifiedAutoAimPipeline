@@ -14,6 +14,23 @@ void ArmorVisualizer::render(cv::Mat& image,
                                const RobotTfTree& tf_tree,
                                const CameraProjection& camera_proj,
                                const ArmorVisualizationOptions& options, const std::string& model_name) const {
+    // ── 0. 本帧识别视图框（config armor.roi）──
+    // 逐视图绘制绿色矩形框，有哪个视图就绘制哪个：
+    //   ROI 视图      → 绘制该视图在原图中的截取矩形；
+    //   全画面视图    → 沿画面边缘绘制矩形框，表示整幅原画面送入网络。
+    // 两视图可同时存在（ROI 监视帧），分别绘制。
+    if (options.roi) {
+        const cv::Scalar view_color(0, 255, 0);   // 绿色
+        for (const ArmorRoi::View& view : data.roi.views) {
+            if (view.full_frame) {
+                cv::rectangle(image, cv::Point(1, 1),
+                              cv::Point(image.cols - 2, image.rows - 2), view_color, 2);
+            } else {
+                cv::rectangle(image, view.rect, view_color, 2);
+            }
+        }
+    }
+
     // ── 1. 每物体 PnP 角点重投影 + 序号 ──
     for (size_t i = 0; options.pnp && i < data.raw_pose.reprojected_points.size(); ++i) {
         drawReprojectedPoints(image, (int)i, data.raw_pose.reprojected_points[i]);
@@ -248,6 +265,15 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
     };
 
     struct Pt2 { float x, y; };
+    // XY 顶视图的可信坐标上限（米）：PnP 在退化观测上可能给出数十公里量级的位置，
+    // 这种点参与自动缩放会把视野拉到数十公里，并让自适应网格的循环次数随跨度膨胀，
+    // 表现为可视化线程间歇性卡顿。顶视图只表达场地范围，超限点丢弃。
+    constexpr float kMaxPlotAbsM = 1000.0f;
+    auto plottable = [](const Pt2& p) {
+        return std::isfinite(p.x) && std::isfinite(p.y) &&
+               std::abs(p.x) <= kMaxPlotAbsM && std::abs(p.y) <= kMaxPlotAbsM;
+    };
+
     std::vector<Pt2> pts;
     if (data.filtered_pose.valid) {
         pts.push_back({(float)data.filtered_pose.pos[0], (float)data.filtered_pose.pos[1]});
@@ -272,12 +298,16 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
         }
     }
 
+    // 丢弃不可信点（见 plottable 注释）
+    pts.erase(std::remove_if(pts.begin(), pts.end(),
+                             [&](const Pt2& p) { return !plottable(p); }),
+              pts.end());
+
     // ── 自动缩放：包围盒 + 边距（无有效点或范围过小时用默认半边长）──
     float min_x = -kDefaultRange, max_x = kDefaultRange;
     float min_y = -kDefaultRange, max_y = kDefaultRange;
     bool have_pts = false;
     for (const auto& p : pts) {
-        if (!std::isfinite(p.x) || !std::isfinite(p.y)) continue;
         if (!have_pts) {
             min_x = max_x = p.x;
             min_y = max_y = p.y;
@@ -298,22 +328,25 @@ void ArmorVisualizer::renderXY(const ArmorVisualizationData& data) {
         min_y = cy - span * 0.5f; max_y = cy + span * 0.5f;
     }
     const double scale = (double)(kSize - 2 * kMargin) / (double)(max_x - min_x);
-    // world (x, y) → 窗口像素（x 向右，y 向上）
+    // world (x, y) → 窗口像素（x 向右，y 向上）。像素坐标限幅：绘制输入里仍可能有
+    // 远离视野的原始数据点（只是不参与自动缩放），限幅保证不会产生极端整数坐标。
     auto w2p = [&](float x, float y) -> cv::Point {
-        return cv::Point((int)std::lround(kMargin + (x - min_x) * scale),
-                         (int)std::lround(kSize - kMargin - (y - min_y) * scale));
+        const auto clamp_px = [](long v) {
+            constexpr long kLimit = 100000;   // 已在画面外即可，OpenCV 绘制自行裁剪
+            return (int)std::max(-kLimit, std::min(kLimit, v));
+        };
+        return cv::Point(clamp_px(std::lround(kMargin + (x - min_x) * scale)),
+                         clamp_px(std::lround(kSize - kMargin - (y - min_y) * scale)));
     };
 
     // ── 网格 + 世界原点十字 ──
-    // 自适应网格步长（米）：使网格间距约 >= 40px
+    // 自适应网格步长（米）：使网格间距约 >= 40px。步长按倍数递增、不设候选上限：
+    // 若步长停在固定上限而坐标跨度异常大，网格循环次数会随跨度线性膨胀（曾观测到
+    // 单帧数十万次线绘制导致可视化线程卡顿约 1.5s）；倍数递增后循环次数只与窗口
+    // 像素尺寸相关，与坐标跨度无关。
     float grid_m = 0.1f;
-    {
-        static const float kSteps[] = {0.1f, 0.2f, 0.5f, 1.0f, 2.0f, 5.0f,
-                                       10.0f, 20.0f, 50.0f, 100.0f};
-        for (float s : kSteps) {
-            if (s * (float)scale >= 40.0f) { grid_m = s; break; }
-        }
-    }
+    for (int guard = 0; guard < 64 && grid_m * (float)scale < 40.0f; ++guard)
+        grid_m *= 2.0f;
     for (float gx = std::floor(min_x / grid_m) * grid_m;
          gx <= max_x + 1e-6f; gx += grid_m) {
         const int px = w2p(gx, 0).x;
