@@ -57,6 +57,7 @@ private:
     };
 
     Camera& camera_;
+    bool rotate180_;  // 成功获取相机图像后旋转 180°
     // 状态取样函数（旧构型 = 包装 rc_.getState() → strict → ExtraInputInfo；
     // 新构型 = 适配器提供的取样函数）。**只保留取样函数**，两种构型行为一致。
     std::function<ExtraInputInfo()> sampler_;

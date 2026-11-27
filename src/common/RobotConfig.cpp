@@ -74,8 +74,10 @@ void parseCameraParams(const YAML::Node& camNode, const std::string& name,
         out.netIp     = requireScalar<std::string>(camNode, "net_ip", name);
         out.exposure  = requireScalar<float>(camNode, "exposure", name);
         out.gain      = requireScalar<float>(camNode, "gain", name);
+        out.rotate180 = requireScalar<bool>(camNode, "rotate_180", name);
     } else {
         // 视频/交互模式（测试最大帧率开关）
+        out.rotate180 = false;
         out.testMaxFps = requireScalar<bool>(camNode, "test_max_fps", name);
     }
 }

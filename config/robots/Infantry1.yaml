@@ -78,6 +78,7 @@ common:
       net_ip: "192.168.10.25"       # 本机网口 IP
       exposure: 2000.0              # 曝光时间（微秒）
       gain: 16.0                    # 增益
+      rotate_180: false             # 相机输入图像旋转 180°，true 开启，false 关闭
       resolution:
         width: 1280                 # 图像宽（像素）
         height: 1080                # 图像高（像素）

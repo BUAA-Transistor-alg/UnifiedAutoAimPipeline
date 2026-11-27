@@ -8,10 +8,13 @@ CameraInputMode::CameraInputMode(Camera& camera, tcs::RobotController& rc)
     : CameraInputMode(camera, [&rc]() { return stateToExtraInfo(rc.getState()); }) {}
 
 CameraInputMode::CameraInputMode(Camera& camera, std::function<ExtraInputInfo()> sampler)
-    : camera_(camera), sampler_(std::move(sampler)) {
+    : camera_(camera),
+      rotate180_(RobotConfig::instance().common.inputMode.cameraMode.rotate180),
+      sampler_(std::move(sampler)) {
     // ── extra_info 延迟状态队列：启动后台采样线程 ──
     // 延迟时间必须由配置文件提供（无默认值）
     extra_info_delay_ = RobotConfig::instance().common.inputMode.cameraMode.extraInfoDelay;
+    std::cout << "[CameraInputMode] Rotate 180: " << (rotate180_ ? "ON" : "OFF") << std::endl;
     std::cout << "[CameraInputMode] Extra info delayed state queue: ON"
               << " (extra_info_delay = " << extra_info_delay_ << "s)" << std::endl;
     state_thread_ = std::thread(&CameraInputMode::stateSamplerLoop, this);
@@ -45,7 +48,11 @@ bool CameraInputMode::getNextFrame(cv::Mat& frame,
         return true;
     }
 
-    // 成功取帧（有输入源新帧）：行为不变——extra_info 取延迟状态队列队头
+    if (rotate180_) {
+        cv::rotate(frame, frame, cv::ROTATE_180);
+    }
+
+    // 成功取帧：extra_info 取延迟状态队列队头
     // （= 相对当前时刻 extra_info_delay 前的数据，至少有一个数据；
     // 底盘 xyz 固定为 0，相机模式下底盘视为世界原点）。
     std::unique_lock<std::mutex> lock(state_mtx_);

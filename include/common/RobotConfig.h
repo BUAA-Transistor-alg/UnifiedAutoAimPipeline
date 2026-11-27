@@ -81,7 +81,7 @@ public:
     // 相机参数（分辨率 + 内参 + 畸变；相机模式额外含 IP/曝光/增益/extra_info_delay）
     // ⚠ 给后续修改者：本结构体所有字段均无默认值，必须由机器配置文件提供：
     //   - 相机模式（common.input_mode.camera_mode）必填 device_ip / net_ip /
-    //     exposure / gain / extra_info_delay；
+    //     exposure / gain / rotate_180 / extra_info_delay；
     //   - 视频/交互模式（common.input_mode.video_mode）必填 test_max_fps；
     //   - 两模式均必填 resolution / camera_matrix / dist_coeffs。
     //   缺任一字段 RobotConfig::load 直接抛出异常退出，解析见 src/common/RobotConfig.cpp。
@@ -90,6 +90,7 @@ public:
         std::string netIp;      // 本机网口 IP（相机模式必填）
         float exposure;         // 曝光时间（微秒，相机模式必填）
         float gain;             // 增益（相机模式必填）
+        bool rotate180;         // 相机图像旋转 180°（相机模式必填，其他模式关闭）
         int width, height;      // 图像分辨率（像素）
         cv::Mat cameraMatrix;       // 3x3 CV_64F 内参矩阵
         cv::Mat distCoeffs;         // Nx1 CV_64F 畸变系数
