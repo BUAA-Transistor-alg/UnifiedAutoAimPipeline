@@ -5,6 +5,8 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <optional>
+#include <cstdint>
 #include <string>
 
 #include "common/RobotConfig.h"   // YawMode
@@ -33,6 +35,8 @@
  *   - 交互模式（InteractiveInputMode）：当前构型包全 0（无云台数据）。
  */
 struct ExtraInputInfo {
+    /// 日志模块分配的原始图像编号，随该帧输入信息传递到输出阶段。
+    std::optional<std::uint64_t> diagnostic_frame_id;
     static constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
     // ── 单 yaw 构型包（chassis -> yaw -> pitch -> head）──

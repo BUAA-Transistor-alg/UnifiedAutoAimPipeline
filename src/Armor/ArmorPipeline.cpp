@@ -543,6 +543,7 @@ void ArmorPipeline::processStage4(DataDeque& data)
             loacl_points_3d, image_points,
             flags, position_cam, euler_cam, constraints);
         if (pnp_ok) ++pnp_ok_count;
+        d->stage4.pose_valid.push_back(pnp_ok);
 
         cv::Vec3f world_pos(0, 0, 0);
         cv::Vec3f world_euler(0, 0, 0);
@@ -873,6 +874,7 @@ void ArmorPipeline::fillPerception(ArmorPipelineData* d, ArmorPerception& out)
 {
     out.objects = d->stage3.objects;
     out.world_positions = d->stage4.world_positions;
+    out.pose_valid = d->stage4.pose_valid;
     out.world_eulers = d->stage4.world_eulers;
     out.reprojected_points = d->stage4.reprojected_points;
 

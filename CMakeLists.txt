@@ -20,6 +20,7 @@ add_definitions(-DPROJECT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
 find_package(OpenCV REQUIRED)
 find_package(OpenVINO REQUIRED)
 find_package(Threads REQUIRED)
+find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Ceres REQUIRED)
 
@@ -87,6 +88,7 @@ set(COMMON_SOURCES
     src/common/SentryController.cpp
     # 看门狗喂狗通道（可选功能：仅当设置 WATCHDOG_SOCKET_PATH 时生效，见 auto_launch/）
     src/common/Debug/WatchdogFeed.cpp
+    src/common/Debug/Log.cpp
     # 相机投影 + Ceres 位姿优化/精化（common/pose/，二者打包在一起）
     src/common/pose/CameraProjection.cpp
     src/common/pose/CeresPoseEstimator.cpp
@@ -172,11 +174,24 @@ target_link_libraries(unified_auto_aim PRIVATE
     ${CMAKE_DL_LIBS}       # libdl (backward-cpp 需要 dladdr)
 )
 
+target_include_directories(unified_auto_aim PRIVATE ${NLOHMANN_JSON_INCLUDE_DIR})
+
 # ── backward-cpp: 可选 libdw 链接 ──
 if(DW_LIBRARY)
     target_link_libraries(unified_auto_aim PRIVATE ${DW_LIBRARY})
     target_compile_definitions(unified_auto_aim PRIVATE BACKWARD_HAS_DW=1)
 endif()
+
+# 独立日志检查不连接相机或控制器，输出文件写入调用方指定的目录。
+add_executable(diagnostic_log_test EXCLUDE_FROM_ALL
+    test/diagnostic_log_test.cpp
+    src/common/Debug/Log.cpp
+    src/common/RobotConfig.cpp
+    src/common/PathResolver.cpp)
+target_include_directories(diagnostic_log_test PRIVATE ${NLOHMANN_JSON_INCLUDE_DIR})
+target_link_libraries(diagnostic_log_test PRIVATE Threads::Threads ${YAMLCPP_LIBRARIES} ${OpenCV_LIBS}
+    tcs::robot_comm_c tcbs)
+target_compile_definitions(diagnostic_log_test PRIVATE IS_INFANTRY_2=$<BOOL:${IS_INFANTRY_2}>)
 
 # ── 推理进程（共享内存 + 信号量通信；各进程只编译一个模型，见 InferShm.h）──
 # 启动方式（先于主程序）：

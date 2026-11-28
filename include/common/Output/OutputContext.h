@@ -18,12 +18,16 @@
 #define OUTPUT_CONTEXT_H
 
 #include <vector>
+#include <optional>
+#include <cstdint>
 
 #include "common/Ballistic/SequencePredictor.h"
 #include "common/BigSmallYaw/RobotStateForBigSmallYaw.h"
 #include "common/RobotConfig.h"
 
 struct OutputContext {
+    /// 日志模块分配的预测计划编号，随输出上下文传递。
+    std::optional<std::uint64_t> diagnostic_plan_id;
     // 当前 yaw 构型（config common.big_small_yaw.mode；两构型的信息包互不混用，
     // 下游据此决定读哪一包 / 是否绘制大小 yaw 叠加）
     YawMode yaw_mode = YawMode::SINGLE;

@@ -111,6 +111,8 @@ struct ArmorPipelineData {
 
         // 每个物体的世界坐标/欧拉角/重投影（与 objects 一一对应，供输出与可视化）
         std::vector<cv::Vec3f> world_positions;
+        /// 各检测的 PnP 成功标志，与 stage3.objects 顺序一致。
+        std::vector<bool> pose_valid;
         std::vector<cv::Vec3f> world_eulers;
         std::vector<std::vector<cv::Point2f>> reprojected_points;
     } stage4;

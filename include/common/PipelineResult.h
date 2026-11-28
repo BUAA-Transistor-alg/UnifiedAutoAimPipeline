@@ -44,6 +44,8 @@ struct ArmorPerception {
 
     // ── 阶段4：PnP + 坐标转换 ──
     std::vector<cv::Vec3f> world_positions;                       // 每物体世界坐标
+    /// 各检测的 PnP 成功标志，与 objects 顺序一致。
+    std::vector<bool> pose_valid;
     std::vector<cv::Vec3f> world_eulers;                          // 每物体世界欧拉角
     std::vector<std::vector<cv::Point2f>> reprojected_points;     // PnP 角点重投影（图像坐标）
 
