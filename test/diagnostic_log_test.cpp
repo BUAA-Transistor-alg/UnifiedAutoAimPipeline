@@ -270,7 +270,7 @@ int main(int argc, char** argv) {
     d::RecordContext context{};
     context.stamp.frame_id = 0;
     context.pipeline = d::Pipeline::Armor;
-    d::InputData input{context, now, 0.125, -0.25};
+    d::InputData input{context, now, 0.125, -0.25, 0.5, -0.375, 0.0};
     d::SessionInfo info{root / "first", "common:\n  diagnostic_test: true\n", "diagnostic-log-test", false};
 
     if (argc == 3 && (std::string(argv[2]) == "auto-input" || std::string(argv[2]) == "auto-perception")) {
@@ -444,7 +444,12 @@ int main(int argc, char** argv) {
         check(rows.size() == count, "输出记录数量不符");
         check(rows.front().at("stamp").at("frame_id") == 0, "编号 0 未保留");
         check(rows.front().at("written_at_ns").is_number_integer(), "写入时间没有使用整数纳秒");
-        if (i == 0) check(rows.front().at("yaw_rad") == 0.125, "输入角度写入错误");
+        if (i == 0) {
+            check(rows.front().at("yaw_rad") == 0.125, "输入角度写入错误");
+            check(rows.front().at("imu_euler_yaw_rad") == 0.5 &&
+                  rows.front().at("imu_euler_pitch_rad") == -0.375 &&
+                  rows.front().at("imu_euler_roll_rad") == 0.0, "IMU 欧拉角写入错误");
+        }
         if (i == 1) check(rows.front().at("objects")[0].at("image_points")[0][0] == 10.5, "未持有感知数据副本");
         if (i == 2) {
             check(rows.front().at("track_id") == std::numeric_limits<std::uint64_t>::max(), "64 位编号精度丢失");
@@ -478,11 +483,28 @@ int main(int argc, char** argv) {
         pose.fillCurrentPackZeros(YawMode::SINGLE);
         pose.single.yaw_pos = 0.375;
         pose.single.pitch_angle = -0.125;
+        pose.single.imu_euler_yaw = 0.75;
+        pose.single.imu_euler_pitch = -0.5;
+        pose.single.imu_euler_roll = 0.125;
         const auto first_stamp = log.recordInputData(now, pose);
         pose.single.yaw_pos = -0.5;
         pose.single.pitch_angle = 0.25;
+        pose.single.imu_euler_yaw = -0.25;
+        pose.single.imu_euler_pitch = 0.375;
+        pose.single.imu_euler_roll = 0.0;
         const auto later = now + std::chrono::milliseconds(10);
         const auto second_stamp = log.recordInputData(later, pose);
+        for (auto member : {&ExtraInputInfo::SingleYawPose::imu_euler_yaw,
+                            &ExtraInputInfo::SingleYawPose::imu_euler_pitch,
+                            &ExtraInputInfo::SingleYawPose::imu_euler_roll}) {
+            const auto saved = pose.single.*member;
+            for (double value : {std::numeric_limits<double>::quiet_NaN(),
+                                 std::numeric_limits<double>::infinity()}) {
+                pose.single.*member = value;
+                expectError<std::invalid_argument>([&] { log.recordInputData(later, pose); });
+            }
+            pose.single.*member = saved;
+        }
         pose.single.yaw_pos = std::numeric_limits<double>::quiet_NaN();
         expectError<std::invalid_argument>([&] { log.recordInputData(later, pose); });
         ExtraInputInfo big_small;
@@ -496,6 +518,14 @@ int main(int argc, char** argv) {
               "首幅图像的配对姿态被后续修改影响");
         check(rows[1].at("yaw_rad") == -0.5 && rows[1].at("pitch_rad") == 0.25,
               "第二幅图像的配对姿态不符");
+        check(rows[0].at("imu_euler_yaw_rad") == 0.75 &&
+              rows[0].at("imu_euler_pitch_rad") == -0.5 &&
+              rows[0].at("imu_euler_roll_rad") == 0.125,
+              "首幅图像的 IMU 姿态被后续修改影响");
+        check(rows[1].at("imu_euler_yaw_rad") == -0.25 &&
+              rows[1].at("imu_euler_pitch_rad") == 0.375 &&
+              rows[1].at("imu_euler_roll_rad") == 0.0,
+              "第二幅图像的 IMU 姿态不符");
         check(rows[0].at("frame_timestamp_ns") ==
                   std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count() &&
               rows[1].at("frame_timestamp_ns") ==

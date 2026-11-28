@@ -73,6 +73,10 @@ struct InputData {
     double yaw_rad;
     /// 与本幅图像配对并交给后续处理的 pitch 关节角，相对父节点，单位为弧度。
     double pitch_rad;
+    /// 与本幅图像配对的 IMU 原始欧拉角，单位为弧度。
+    double imu_euler_yaw_rad;
+    double imu_euler_pitch_rad;
+    double imu_euler_roll_rad;
 };
 
 /// 一个检测结果经过位姿解算后的记录。

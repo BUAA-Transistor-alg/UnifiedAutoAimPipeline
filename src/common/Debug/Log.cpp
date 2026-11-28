@@ -145,6 +145,9 @@ void validate(const d::InputData& data) {
     validateContext(data.context, true, false);
     finite(data.yaw_rad);
     finite(data.pitch_rad);
+    finite(data.imu_euler_yaw_rad);
+    finite(data.imu_euler_pitch_rad);
+    finite(data.imu_euler_roll_rad);
 }
 
 void validate(const d::PerceptionData& data) {
@@ -237,6 +240,9 @@ Json serialize(const d::InputData& data) {
     object["frame_timestamp_ns"] = timeNs(data.frame_timestamp);
     object["yaw_rad"] = data.yaw_rad;
     object["pitch_rad"] = data.pitch_rad;
+    object["imu_euler_yaw_rad"] = data.imu_euler_yaw_rad;
+    object["imu_euler_pitch_rad"] = data.imu_euler_pitch_rad;
+    object["imu_euler_roll_rad"] = data.imu_euler_roll_rad;
     return object;
 }
 
@@ -546,6 +552,9 @@ diagnostics::DiagnosticStamp Log::recordInputData(diagnostics::TimePoint frame_t
     data.frame_timestamp = frame_timestamp;
     data.yaw_rad = extra_info.single.yaw_pos;
     data.pitch_rad = extra_info.single.pitch_angle;
+    data.imu_euler_yaw_rad = extra_info.single.imu_euler_yaw;
+    data.imu_euler_pitch_rad = extra_info.single.imu_euler_pitch;
+    data.imu_euler_roll_rad = extra_info.single.imu_euler_roll;
     validate(data);
     ensureApplicationSession();
     recordData(Stage::Input, data);
