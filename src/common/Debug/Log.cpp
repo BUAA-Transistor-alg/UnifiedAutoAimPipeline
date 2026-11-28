@@ -194,7 +194,7 @@ void validate(const d::ControlData& data) {
     validateContext(data.context, false, false);
     if (!data.context.stamp.control_tick_id) throw std::invalid_argument("Log: 缺少 control_tick_id");
     jointName(data.joint);
-    referenceName(data.reference_source);
+    if (data.reference_source) referenceName(*data.reference_source);
     if (data.reference_source == d::ReferenceSource::Plan &&
         (!data.context.stamp.plan_id || !data.context.stamp.reference_index))
         throw std::invalid_argument("Log: 计划控制周期缺少计划编号或参考下标");
@@ -204,7 +204,8 @@ void validate(const d::ControlData& data) {
              data.solver_position_rad, data.solver_velocity_rad_s, data.reference_position_rad,
              data.previous_predicted_position_rad, data.predicted_next_position_rad,
              data.predicted_next_velocity_rad_s, data.mpc_torque_nm, data.integral_torque_nm,
-             data.integral_increment_nm, data.command_torque_nm, data.measured_torque_nm}) finite(value);
+             data.integral_increment_nm, data.command_torque_nm, data.measured_torque_nm,
+             data.command_position_rad, data.command_velocity_rad_s}) finite(value);
 }
 
 std::size_t payloadBytes(const d::InputData&) { return sizeof(d::InputData); }
@@ -299,10 +300,10 @@ Json serialize(const d::PredictData& data) {
 Json serialize(const d::ControlData& data) {
     auto object = contextJson(data.context);
     object["joint"] = jointName(data.joint);
-    object["reference_source"] = referenceName(data.reference_source);
+    if (data.reference_source) object["reference_source"] = referenceName(*data.reference_source);
     object["started_at_ns"] = timeNs(data.started_at);
     object["integral_enabled"] = data.integral_enabled;
-    object["solution_valid"] = data.solution_valid;
+    putOptional(object, "solution_valid", data.solution_valid);
     putOptional(object, "actual_period_s", data.actual_period_s);
     putOptional(object, "feedback_received_at_ns", data.feedback_received_at);
     putOptional(object, "feedback_sample_timestamp_ns", data.feedback_sample_timestamp);
@@ -318,6 +319,8 @@ Json serialize(const d::ControlData& data) {
     putOptional(object, "integral_torque_nm", data.integral_torque_nm);
     putOptional(object, "integral_increment_nm", data.integral_increment_nm);
     putOptional(object, "command_torque_nm", data.command_torque_nm);
+    putOptional(object, "command_position_rad", data.command_position_rad);
+    putOptional(object, "command_velocity_rad_s", data.command_velocity_rad_s);
     putOptional(object, "measured_torque_nm", data.measured_torque_nm);
     putOptional(object, "solver_iterations", data.solver_iterations);
     putOptional(object, "solve_duration_s", data.solve_duration_s);
@@ -379,6 +382,12 @@ struct Log::DiagnosticState {
     std::mutex lifecycle_mutex;
     std::mutex input_mutex;
     std::mutex application_mutex;
+    std::mutex control_mutex;
+    const void* control_source = nullptr;
+    std::optional<std::uint64_t> previous_control_tick;
+    std::optional<d::TimePoint> previous_control_start;
+    std::optional<double> previous_integral;
+    std::atomic<std::uint64_t> control_dropped_records{0};
     std::mutex queue_mutex;
     std::condition_variable ready;
     std::deque<Record> queue;
@@ -396,6 +405,7 @@ struct Log::DiagnosticState {
 
     void writeMetadata(const char* status) {
         metadata["status"] = status;
+        metadata["control_dropped_records"] = control_dropped_records.load();
         for (std::size_t i = 0; i < kStages.size(); ++i)
             metadata["records"][kStageNames[i]] = {{"accepted", accepted[i]}, {"written", written[i]}};
         std::ofstream output;
@@ -449,6 +459,7 @@ void Log::startSession(const SessionInfo& info) {
          "_" + std::to_string(session_number.fetch_add(1)));
     if (!std::filesystem::create_directory(state.directory)) throw std::runtime_error("Log: 会话目录已经存在");
     state.accepted.fill(0);
+    state.control_dropped_records.store(0);
     state.written.fill(0);
     state.queued_bytes = 0;
     state.stopping = false;
@@ -545,6 +556,87 @@ void Log::recordPerceptionData(const PerceptionData& data) { recordData(Stage::P
 void Log::recordTrackingData(const TrackingData& data) { recordData(Stage::Tracking, data); }
 void Log::recordPredictData(const PredictData& data) { recordData(Stage::Predict, data); }
 void Log::recordControlData(const ControlData& data) { recordData(Stage::Control, data); }
+
+void Log::recordControlData(tcs::RobotController& controller, bool finish) {
+    recordControlSource(controller, finish);
+}
+
+void Log::recordControlData(tcs::McuMpcController& controller, bool finish) {
+    recordControlSource(controller, finish);
+}
+
+template <typename Controller>
+void Log::recordControlSource(Controller& controller, bool finish) {
+    auto& state = *diagnostic_;
+    std::lock_guard<std::mutex> lock(state.control_mutex);
+    const bool active = enabled(Stage::Control);
+    controller.setControlRecordingEnabled(active && !finish);
+    if (state.control_source != &controller) {
+        state.control_source = &controller;
+        state.previous_control_tick.reset();
+        state.previous_control_start.reset();
+        state.previous_integral.reset();
+    }
+    auto batch = controller.takeControlRecords();
+    if (active) recordControlBatch(batch);
+    if (finish || !active) {
+        state.previous_control_tick.reset();
+        state.previous_control_start.reset();
+        state.previous_integral.reset();
+    }
+}
+
+void Log::recordControlBatch(const tcs::ControlRecordBatch& batch) {
+    if (batch.records.empty() && batch.dropped_records == 0) return;
+    ensureApplicationSession();
+    auto& state = *diagnostic_;
+    const auto dropped = state.control_dropped_records.load();
+    if (batch.dropped_records > std::numeric_limits<std::uint64_t>::max() - dropped)
+        throw std::overflow_error("Log: 控制记录溢出数量超过范围");
+    state.control_dropped_records.store(dropped + batch.dropped_records);
+    for (const auto& record : batch.records) {
+        ControlData yaw{};
+        yaw.context.stamp.frame_id = record.stamp.frame_id;
+        yaw.context.stamp.plan_id = record.stamp.plan_id;
+        yaw.context.stamp.control_tick_id = record.stamp.control_tick_id;
+        // 子模组的参考下标属于 yaw 序列。
+        if (record.stamp.plan_id) yaw.context.stamp.reference_index = record.stamp.reference_index;
+        yaw.joint = diagnostics::Joint::Yaw;
+        yaw.started_at = record.started_at;
+        yaw.integral_enabled = record.integral_enabled;
+        yaw.integral_torque_nm = record.integral;
+        yaw.reference_position_rad = record.reference_position;
+        yaw.command_position_rad = record.yaw_target_angle;
+        yaw.command_velocity_rad_s = record.yaw_target_velocity;
+        yaw.command_torque_nm = record.yaw_torque;
+        yaw.command_send_succeeded = record.command_send_succeeded;
+        if (record.command_send_succeeded.has_value()) yaw.command_submitted_at = record.command_submitted_at;
+        const bool continuous = record.stamp.control_tick_id && state.previous_control_tick &&
+            *record.stamp.control_tick_id > *state.previous_control_tick &&
+            *record.stamp.control_tick_id - *state.previous_control_tick == 1;
+        if (continuous && state.previous_control_start)
+            yaw.actual_period_s = std::chrono::duration<double>(record.started_at - *state.previous_control_start).count();
+        if (continuous && state.previous_integral)
+            yaw.integral_increment_nm = record.integral - *state.previous_integral;
+        recordData(Stage::Control, yaw);
+
+        ControlData pitch{};
+        pitch.context = yaw.context;
+        // pitch 序列经过提前截取，现有子模组未返回其原始计划下标。
+        pitch.context.stamp.reference_index.reset();
+        pitch.joint = diagnostics::Joint::Pitch;
+        pitch.started_at = record.started_at;
+        pitch.actual_period_s = yaw.actual_period_s;
+        pitch.integral_enabled = false;
+        pitch.command_position_rad = record.pitch_target_angle;
+        pitch.command_submitted_at = yaw.command_submitted_at;
+        pitch.command_send_succeeded = record.command_send_succeeded;
+        recordData(Stage::Control, pitch);
+        state.previous_control_tick = record.stamp.control_tick_id;
+        state.previous_control_start = record.started_at;
+        state.previous_integral = record.integral;
+    }
+}
 
 void Log::ensureApplicationSession() {
     std::lock_guard<std::mutex> lock(diagnostic_->application_mutex);

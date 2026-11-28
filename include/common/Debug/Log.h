@@ -13,6 +13,11 @@
 struct ExtraInputInfo;
 struct PipelineResult;
 struct OutputContext;
+namespace tcs {
+class RobotController;
+class McuMpcController;
+struct ControlRecordBatch;
+}
 
 namespace diagnostics {
 
@@ -185,8 +190,8 @@ struct ControlData {
     RecordContext context;
     /// 本记录对应的控制关节。
     Joint joint;
-    /// 本周期实际使用的参考来源。
-    ReferenceSource reference_source;
+    /// 本周期实际使用的参考来源；控制器未提供时省略。
+    std::optional<ReferenceSource> reference_source;
     /// 本控制周期开始的时间。
     TimePoint started_at;
     /// 相邻控制周期开始时间之差，单位为秒；首个周期使用 nullopt。
@@ -221,10 +226,14 @@ struct ControlData {
     std::optional<double> integral_increment_nm;
     /// 最终组装进发送报文的力矩，单位为 N·m；尚未组装时使用 nullopt。
     std::optional<double> command_torque_nm;
+    /// 实际组装进报文的关节位置，单位为弧度。
+    std::optional<double> command_position_rad;
+    /// 实际组装进报文的关节速度，单位为弧度每秒；报文未提供时省略。
+    std::optional<double> command_velocity_rad_s;
     /// 电机实际反馈的力矩，单位为 N·m；设备未提供反馈时使用 nullopt。
     std::optional<double> measured_torque_nm;
-    /// 本周期求解是否获得可用解。
-    bool solution_valid;
+    /// 本周期求解是否获得可用解；控制器未提供时省略。
+    std::optional<bool> solution_valid;
     /// 实际完成的求解迭代次数；求解器未提供时使用 nullopt。
     std::optional<std::uint32_t> solver_iterations;
     /// 本周期求解耗时，单位为秒；未执行求解时使用 nullopt。
@@ -323,6 +332,13 @@ public:
     /// 记录一个关节的完整控制周期，在控制器内部完成求解和发送处理后调用。
     void recordControlData(const ControlData& data);
 
+    /// 根据 control 阶段开关启停单 yaw 调试记录，批量取出并记录各实际周期。
+    /// finish 为 true 时关闭子模组采集并取完剩余记录，供诊断线程退出后调用。
+    void recordControlData(tcs::RobotController& controller, bool finish = false);
+
+    /// 从单 yaw 底层控制器批量记录，开关和退出语义与 RobotController 入口相同。
+    void recordControlData(tcs::McuMpcController& controller, bool finish = false);
+
     /// 禁止复制共享日志实例。
     Log(const Log&) = delete;
 
@@ -339,6 +355,13 @@ private:
 
     /// 各业务对象记录入口共用的会话创建操作，保证并发首次调用仅创建一个会话。
     void ensureApplicationSession();
+
+    /// 统一同步子模组采集开关，并将批量读取的数据交给转换实现。
+    template <typename Controller>
+    void recordControlSource(Controller& controller, bool finish);
+
+    /// 在 control 采集锁保护下转换周期数据，统计溢出数量并计算连续周期差值。
+    void recordControlBatch(const tcs::ControlRecordBatch& batch);
 
     /// 初始化日志管理对象。
     Log();

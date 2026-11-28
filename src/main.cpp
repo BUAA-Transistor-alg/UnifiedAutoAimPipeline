@@ -704,6 +704,7 @@ int main(int argc, char** argv) {
                 rp.recvPitchScale, rp.recvPitchOffset},
             rp.sequenceMode,
             /*smooth_eps=*/rp.smoothEps);
+        Log::instance().recordControlData(*robot_controller);
         std::cout << "[main] RobotController constructed (serial threads may fail silently without hardware)." << std::endl;
     };
     // 线程安全读取当前 tcs::RobotController 指针（未构造时为 nullptr；新构型恒为 nullptr）
@@ -1077,6 +1078,14 @@ int main(int argc, char** argv) {
     // 读取时持 rc_mtx，与 process_thread / bsyStateSnapshot 的“先 rc_mtx 后控制器内部锁”
     // 顺序一致，不会与控制器自身的内部锁形成逆序。
     std::atomic<bool> telemetry_stop{false};
+    // 控制日志独立批量读取，记录开关和字段转换由 Log.cpp 处理。
+    std::atomic<bool> control_log_stop{false};
+    std::thread control_log_thread([&]() {
+        while (!control_log_stop.load(std::memory_order_acquire)) {
+            if (auto* rc = robotControllerPtr()) Log::instance().recordControlData(*rc);
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    });
     std::thread telemetry_thread([&]() {
         constexpr int kReadPeriodMs = 10;   // 100 Hz
         while (!telemetry_stop.load(std::memory_order_acquire) && g_running) {
@@ -1500,6 +1509,9 @@ int main(int argc, char** argv) {
     // 停止电控遥测线程（它只读控制器状态，必须先于控制器析构；空转时也能立即退出）
     telemetry_stop.store(true, std::memory_order_release);
     telemetry_thread.join();
+    control_log_stop.store(true, std::memory_order_release);
+    control_log_thread.join();
+    if (auto* rc = robotControllerPtr()) Log::instance().recordControlData(*rc, true);
 
     std::cout << "\nExiting." << std::endl;
     if (recorder) {

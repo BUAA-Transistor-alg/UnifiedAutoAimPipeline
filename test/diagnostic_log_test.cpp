@@ -8,6 +8,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <fstream>
+#include <algorithm>
 #include <iostream>
 #include <limits>
 #include <set>
@@ -56,6 +57,73 @@ std::vector<Json> readRecords(const fs::path& path) {
     std::string line;
     while (std::getline(input, line)) rows.push_back(Json::parse(line));
     return rows;
+}
+
+void checkControlAdapter(const fs::path& root, Log& log, d::SessionInfo info) {
+    info.output_directory = root / "control_adapter";
+    log.startSession(info);
+    // 实际后台控制线程提供记录；未连接通信设备，不产生设备反馈或发送确认。
+    tcs::McuMpcController controller(nullptr, 0.01, 3, 0.1, 0, 0, 0,
+                                     1, 10, 1, 1, 1, 5, 0, 0.002);
+    log.recordControlData(controller);
+    controller.set(true, false, std::vector<double>{0.1, 0.2, 0.3}, {0.125}, {false}, false, 42, 72);
+    auto wait_until = [&](std::uint64_t tick) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (std::chrono::steady_clock::now() < deadline) {
+            const auto stamp = controller.state().stamp;
+            if (stamp.control_tick_id && *stamp.control_tick_id >= tick) return;
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+        throw std::runtime_error("等待实际控制日志周期超时");
+    };
+    controller.start();
+    wait_until(5);
+    controller.stop();
+    const auto first_tick = *controller.state().stamp.control_tick_id;
+    if (!log.enabled(d::Stage::Control))
+        check(controller.takeControlRecords().records.empty(), "control 开关关闭时子模组仍然采集记录");
+    log.recordControlData(controller);
+    controller.set(true, false, std::vector<double>{0.4, 0.5}, {0.25}, {false}, true, 43, 73);
+    controller.start();
+    wait_until(first_tick + 3);
+    controller.stop();
+    const auto last_tick = *controller.state().stamp.control_tick_id;
+    log.recordControlData(controller, true);
+    controller.start();
+    wait_until(last_tick + 3);
+    controller.stop();
+    check(controller.takeControlRecords().records.empty(), "日志结束后没有关闭子模组采集");
+    log.finishSession();
+    const auto session = sessionDirectory(info.output_directory);
+    if (!log.enabled(d::Stage::Control)) {
+        check(!fs::exists(session / "control.jsonl"), "关闭 control 后仍然创建了日志文件");
+        return;
+    }
+    const auto rows = readRecords(session / "control.jsonl");
+    check(rows.size() == 2 * (last_tick + 1), "实际控制周期没有完整转换为 yaw 和 pitch 记录");
+    for (std::uint64_t tick = 0; tick <= last_tick; ++tick) {
+        const auto& yaw = rows[2 * tick];
+        const auto& pitch = rows[2 * tick + 1];
+        const bool first_plan = tick <= first_tick;
+        const auto index = first_plan ? std::min<std::uint64_t>(tick, 2)
+                                     : std::min<std::uint64_t>(tick - first_tick - 1, 1);
+        check(yaw.at("joint") == "yaw" && pitch.at("joint") == "pitch" &&
+              yaw.at("stamp").at("control_tick_id") == tick &&
+              pitch.at("stamp").at("control_tick_id") == tick, "实际周期编号或关节标记错误");
+        check(yaw.at("stamp").at("frame_id") == (first_plan ? 42 : 43) &&
+              yaw.at("stamp").at("plan_id") == (first_plan ? 72 : 73) &&
+              yaw.at("stamp").at("reference_index") == index, "实际控制周期与参考计划不匹配");
+        check(!pitch.at("stamp").contains("reference_index"), "pitch 使用了 yaw 的参考下标");
+        check(pitch.at("command_position_rad") == (first_plan ? 0.125 : 0.25), "实际 pitch 命令提取错误");
+        check(yaw.contains("actual_period_s") == (tick > 0) &&
+              yaw.contains("integral_increment_nm") == (tick > 0), "跨批次周期差值缺失或首周期出现差值");
+        check(!yaw.contains("solution_valid") && !yaw.contains("mpc_torque_nm") &&
+              !yaw.contains("measured_position_rad") && !yaw.contains("command_send_succeeded") &&
+              !yaw.contains("command_submitted_at_ns") && !yaw.contains("reference_source"),
+              "日志填写了子模组未提供的数据");
+    }
+    check(readJson(session / "session.json").at("control_dropped_records") == 0,
+          "控制队列溢出数量统计错误");
 }
 
 void checkStageAdapters(const fs::path& root, Log& log, d::TimePoint now, d::SessionInfo info) {
@@ -435,6 +503,7 @@ int main(int argc, char** argv) {
               "输入接口改变了帧时间戳");
     }
     checkStageAdapters(root, log, now, info);
+    checkControlAdapter(root, log, info);
     info.output_directory = root / "regular_file";
     { std::ofstream file(info.output_directory); file << "file"; }
     expectError<fs::filesystem_error>([&] { log.startSession(info); });

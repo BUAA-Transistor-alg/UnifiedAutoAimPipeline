@@ -193,6 +193,10 @@ target_link_libraries(diagnostic_log_test PRIVATE Threads::Threads ${YAMLCPP_LIB
     tcs::robot_comm_c tcbs)
 target_compile_definitions(diagnostic_log_test PRIVATE IS_INFANTRY_2=$<BOOL:${IS_INFANTRY_2}>)
 
+# 使用实际单 yaw 后台循环检查控制周期及参考关联，不连接通信设备。
+add_executable(control_stamp_test EXCLUDE_FROM_ALL test/control_stamp_test.cpp)
+target_link_libraries(control_stamp_test PRIVATE tcs::robot_comm_c Threads::Threads)
+
 # ── 推理进程（共享内存 + 信号量通信；各进程只编译一个模型，见 InferShm.h）──
 # 启动方式（先于主程序）：
 #   ./bin/armor_infer_process    （读 config armor.inference 段 + shm_key）

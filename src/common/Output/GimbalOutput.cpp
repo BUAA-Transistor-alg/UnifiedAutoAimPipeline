@@ -144,7 +144,8 @@ void GimbalOutput::update(const PipelineResult& result, tcs::RobotController*,
         ctx.fire_out = fire_out;   // 回写 fire 序列（可视化取首元素控制井形叉丝颜色）
         rc_.set(/*auto_aim_enable=*/true, /*yaw_torque_only_mode=*/yaw_torque_only_mode_,
                 yaw_out, pitch_out, fire_out,
-                /*integral_enable=*/seq.integral_enable);
+                /*integral_enable=*/seq.integral_enable,
+                result.extra_info.diagnostic_frame_id, ctx.diagnostic_plan_id);
 
     } else {
         // 预测不可用：自瞄关闭。
