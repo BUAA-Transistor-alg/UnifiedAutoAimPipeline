@@ -32,14 +32,16 @@ constexpr bool kLogPerception = true;
 constexpr bool kLogTracking = true;
 constexpr bool kLogPredict = true;
 constexpr bool kLogControl = true;
-constexpr std::array<bool, 5> kStages{
-    kLogInput, kLogPerception, kLogTracking, kLogPredict, kLogControl};
-constexpr std::array<const char*, 5> kStageNames{
-    "input", "perception", "tracking", "predict", "control"};
+constexpr bool kLogMcu = true;
+constexpr bool kLogImu = true;
+constexpr std::array<bool, 7> kStages{
+    kLogInput, kLogPerception, kLogTracking, kLogPredict, kLogControl, kLogMcu, kLogImu};
+constexpr std::array<const char*, 7> kStageNames{
+    "input", "perception", "tracking", "predict", "control", "mcu", "imu"};
 constexpr std::size_t kQueueCapacity = 4096;
 constexpr std::size_t kQueueBytes = 16 * 1024 * 1024;
 using Payload = std::variant<d::InputData, d::PerceptionData, d::TrackingData,
-                             d::PredictData, d::ControlData>;
+                             d::PredictData, d::ControlData, d::McuData, d::ImuData>;
 
 std::size_t stageIndex(d::Stage stage) {
     switch (stage) {
@@ -48,6 +50,8 @@ std::size_t stageIndex(d::Stage stage) {
         case d::Stage::Tracking: return 2;
         case d::Stage::Predict: return 3;
         case d::Stage::Control: return 4;
+        case d::Stage::Mcu: return 5;
+        case d::Stage::Imu: return 6;
     }
     throw std::invalid_argument("Log: 无效诊断阶段");
 }
@@ -97,6 +101,8 @@ Json stampJson(const d::DiagnosticStamp& stamp) {
     putOptional(object, "plan_id", stamp.plan_id);
     putOptional(object, "control_tick_id", stamp.control_tick_id);
     putOptional(object, "reference_index", stamp.reference_index);
+    putOptional(object, "mcu_sample_id", stamp.mcu_sample_id);
+    putOptional(object, "imu_sample_id", stamp.imu_sample_id);
     return object;
 }
 
@@ -141,6 +147,34 @@ void validateInterval(const std::optional<d::TimePoint>& start,
     if (start) validateInterval(*start, *finish);
 }
 
+void validateMcu(const tcs::McuReceiveSample& sample) {
+    const auto& packet = sample.packet;
+    for (double value : {double(packet.bullet_velocity), double(packet.pitch_angle),
+             packet.yaw_angle, double(packet.yaw_omega), double(packet.chassis_imu_yaw),
+             double(packet.chassis_imu_omega)}) finite(value);
+}
+
+void validate(const d::McuData& data) {
+    validateContext(data.context, false, false);
+    if (data.context.stamp.mcu_sample_id != data.sample.sample_id)
+        throw std::invalid_argument("Log: MCU 样本编号与记录关联编号不符");
+    validateMcu(data.sample);
+}
+
+void validateImu(const tcs::ImuReceiveSample& sample) {
+    for (const auto& packet : {sample.packet, sample.compensated_packet})
+        for (double value : {double(packet.gx), double(packet.gy), double(packet.gz),
+                 double(packet.ax), double(packet.ay), double(packet.az),
+                 packet.euler_yaw, packet.euler_pitch, packet.euler_roll}) finite(value);
+}
+
+void validate(const d::ImuData& data) {
+    validateContext(data.context, false, false);
+    if (data.context.stamp.imu_sample_id != data.sample.sample_id)
+        throw std::invalid_argument("Log: IMU 样本编号与记录关联编号不符");
+    validateImu(data.sample);
+}
+
 void validate(const d::InputData& data) {
     validateContext(data.context, true, false);
     finite(data.yaw_rad);
@@ -148,6 +182,24 @@ void validate(const d::InputData& data) {
     finite(data.imu_euler_yaw_rad);
     finite(data.imu_euler_pitch_rad);
     finite(data.imu_euler_roll_rad);
+    if (data.mcu.has_value() != data.context.stamp.mcu_sample_id.has_value())
+        throw std::invalid_argument("Log: 输入 MCU 数据和样本编号必须同时提供");
+    if (data.mcu) {
+        if (data.context.stamp.mcu_sample_id != data.mcu->sample_id)
+            throw std::invalid_argument("Log: 输入 MCU 样本编号不符");
+        validateMcu(*data.mcu);
+        if (data.state_sampled_at && data.mcu->received_at > *data.state_sampled_at)
+            throw std::invalid_argument("Log: MCU 接收时间晚于关联状态的采样时间");
+    }
+    if (data.imu.has_value() != data.context.stamp.imu_sample_id.has_value())
+        throw std::invalid_argument("Log: 输入 IMU 数据和样本编号必须同时提供");
+    if (data.imu) {
+        if (data.context.stamp.imu_sample_id != data.imu->sample_id)
+            throw std::invalid_argument("Log: 输入 IMU 样本编号不符");
+        validateImu(*data.imu);
+        if (data.state_sampled_at && data.imu->received_at > *data.state_sampled_at)
+            throw std::invalid_argument("Log: IMU 接收时间晚于关联状态的采样时间");
+    }
 }
 
 void validate(const d::PerceptionData& data) {
@@ -179,6 +231,8 @@ void validate(const d::PredictData& data) {
         const auto& point = data.points[i];
         if (point.stamp.frame_id != data.context.stamp.frame_id ||
             point.stamp.plan_id != data.context.stamp.plan_id ||
+            point.stamp.mcu_sample_id != data.context.stamp.mcu_sample_id ||
+            point.stamp.imu_sample_id != data.context.stamp.imu_sample_id ||
             !point.stamp.reference_index || *point.stamp.reference_index != i)
             throw std::invalid_argument("Log: 计划点的关联编号或顺序不符");
         if (i && point.execution_timestamp < data.points[i - 1].execution_timestamp)
@@ -214,6 +268,8 @@ void validate(const d::ControlData& data) {
 std::size_t payloadBytes(const d::InputData&) { return sizeof(d::InputData); }
 std::size_t payloadBytes(const d::TrackingData&) { return sizeof(d::TrackingData); }
 std::size_t payloadBytes(const d::ControlData&) { return sizeof(d::ControlData); }
+std::size_t payloadBytes(const d::McuData&) { return sizeof(d::McuData); }
+std::size_t payloadBytes(const d::ImuData&) { return sizeof(d::ImuData); }
 
 std::size_t payloadBytes(const d::PerceptionData& data) {
     std::size_t size = sizeof(data);
@@ -235,6 +291,48 @@ std::size_t payloadBytes(const d::PredictData& data) {
     return sizeof(data) + data.selection_reason.size() + data.points.size() * sizeof(d::PredictPoint);
 }
 
+Json mcuJson(const tcs::McuReceiveSample& sample) {
+    const auto& p = sample.packet;
+    return Json{{"received_at_ns", timeNs(sample.received_at)},
+                {"packet", {{"frame_header1", p.frame_header1}, {"frame_header2", p.frame_header2},
+                    {"protocol_version", p.protocol_version}, {"data_size", p.data_size},
+                    {"bullet_velocity", p.bullet_velocity}, {"pitch_angle", p.pitch_angle},
+                    {"yaw_angle", double(p.yaw_angle)}, {"yaw_omega", p.yaw_omega},
+                    {"chassis_imu_yaw", p.chassis_imu_yaw}, {"chassis_imu_omega", p.chassis_imu_omega},
+                    {"mark", p.mark}, {"color", p.color}, {"auto_aim_switch", p.auto_aim_switch},
+                    {"yaw_temperature", p.yaw_temperature}, {"fold", p.fold}, {"crc8", p.crc8}}}};
+}
+
+Json serialize(const d::McuData& data) {
+    auto object = contextJson(data.context);
+    object.update(mcuJson(data.sample));
+    return object;
+}
+
+Json imuMeasurementsJson(const tcs::imu::ReceivePacket& p) {
+    return Json{{"gx", float(p.gx)}, {"gy", float(p.gy)}, {"gz", float(p.gz)},
+                {"ax", float(p.ax)}, {"ay", float(p.ay)}, {"az", float(p.az)},
+                {"euler_yaw", double(p.euler_yaw)}, {"euler_pitch", double(p.euler_pitch)},
+                {"euler_roll", double(p.euler_roll)}, {"dt_one_tenth_ms", uint32_t(p.dt_one_tenth_ms)}};
+}
+
+Json imuJson(const tcs::ImuReceiveSample& sample) {
+    auto packet = imuMeasurementsJson(sample.packet);
+    packet["frame_header1"] = sample.packet.frame_header1;
+    packet["frame_header2"] = sample.packet.frame_header2;
+    packet["frame_header3"] = sample.packet.frame_header3;
+    packet["data_size"] = sample.packet.data_size;
+    packet["crc32"] = uint32_t(sample.packet.crc32);
+    return Json{{"received_at_ns", timeNs(sample.received_at)}, {"packet", std::move(packet)},
+                {"mount_compensated", imuMeasurementsJson(sample.compensated_packet)}};
+}
+
+Json serialize(const d::ImuData& data) {
+    auto object = contextJson(data.context);
+    object.update(imuJson(data.sample));
+    return object;
+}
+
 Json serialize(const d::InputData& data) {
     auto object = contextJson(data.context);
     object["frame_timestamp_ns"] = timeNs(data.frame_timestamp);
@@ -243,6 +341,9 @@ Json serialize(const d::InputData& data) {
     object["imu_euler_yaw_rad"] = data.imu_euler_yaw_rad;
     object["imu_euler_pitch_rad"] = data.imu_euler_pitch_rad;
     object["imu_euler_roll_rad"] = data.imu_euler_roll_rad;
+    putOptional(object, "state_sampled_at_ns", data.state_sampled_at);
+    if (data.mcu) object["mcu"] = mcuJson(*data.mcu);
+    if (data.imu) object["imu"] = imuJson(*data.imu);
     return object;
 }
 
@@ -366,6 +467,10 @@ bool singleYawFrame(const PipelineResult& result) {
 d::RecordContext frameContext(const PipelineResult& result) {
     d::RecordContext context{};
     context.stamp.frame_id = result.extra_info.diagnostic_frame_id;
+    if (result.extra_info.diagnostic_mcu_sample)
+        context.stamp.mcu_sample_id = result.extra_info.diagnostic_mcu_sample->sample_id;
+    if (result.extra_info.diagnostic_imu_sample)
+        context.stamp.imu_sample_id = result.extra_info.diagnostic_imu_sample->sample_id;
     if (result.armor.valid == result.power_rune.valid)
         throw std::invalid_argument("Log: 流水线结果必须具有唯一来源");
     context.pipeline = result.armor.valid ? d::Pipeline::Armor : d::Pipeline::PowerRune;
@@ -394,6 +499,10 @@ struct Log::DiagnosticState {
     std::optional<d::TimePoint> previous_control_start;
     std::optional<double> previous_integral;
     std::atomic<std::uint64_t> control_dropped_records{0};
+    std::mutex mcu_mutex;
+    std::atomic<std::uint64_t> mcu_dropped_records{0};
+    std::mutex imu_mutex;
+    std::atomic<std::uint64_t> imu_dropped_records{0};
     std::mutex queue_mutex;
     std::condition_variable ready;
     std::deque<Record> queue;
@@ -403,15 +512,17 @@ struct Log::DiagnosticState {
     std::size_t queued_bytes = 0;
     std::uint64_t next_frame_id = 0;
     std::uint64_t next_plan_id = 0;
-    std::array<std::uint64_t, 5> accepted{};
-    std::array<std::uint64_t, 5> written{};
-    std::array<std::ofstream, 5> files;
+    std::array<std::uint64_t, 7> accepted{};
+    std::array<std::uint64_t, 7> written{};
+    std::array<std::ofstream, 7> files;
     std::filesystem::path directory;
     Json metadata;
 
     void writeMetadata(const char* status) {
         metadata["status"] = status;
         metadata["control_dropped_records"] = control_dropped_records.load();
+        metadata["mcu_dropped_records"] = mcu_dropped_records.load();
+        metadata["imu_dropped_records"] = imu_dropped_records.load();
         for (std::size_t i = 0; i < kStages.size(); ++i)
             metadata["records"][kStageNames[i]] = {{"accepted", accepted[i]}, {"written", written[i]}};
         std::ofstream output;
@@ -431,7 +542,12 @@ struct Log::DiagnosticState {
             lock.unlock();
             Json object = std::visit([](const auto& data) { return serialize(data); }, record.payload);
             object["written_at_ns"] = timeNs(std::chrono::steady_clock::now());
-            files[record.stage] << object.dump() << '\n';
+            if (record.stage == stageIndex(d::Stage::Imu)) {
+                if (written[record.stage] > 0) files[record.stage] << ",\n";
+                files[record.stage] << object.dump();
+            } else {
+                files[record.stage] << object.dump() << '\n';
+            }
             lock.lock();
             queued_bytes -= record.bytes;
             ++written[record.stage];
@@ -466,10 +582,12 @@ void Log::startSession(const SessionInfo& info) {
     if (!std::filesystem::create_directory(state.directory)) throw std::runtime_error("Log: 会话目录已经存在");
     state.accepted.fill(0);
     state.control_dropped_records.store(0);
+    state.mcu_dropped_records.store(0);
+    state.imu_dropped_records.store(0);
     state.written.fill(0);
     state.queued_bytes = 0;
     state.stopping = false;
-    state.metadata = Json{{"schema_version", 1}, {"build_id", info.build_id},
+    state.metadata = Json{{"schema_version", 3}, {"build_id", info.build_id},
                           {"created_at_unix_ns", wall_ns}, {"clock", "steady_clock"},
                           {"timestamp_unit", "ns"}, {"queue_capacity", kQueueCapacity},
                           {"queue_bytes", kQueueBytes}};
@@ -478,8 +596,11 @@ void Log::startSession(const SessionInfo& info) {
         state.metadata["stages"][kStageNames[i]] = kStages[i];
         if (!kStages[i]) continue;
         state.files[i].exceptions(std::ios::failbit | std::ios::badbit);
-        state.files[i].open(state.directory / (std::string(kStageNames[i]) + ".jsonl"),
+        const auto filename = i == stageIndex(Stage::Imu) ? "imu.json" : std::string(kStageNames[i]) + ".jsonl";
+        state.metadata["files"][kStageNames[i]] = filename;
+        state.files[i].open(state.directory / filename,
                             std::ios::out | std::ios::trunc);
+        if (i == stageIndex(Stage::Imu)) state.files[i] << "[\n";
     }
     {
         std::ofstream config;
@@ -504,8 +625,10 @@ void Log::finishSession() {
     }
     state.ready.notify_one();
     state.worker.join();
-    for (auto& file : state.files) {
+    for (std::size_t i = 0; i < state.files.size(); ++i) {
+        auto& file = state.files[i];
         if (!file.is_open()) continue;
+        if (i == stageIndex(Stage::Imu)) file << "\n]\n";
         file.flush();
         file.close();
     }
@@ -535,6 +658,50 @@ void Log::recordData(Stage stage, const Data& data) {
 
 void Log::recordInputData(const InputData& data) { recordData(Stage::Input, data); }
 
+void Log::recordMcuData(const diagnostics::McuData& data) { recordData(Stage::Mcu, data); }
+
+void Log::recordMcuData(tcs::RobotController& controller, bool finish) {
+    auto& state = *diagnostic_;
+    std::lock_guard<std::mutex> lock(state.mcu_mutex);
+    const bool active = enabled(Stage::Mcu);
+    controller.setMcuRecordingEnabled(active && !finish);
+    auto batch = controller.takeMcuRecords();
+    if (!active || (batch.samples.empty() && batch.dropped_samples == 0)) return;
+    ensureApplicationSession();
+    const auto dropped = state.mcu_dropped_records.load();
+    if (batch.dropped_samples > std::numeric_limits<std::uint64_t>::max() - dropped)
+        throw std::overflow_error("Log: MCU 接收队列溢出数量超过范围");
+    state.mcu_dropped_records.store(dropped + batch.dropped_samples);
+    for (const auto& sample : batch.samples) {
+        d::McuData data{};
+        data.context.stamp.mcu_sample_id = sample.sample_id;
+        data.sample = sample;
+        recordMcuData(data);
+    }
+}
+
+void Log::recordImuData(const diagnostics::ImuData& data) { recordData(Stage::Imu, data); }
+
+void Log::recordImuData(tcs::RobotController& controller, bool finish) {
+    auto& state = *diagnostic_;
+    std::lock_guard<std::mutex> lock(state.imu_mutex);
+    const bool active = enabled(Stage::Imu);
+    controller.setImuRecordingEnabled(active && !finish);
+    auto batch = controller.takeImuRecords();
+    if (!active || (batch.samples.empty() && batch.dropped_samples == 0)) return;
+    ensureApplicationSession();
+    const auto dropped = state.imu_dropped_records.load();
+    if (batch.dropped_samples > std::numeric_limits<std::uint64_t>::max() - dropped)
+        throw std::overflow_error("Log: IMU 接收队列溢出数量超过范围");
+    state.imu_dropped_records.store(dropped + batch.dropped_samples);
+    for (const auto& sample : batch.samples) {
+        d::ImuData data{};
+        data.context.stamp.imu_sample_id = sample.sample_id;
+        data.sample = sample;
+        recordImuData(data);
+    }
+}
+
 diagnostics::DiagnosticStamp Log::recordInputData(diagnostics::TimePoint frame_timestamp,
                                                  ExtraInputInfo& extra_info) {
     auto& state = *diagnostic_;
@@ -543,6 +710,10 @@ diagnostics::DiagnosticStamp Log::recordInputData(diagnostics::TimePoint frame_t
         throw std::overflow_error("Log: 输入图像编号已经耗尽");
     diagnostics::DiagnosticStamp stamp;
     stamp.frame_id = state.next_frame_id++;
+    if (extra_info.diagnostic_mcu_sample)
+        stamp.mcu_sample_id = extra_info.diagnostic_mcu_sample->sample_id;
+    if (extra_info.diagnostic_imu_sample)
+        stamp.imu_sample_id = extra_info.diagnostic_imu_sample->sample_id;
     extra_info.diagnostic_frame_id = stamp.frame_id;
     if (!enabled(Stage::Input)) return stamp;
     if (!extra_info.single.valid() && extra_info.big_small.valid()) return stamp;
@@ -555,6 +726,9 @@ diagnostics::DiagnosticStamp Log::recordInputData(diagnostics::TimePoint frame_t
     data.imu_euler_yaw_rad = extra_info.single.imu_euler_yaw;
     data.imu_euler_pitch_rad = extra_info.single.imu_euler_pitch;
     data.imu_euler_roll_rad = extra_info.single.imu_euler_roll;
+    data.state_sampled_at = extra_info.diagnostic_state_sampled_at;
+    data.mcu = extra_info.diagnostic_mcu_sample;
+    data.imu = extra_info.diagnostic_imu_sample;
     validate(data);
     ensureApplicationSession();
     recordData(Stage::Input, data);

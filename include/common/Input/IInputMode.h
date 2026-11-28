@@ -10,6 +10,8 @@
 #include <string>
 
 #include "common/RobotConfig.h"   // YawMode
+#include "tcs/communication/McuDiagnostics.h"
+#include "tcs/communication/ImuDiagnostics.h"
 
 /**
  * @brief 与一帧图像绑定的额外信息（**按 yaw 构型分两包** + 共用底盘位姿）。
@@ -37,6 +39,10 @@
 struct ExtraInputInfo {
     /// 日志模块分配的原始图像编号，随该帧输入信息传递到输出阶段。
     std::optional<std::uint64_t> diagnostic_frame_id;
+    /// 与本次状态采样一起保存的原始 MCU 包，随相机延迟队列传递。
+    std::optional<tcs::McuReceiveSample> diagnostic_mcu_sample;
+    std::optional<tcs::ImuReceiveSample> diagnostic_imu_sample;
+    std::optional<std::chrono::steady_clock::time_point> diagnostic_state_sampled_at;
     static constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
     // ── 单 yaw 构型包（chassis -> yaw -> pitch -> head）──

@@ -68,6 +68,8 @@ ExtraInputInfo CameraInputMode::stateToExtraInfo(const tcs::RobotController::Sta
     // strict 数据包 → ExtraInputInfo 的**单 yaw 包**（旧构型）；底盘 xyz 保持 0。
     // big_small 包保持默认 NaN（未使用的包整体置 NaN，防止按错构型取值）。
     ExtraInputInfo info;
+    info.diagnostic_mcu_sample = st.mcu.diagnostic_sample;
+    info.diagnostic_imu_sample = st.imu.diagnostic_sample;
     info.single.imu_euler_yaw   = st.strict.imu_euler_yaw;
     info.single.imu_euler_pitch = st.strict.imu_euler_pitch;
     info.single.imu_euler_roll  = st.strict.imu_euler_roll;
@@ -97,6 +99,7 @@ void CameraInputMode::stateSamplerLoop() {
     while (!state_thread_exit_.load(std::memory_order_acquire)) {
         ExtraInputInfo info = sampler_();
         const auto now = std::chrono::steady_clock::now();
+        info.diagnostic_state_sampled_at = now;
         {
             std::lock_guard<std::mutex> lock(state_mtx_);
             state_queue_.push_back(DelayedState{now, std::move(info)});

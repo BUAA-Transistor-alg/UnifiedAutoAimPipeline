@@ -9,6 +9,8 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include "tcs/communication/McuDiagnostics.h"
+#include "tcs/communication/ImuDiagnostics.h"
 
 struct ExtraInputInfo;
 struct PipelineResult;
@@ -25,7 +27,7 @@ namespace diagnostics {
 using TimePoint = std::chrono::steady_clock::time_point;
 
 /// 诊断阶段；是否记录各阶段由 Log.cpp 中的常量分别控制。
-enum class Stage { Input, Perception, Tracking, Predict, Control };
+enum class Stage { Input, Perception, Tracking, Predict, Control, Mcu, Imu };
 
 /// 感知与预测的数据来源；共用输入、无目标保持等记录允许不指定来源。
 enum class Pipeline { Armor, PowerRune };
@@ -45,6 +47,10 @@ struct DiagnosticStamp {
     std::optional<std::uint64_t> control_tick_id;
     /// 本条记录对应的计划点下标；控制阶段填写本周期实际消费的下标。
     std::optional<std::uint32_t> reference_index;
+    /// 本条记录关联的原始 MCU 接收样本编号。
+    std::optional<std::uint64_t> mcu_sample_id;
+    /// 本条记录关联的原始 IMU 接收样本编号。
+    std::optional<std::uint64_t> imu_sample_id;
 };
 
 /// 各阶段记录共用的关联信息及采集时刻。
@@ -73,10 +79,26 @@ struct InputData {
     double yaw_rad;
     /// 与本幅图像配对并交给后续处理的 pitch 关节角，相对父节点，单位为弧度。
     double pitch_rad;
-    /// 与本幅图像配对的 IMU 原始欧拉角，单位为弧度。
+    /// 与本幅图像配对、已完成安装补偿的 IMU 欧拉角，单位为弧度。
     double imu_euler_yaw_rad;
     double imu_euler_pitch_rad;
     double imu_euler_roll_rad;
+    /// 从相机延迟队列选中的状态采样时间及同次采样保存的 MCU/IMU 接收数据。
+    std::optional<TimePoint> state_sampled_at;
+    std::optional<tcs::McuReceiveSample> mcu;
+    std::optional<tcs::ImuReceiveSample> imu;
+};
+
+/// 独立于图像频率记录的有效 MCU 原始报文。
+struct McuData {
+    RecordContext context;
+    tcs::McuReceiveSample sample;
+};
+
+/// 独立于图像频率记录的有效 IMU 接收报文。
+struct ImuData {
+    RecordContext context;
+    tcs::ImuReceiveSample sample;
 };
 
 /// 一个检测结果经过位姿解算后的记录。
@@ -307,6 +329,18 @@ public:
 
     /// 记录一幅图像及其实际配对姿态，采集时刻及输出字段由 Log.cpp 整理。
     void recordInputData(const InputData& data);
+
+    /// 保存一个原始 MCU 样本；context.stamp 必须包含匹配的 mcu_sample_id。
+    void recordMcuData(const diagnostics::McuData& data);
+
+    /// 按接收频率批量保存 MCU 原始包，finish 时关闭采集并取完队列。
+    void recordMcuData(tcs::RobotController& controller, bool finish = false);
+
+    /// 保存 IMU 接收样本，关联编号必须与样本编号相同。
+    void recordImuData(const diagnostics::ImuData& data);
+
+    /// 独立开关控制逐包采集，finish 时关闭采集并取完队列。
+    void recordImuData(tcs::RobotController& controller, bool finish = false);
 
     /// 从输入源实际返回的时间戳和配对姿态提取输入记录，并返回本幅图像的关联戳。
     /// 首次记录时自动建立会话；编号写入 extra_info 随帧传递，阶段关闭时仍递增。

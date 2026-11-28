@@ -3,6 +3,7 @@
 #include "common/PathResolver.h"
 #include "common/PipelineResult.h"
 #include "common/Output/OutputContext.h"
+#include "tcs/communication/ImuMountCompensation.h"
 
 #include <nlohmann/json.hpp>
 #include <yaml-cpp/yaml.h>
@@ -258,6 +259,167 @@ void checkStageAdapters(const fs::path& root, Log& log, d::TimePoint now, d::Ses
           tracks[2].at("observed_position_world_m")[0] == 2 &&
           !tracks[2].contains("target_angular_velocity_rad_s"), "能量机关数据提取或角速度语义错误");
 }
+void checkMcuInputAssociation(const fs::path& root, Log& log, d::TimePoint now, d::SessionInfo info) {
+    info.output_directory = root / "mcu_input_association";
+    log.startSession(info);
+    // 直接检查日志数据接口的副本、编号和时间约束，不连接通信设备。
+    d::McuData first{};
+    first.context.stamp.mcu_sample_id = 0;
+    first.sample.sample_id = 0;
+    first.sample.received_at = now;
+    first.sample.packet.pitch_angle = 23.75f;
+    first.sample.packet.yaw_angle = 12.5;
+    first.sample.packet.yaw_omega = -0.25f;
+    first.sample.packet.chassis_imu_yaw = 1.5f;
+    first.sample.packet.chassis_imu_omega = -0.125f;
+    first.sample.packet.bullet_velocity = 25;
+    first.sample.packet.mark = 255;
+    first.sample.packet.fold = 1;
+    log.recordMcuData(first);
+    ExtraInputInfo pose;
+    pose.fillCurrentPackZeros(YawMode::SINGLE);
+    pose.single.pitch_angle = -0.125;
+    pose.diagnostic_mcu_sample = first.sample;
+    pose.diagnostic_state_sampled_at = now + std::chrono::milliseconds(1);
+    const auto stamp0 = log.recordInputData(now + std::chrono::milliseconds(20), pose);
+    const auto stamp1 = log.recordInputData(now + std::chrono::milliseconds(21), pose);
+    auto second = first;
+    second.sample.sample_id = 9007199254740993ULL;
+    second.context.stamp.mcu_sample_id = second.sample.sample_id;
+    second.sample.received_at = now + std::chrono::milliseconds(2);
+    second.sample.packet.mark = 0;
+    log.recordMcuData(second);
+    pose.diagnostic_mcu_sample = second.sample;
+    pose.diagnostic_state_sampled_at = now + std::chrono::milliseconds(3);
+    log.recordInputData(now + std::chrono::milliseconds(23), pose);
+    pose.diagnostic_mcu_sample->packet.yaw_angle = 99;
+    first.sample.packet.yaw_angle = 100;
+    if (log.enabled(d::Stage::Mcu)) {
+        auto invalid = second;
+        invalid.context.stamp.mcu_sample_id.reset();
+        expectError<std::invalid_argument>([&] { log.recordMcuData(invalid); });
+        invalid = second;
+        invalid.sample.packet.yaw_omega = std::numeric_limits<float>::infinity();
+        expectError<std::invalid_argument>([&] { log.recordMcuData(invalid); });
+    }
+    if (log.enabled(d::Stage::Input)) {
+        auto invalid = pose;
+        invalid.diagnostic_state_sampled_at = now;
+        expectError<std::invalid_argument>([&] {
+            log.recordInputData(now + std::chrono::milliseconds(25), invalid);
+        });
+    }
+    log.finishSession();
+    const auto session = sessionDirectory(info.output_directory);
+    const auto metadata = readJson(session / "session.json");
+    check(metadata.at("schema_version") == 3 && metadata.at("mcu_dropped_records") == 0,
+          "MCU 会话版本或丢失统计错误");
+    check(fs::exists(session / "mcu.jsonl") == log.enabled(d::Stage::Mcu), "MCU 独立开关与文件不符");
+    check(metadata.at("records").at("mcu").at("written") == (log.enabled(d::Stage::Mcu) ? 2 : 0),
+          "MCU 接收记录数量错误");
+    if (log.enabled(d::Stage::Input)) {
+        const auto input = readRecords(session / "input.jsonl");
+        check(input.size() == 3 && stamp0.mcu_sample_id == 0 && stamp1.mcu_sample_id == 0,
+              "不同图像无法关联同一个 MCU 样本");
+        check(input[0].at("stamp").at("frame_id") != input[1].at("stamp").at("frame_id"),
+              "两幅图像共用了 frame_id");
+        check(input[0].at("mcu").at("packet").at("yaw_angle") == 12.5 &&
+              input[2].at("mcu").at("packet").at("yaw_angle") == 12.5,
+              "输入记录的 MCU 副本受到后续状态修改影响");
+        check(input[0].at("pitch_rad") == -0.125 &&
+              input[0].at("mcu").at("packet").at("pitch_angle") == 23.75,
+              "原始 MCU pitch 与配对关节角混淆");
+        check(input[2].at("stamp").at("mcu_sample_id") == second.sample.sample_id,
+              "MCU 64 位样本编号精度丢失");
+        check(input[0].at("state_sampled_at_ns") ==
+              std::chrono::duration_cast<std::chrono::nanoseconds>(
+                  (now + std::chrono::milliseconds(1)).time_since_epoch()).count(),
+              "输入状态采样时间被帧时间替换");
+        if (log.enabled(d::Stage::Mcu)) {
+            const auto mcu = readRecords(session / "mcu.jsonl");
+            check(input[0].at("mcu").at("packet") == mcu[0].at("packet") &&
+                  input[2].at("mcu").at("packet") == mcu[1].at("packet"),
+                  "图像关联的原始报文与独立 MCU 记录不一致");
+            check(mcu[0].at("stamp").at("mcu_sample_id") == 0 &&
+                  !mcu[0].at("stamp").contains("frame_id") &&
+                  mcu[1].at("packet").at("mark") == 0,
+                  "MCU 编号零值、独立关联或 mark 循环记录错误");
+        }
+    }
+}
+void checkImuInputAssociation(const fs::path& root, Log& log, d::TimePoint now, d::SessionInfo info) {
+    info.output_directory = root / "imu_input_association";
+    log.startSession(info);
+    // 检查实际日志接口的所有权、原始值与补偿值，不连接通信设备。
+    d::ImuData first{};
+    first.context.stamp.imu_sample_id = 0;
+    first.sample.received_at = now;
+    auto& p = first.sample.packet;
+    p.gx = .5f; p.gy = -.25f; p.gz = 1.5f;
+    p.ax = .125f; p.ay = .25f; p.az = 9.75f;
+    p.euler_yaw = 1.25; p.euler_pitch = -.125; p.euler_roll = 3;
+    p.dt_one_tenth_ms = 10;
+    first.sample.compensated_packet = tcs::compensateImuMount(p);
+    log.recordImuData(first);
+    ExtraInputInfo pose;
+    pose.fillCurrentPackZeros(YawMode::SINGLE);
+    pose.diagnostic_imu_sample = first.sample;
+    pose.diagnostic_state_sampled_at = now + std::chrono::milliseconds(1);
+    const auto stamp0 = log.recordInputData(now + std::chrono::milliseconds(20), pose);
+    auto second = first;
+    second.sample.sample_id = 9007199254740993ULL;
+    second.context.stamp.imu_sample_id = second.sample.sample_id;
+    second.sample.received_at = now + std::chrono::milliseconds(2);
+    log.recordImuData(second);
+    pose.diagnostic_imu_sample = second.sample;
+    pose.diagnostic_state_sampled_at = now + std::chrono::milliseconds(3);
+    log.recordInputData(now + std::chrono::milliseconds(23), pose);
+    pose.diagnostic_imu_sample->packet.euler_yaw = 99;
+    if (log.enabled(d::Stage::Imu)) {
+        auto invalid = second;
+        invalid.context.stamp.imu_sample_id.reset();
+        expectError<std::invalid_argument>([&] { log.recordImuData(invalid); });
+        invalid = second;
+        invalid.sample.packet.gx = std::numeric_limits<float>::quiet_NaN();
+        expectError<std::invalid_argument>([&] { log.recordImuData(invalid); });
+    }
+    if (log.enabled(d::Stage::Input)) {
+        auto invalid = pose;
+        invalid.diagnostic_state_sampled_at = now;
+        expectError<std::invalid_argument>([&] { log.recordInputData(now, invalid); });
+    }
+    log.finishSession();
+    const auto session = sessionDirectory(info.output_directory);
+    const auto metadata = readJson(session / "session.json");
+    check(metadata.at("imu_dropped_records") == 0, "IMU 丢失统计错误");
+    check(fs::exists(session / "imu.json") == log.enabled(d::Stage::Imu), "IMU 独立开关与文件不符");
+    check(metadata.at("records").at("imu").at("written") == (log.enabled(d::Stage::Imu) ? 2 : 0),
+          "IMU 写入计数错误");
+    if (log.enabled(d::Stage::Imu)) {
+        const auto imu = readJson(session / "imu.json");
+        check(imu.is_array() && imu.size() == 2, "imu.json 没有形成完整的 JSON 数组");
+        check(metadata.at("files").at("imu") == "imu.json", "IMU 文件名元数据不符");
+        check(imu[0].at("stamp").at("imu_sample_id") == 0 &&
+              imu[1].at("stamp").at("imu_sample_id") == second.sample.sample_id,
+              "IMU 零值或 64 位编号精度丢失");
+        check(imu[0].at("packet").at("euler_yaw") == 1.25 &&
+              imu[0].at("packet").at("gx") == .5 &&
+              imu[0].at("packet").at("dt_one_tenth_ms") == 10,
+              "IMU 原始姿态、gyro 或设备时间信息丢失");
+        check(imu[0].at("mount_compensated").at("gx") == first.sample.compensated_packet.gx &&
+              imu[0].at("mount_compensated").at("euler_roll") == first.sample.compensated_packet.euler_roll,
+              "IMU 安装补偿数据不符");
+        if (log.enabled(d::Stage::Input)) {
+            const auto input = readRecords(session / "input.jsonl");
+            check(input.size() == 2 && stamp0.imu_sample_id == 0 &&
+                  input[1].at("stamp").at("imu_sample_id") == second.sample.sample_id,
+                  "图像与 IMU 样本编号关联错误");
+            check(input[0].at("imu").at("packet") == imu[0].at("packet") &&
+                  input[1].at("imu").at("packet") == imu[1].at("packet"),
+                  "输入的 IMU 快照受到后续状态修改影响");
+        }
+    }
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -476,6 +638,9 @@ int main(int argc, char** argv) {
     log.finishSession();
     check(readJson(sessionDirectory(info.output_directory) / "session.json").at("status") == "complete",
           "第二次会话未正常关闭");
+    if (log.enabled(d::Stage::Imu))
+        check(readJson(sessionDirectory(info.output_directory) / "imu.json").empty(),
+              "空 IMU 会话没有生成空数组");
     if (log.enabled(d::Stage::Input)) {
         info.output_directory = root / "input_adapter";
         log.startSession(info);
@@ -534,8 +699,10 @@ int main(int argc, char** argv) {
     }
     checkStageAdapters(root, log, now, info);
     checkControlAdapter(root, log, info);
+    checkMcuInputAssociation(root, log, now, info);
+    checkImuInputAssociation(root, log, now, info);
     info.output_directory = root / "regular_file";
     { std::ofstream file(info.output_directory); file << "file"; }
     expectError<fs::filesystem_error>([&] { log.startSession(info); });
-    std::cout << "五阶段输出、可选字段、并发记录、会话排空及错误检查通过：" << session << '\n';
+    std::cout << "分阶段输出、MCU/IMU 关联、可选字段、并发记录及会话排空检查通过：" << session << '\n';
 }
